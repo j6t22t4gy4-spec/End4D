@@ -44,6 +44,7 @@ flowchart TB
         rules["core/rules.py"]
         coordinates["core/coordinates.py"]
         snapshot["core/snapshot.py"]
+        store["core/store.py"]
         emotion["core/emotion.py"]
     end
 
@@ -56,16 +57,19 @@ flowchart TB
     main --> run
     main --> ws
     main --> snapshots
-    worlds --> world
+    worlds --> store
+    run --> store
     run --> time_flow
     ws --> time_flow
-    snapshots --> snapshot
+    snapshots --> store
     time_flow --> nodes
     nodes --> rules
     nodes --> snapshot
     rules --> cell
     rules --> coordinates
     rules --> emotion
+    store --> world
+    store --> snapshot
     snapshot --> world
     world --> cell
 ```
@@ -148,7 +152,12 @@ flowchart LR
 | `graph/time_flow.py` | `models/cell.py`, `core/snapshot.py`, `graph/nodes.py` |
 | `graph/nodes.py` | `core/rules.py` |
 | `core/snapshot.py` | `models/world.py`, `models/cell.py` |
+| `core/store.py` | `models/world.py`, `core/snapshot.py` |
 | `scripts/run_simulation.py` | `graph/time_flow.py`, `core/snapshot.py` |
+| `api/worlds.py` | `core/store.py` |
+| `api/run.py` | `core/store.py`, `graph/time_flow.py` |
+| `api/snapshots.py` | `core/store.py` |
+| `api/ws.py` | `core/store.py`, `core/ws_manager.py` |
 
 ---
 

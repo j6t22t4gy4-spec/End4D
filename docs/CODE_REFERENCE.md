@@ -23,6 +23,8 @@
 | **coordinates.py** | **4D 좌표·거리 함수**. `distance_4d()` — (x,y,z)와 t에 가중치 적용한 거리 계산. `cosine_similarity()` — 융합 조건 등에 사용. |
 | **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought 0.7+ 융합), `apply_mutation`(벡터 변이). Phase 1: LLM 없음. |
 | **snapshot.py** | **스냅샷 저장소**. `SnapshotStore` — 메모리 내 t별 스냅샷 저장·조회. `save()`, `get()`, `get_nearest()`, `list_t()`. |
+| **store.py** | **월드 저장소**. `WorldStore` — world_id → {World, SnapshotStore, status} 매핑. `create()`, `get()`, `get_world()`, `get_snapshot_store()`, `set_status()`. |
+| **ws_manager.py** | **WebSocket 연결 관리**. `ConnectionManager` — world_id별 연결 등록·해제, `send_to_world()` 브로드캐스트. |
 | **__init__.py** | core 패키지 진입점. coordinates, rules, snapshot export. |
 
 ### 1.3 그래프 (app/graph/)
@@ -37,7 +39,11 @@
 
 | 파일 | 역할 |
 |------|------|
-| **main.py** | **FastAPI 앱 뼈대**. Phase 3용. `/health` 엔드포인트. 향후 api/worlds, api/run, api/ws 등 라우터 등록. |
+| **main.py** | **FastAPI 앱 뼈대**. Phase 3용. `/health`, worlds/run/snapshots 라우터 등록. |
+| **api/worlds.py** | **월드 REST API**. POST /worlds (생성), GET /worlds/{id} (메타정보 조회). |
+| **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
+| **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
+| **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **__init__.py** | app 패키지 진입점. |
 
 ### 1.5 스크립트 (scripts/)
@@ -97,8 +103,13 @@ run_simulation.py → time_flow.py → nodes.py → rules.py, snapshot.py
                               coordinates.py, cell.py
                                     ↓
                               world.py
+
+api/worlds.py, api/run.py, api/snapshots.py, api/ws.py → core/store.py
+api/run.py → graph/time_flow.py, core/ws_manager.py
+api/snapshots.py → core/snapshot.py (store 경유)
+api/ws.py → core/ws_manager.py
 ```
 
 ---
 
-*문서 버전: v0.1 — Phase 0~2 기준*
+*문서 버전: v0.3 — Phase 0~3.3 기준*
