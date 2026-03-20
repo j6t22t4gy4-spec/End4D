@@ -13,6 +13,7 @@
 | [IMPLEMENTATION_SEQUENCE.md](docs/IMPLEMENTATION_SEQUENCE.md) | Phase 0~8 구현 시퀀스 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 아키텍처 고려사항, 최적화 전략 |
 | [ARCHITECTURE_CHECKLIST.md](docs/ARCHITECTURE_CHECKLIST.md) | 코드 작성 시 아키텍처 본질 체크리스트 |
+| [CODE_REFERENCE.md](docs/CODE_REFERENCE.md) | 파일별 코드 역할 설명 |
 | [SKILLS.md](docs/SKILLS.md) | 개발에 필요한 스킬 목록 |
 
 ## 라이선스

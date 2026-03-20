@@ -19,6 +19,7 @@ alwaysApply: true
 | Secondary Rules | `.cursor/rules/secondary/` | 엔진 분리, API, 스타일 등 |
 | docs | `docs/` | CONCEPT, IMPLEMENTATION, IMPLEMENTATION_SEQUENCE, ARCHITECTURE, SKILLS 등 |
 | **아키텍처 체크리스트** | `docs/ARCHITECTURE_CHECKLIST.md` | **구조적 아키텍처 본질 보호** — 코드 작성 시 필수 참조 |
+| **코드 참조** | `docs/CODE_REFERENCE.md` | 파일별 역할 — **새 파일 추가 시 반드시 업데이트** |
 
 ## 개발 시
 
@@ -26,6 +27,7 @@ alwaysApply: true
 - **코드 작성 전·중·후: `ARCHITECTURE_CHECKLIST.md` 해당 섹션 확인** — 본질 위반 여부 검토
 - IMPLEMENTATION_SEQUENCE에 따라 단계별 구현
 - CONCEPT의 5대 규칙, 3계층 메커니즘 등과 일치하는지 검토
+- **새 파일 추가 시**: `docs/CODE_REFERENCE.md`에 해당 파일·역할 추가 (doc-sync 룰 참조)
 
 ## 아키텍처 체크리스트 사용
 

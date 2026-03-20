@@ -1,0 +1,104 @@
+# Organic4D — 파일별 코드 역할 (Code Reference)
+
+> 각 파일이 담당하는 역할과 책임을 정리한 문서.
+>
+> **룰**: 새 파일 추가 시 이 문서에 반드시 해당 파일·역할을 추가한다. (`.cursor/rules/secondary/doc-sync.mdc`, `development-reference.mdc` 참조)
+
+---
+
+## 1. 백엔드 (engine/backend)
+
+### 1.1 모델 (app/models/)
+
+| 파일 | 역할 |
+|------|------|
+| **cell.py** | **세포(에이전트) 모델**. 4D 좌표 (x,y,z,t), 에너지, 유전자 벡터, 메모리, 3계층 벡터(emotion/thought/worldview) 정의. `position_4d()`, `position_3d()`, `copy()` 제공. |
+| **world.py** | **세계·스냅샷 모델**. World(4D 세계), Snapshot(t 시점 스냅샷), NutrientEvent(영양분 주입 이벤트) 정의. World → Snapshot → Cell 계층 구조. |
+| **__init__.py** | models 패키지 진입점. Cell, World, Snapshot, NutrientEvent export. |
+
+### 1.2 코어 (app/core/)
+
+| 파일 | 역할 |
+|------|------|
+| **coordinates.py** | **4D 좌표·거리 함수**. `distance_4d()` — (x,y,z)와 t에 가중치 적용한 거리 계산. `cosine_similarity()` — 융합 조건 등에 사용. |
+| **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought 0.7+ 융합), `apply_mutation`(벡터 변이). Phase 1: LLM 없음. |
+| **snapshot.py** | **스냅샷 저장소**. `SnapshotStore` — 메모리 내 t별 스냅샷 저장·조회. `save()`, `get()`, `get_nearest()`, `list_t()`. |
+| **__init__.py** | core 패키지 진입점. coordinates, rules, snapshot export. |
+
+### 1.3 그래프 (app/graph/)
+
+| 파일 | 역할 |
+|------|------|
+| **time_flow.py** | **LangGraph 시간 흐름 그래프**. `create_time_flow_graph()` — init → step_loop 루프. `_init_node`(초기 세포 생성), `_should_continue`(t < t_max 분기). |
+| **nodes.py** | **t 스텝 루프 노드**. `step_loop_node` — 한 t에서 성장→분열→사멸→융합→돌연변이 순차 적용, t 증가, 스냅샷 저장. |
+| **__init__.py** | graph 패키지 진입점. `create_time_flow_graph` export. |
+
+### 1.4 API (app/)
+
+| 파일 | 역할 |
+|------|------|
+| **main.py** | **FastAPI 앱 뼈대**. Phase 3용. `/health` 엔드포인트. 향후 api/worlds, api/run, api/ws 등 라우터 등록. |
+| **__init__.py** | app 패키지 진입점. |
+
+### 1.5 스크립트 (scripts/)
+
+| 파일 | 역할 |
+|------|------|
+| **run_simulation.py** | **커맨드라인 시뮬레이션**. `--t-max`, `--cells`, `--world-id` 옵션. LangGraph invoke → t=0..t_max 실행, 스냅샷 저장, 결과 출력. |
+
+### 1.6 테스트 (tests/)
+
+| 파일 | 역할 |
+|------|------|
+| **test_rules.py** | **5대 규칙 단위 테스트**. 성장(에너지 증가), 분열(1→2, 변이), 사멸(제거+영양분 분배), 융합(거리+유사도), 돌연변이 검증. |
+| **__init__.py** | tests 패키지 진입점. |
+
+---
+
+## 2. 프론트엔드 (engine/frontend)
+
+### 2.1 앱 (app/)
+
+| 파일 | 역할 |
+|------|------|
+| **page.tsx** | **메인 페이지**. God View 초안. Phase 0 셋업 완료 안내. Phase 4에서 3D 씬·t 슬라이더 추가 예정. |
+| **layout.tsx** | **루트 레이아웃**. html/body 래퍼. `globals.css` import. |
+| **globals.css** | **전역 스타일**. Tailwind base/components/utilities. |
+
+### 2.2 설정
+
+| 파일 | 역할 |
+|------|------|
+| **package.json** | **의존성 정의**. Next.js, React, Three.js, R3F, Zustand, TanStack Query, Tailwind, Recharts 등. |
+| **tsconfig.json** | **TypeScript 설정**. paths `@/*`, Next.js 플러그인. |
+| **next.config.ts** | **Next.js 설정**. Phase 0 기본값. |
+| **tailwind.config.ts** | **Tailwind 설정**. content 경로, theme 확장. |
+| **postcss.config.mjs** | **PostCSS 설정**. tailwindcss, autoprefixer. |
+
+---
+
+## 3. 루트 설정
+
+| 파일 | 역할 |
+|------|------|
+| **docker-compose.yml** | **컨테이너 오케스트레이션**. backend, frontend 서비스. Phase 0 초안. |
+| **engine/backend/Dockerfile** | **백엔드 이미지**. Python 3.11, requirements 설치, uvicorn 실행. |
+| **engine/frontend/Dockerfile** | **프론트 이미지**. Node 20, npm install, dev 서버. |
+| **engine/backend/requirements.txt** | **Python 의존성**. FastAPI, uvicorn, LangGraph, pydantic, numpy, sentence-transformers, pytest. |
+| **.gitignore** | **Git 제외 목록**. .venv, node_modules, .next, .env 등. |
+
+---
+
+## 4. 의존성 흐름 (참조 관계)
+
+```
+run_simulation.py → time_flow.py → nodes.py → rules.py, snapshot.py
+                                    ↓
+                              coordinates.py, cell.py
+                                    ↓
+                              world.py
+```
+
+---
+
+*문서 버전: v0.1 — Phase 0~2 기준*

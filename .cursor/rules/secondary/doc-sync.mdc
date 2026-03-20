@@ -1,9 +1,21 @@
 ---
-description: [SECONDARY] 문서 동기화
+description: [SECONDARY] 문서 동기화 — 새 파일 추가 시 CODE_REFERENCE 업데이트
 alwaysApply: false
-globs: docs/**/*
+globs: docs/**/*, engine/**/*
 ---
 
 # 문서 동기화
 
-추가 예정.
+## CODE_REFERENCE.md 동기화
+
+**새 파일 추가 시** `docs/CODE_REFERENCE.md`에 해당 파일의 역할을 반드시 추가한다.
+
+| 추가 위치 | CODE_REFERENCE 섹션 |
+|-----------|---------------------|
+| `engine/backend/app/**/*.py` | 1. 백엔드 (해당 하위 섹션) |
+| `engine/backend/scripts/*.py` | 1.5 스크립트 |
+| `engine/backend/tests/*.py` | 1.6 테스트 |
+| `engine/frontend/**/*` | 2. 프론트엔드 |
+| 루트 설정 (Dockerfile 등) | 3. 루트 설정 |
+
+형식: `| **파일명** | **역할** |` — 한 줄로 역할 요약.

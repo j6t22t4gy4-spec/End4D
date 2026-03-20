@@ -145,9 +145,10 @@ flowchart LR
 | `core/rules.py` | `models/cell.py`, `core/coordinates.py` |
 | `core/coordinates.py` | `models/cell.py` |
 | `models/world.py` | `models/cell.py` |
-| `graph/time_flow.py` | `core/rules.py`, `models/world.py`, `core/snapshot.py` |
-| `graph/nodes.py` | `core/rules.py`, `models/cell.py` |
+| `graph/time_flow.py` | `models/cell.py`, `core/snapshot.py`, `graph/nodes.py` |
+| `graph/nodes.py` | `core/rules.py` |
 | `core/snapshot.py` | `models/world.py`, `models/cell.py` |
+| `scripts/run_simulation.py` | `graph/time_flow.py`, `core/snapshot.py` |
 
 ---
 
