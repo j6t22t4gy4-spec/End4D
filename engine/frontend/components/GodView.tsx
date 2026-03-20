@@ -1,18 +1,22 @@
 "use client";
 
 /**
- * God View E2E (Phase 5)
- * 세계 생성 → 실행(WS/동기) → t 슬라이더 → GET snapshots → 3D
+ * God View E2E (Phase 5~7)
+ * 세계 생성 → 실행 → t 슬라이더 → 주입·타임라인 → 3D
  */
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { R3fErrorBoundary } from "@/components/R3fErrorBoundary";
 import Scene3DCanvas from "@/components/Scene3D/Scene3DCanvas";
 import { TimeSlider } from "@/components/TimeSlider/TimeSlider";
+import { InjectPanel } from "@/components/InjectPanel/InjectPanel";
+import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline";
 import {
   createWorld,
   getApiBase,
   listSnapshotTimes,
   getSnapshotAtT,
   cellsToInstanceBuffers,
+  getMaxVisualCellsLimit,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
@@ -30,9 +34,24 @@ export default function GodView() {
     () => new Float32Array(0)
   );
   const [colors, setColors] = useState<Float32Array>(() => new Float32Array(0));
+  const [scales, setScales] = useState<Float32Array>(() => new Float32Array(0));
   const [cellCount, setCellCount] = useState(0);
+  const [visualStats, setVisualStats] = useState<{
+    totalCells: number;
+    sampled: boolean;
+  } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** 클라이언트 마운트 후에만 Canvas 로드 → 폼·버튼 먼저 페인트 (E2E·SSR 안정) */
+  const [mount3d, setMount3d] = useState(false);
+  const [chartRefreshKey, setChartRefreshKey] = useState(0);
+  useEffect(() => {
+    setMount3d(true);
+  }, []);
+
+  const bumpChartRefresh = useCallback(() => {
+    setChartRefreshKey((k) => k + 1);
+  }, []);
 
   const {
     liveT,
@@ -70,17 +89,21 @@ export default function GodView() {
       setCellCount(0);
       setPositions(new Float32Array(0));
       setColors(new Float32Array(0));
+      setScales(new Float32Array(0));
+      setVisualStats(null);
+      bumpChartRefresh();
     } catch (e) {
       setCreateError((e as Error).message);
     }
-  }, [initialCells, tMaxInput, disconnectWebSocket]);
+  }, [initialCells, tMaxInput, disconnectWebSocket, bumpChartRefresh]);
 
   const refreshSnapshots = useCallback(async (wid: string) => {
     const list = await listSnapshotTimes(wid);
     setAvailableT(list.available_t);
     const last = list.available_t[list.available_t.length - 1] ?? 0;
     setCurrentT(last);
-  }, []);
+    bumpChartRefresh();
+  }, [bumpChartRefresh]);
 
   const handleRunStream = useCallback(async () => {
     if (!worldId) return;
@@ -104,6 +127,11 @@ export default function GodView() {
     }
   }, [worldId, runSync, refreshSnapshots]);
 
+  const handleInjected = useCallback(async () => {
+    if (!worldId) return;
+    await refreshSnapshots(worldId);
+  }, [worldId, refreshSnapshots]);
+
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
       if (availableT.length === 0 && worldId) {
@@ -111,6 +139,8 @@ export default function GodView() {
         setCellCount(0);
         setPositions(new Float32Array(0));
         setColors(new Float32Array(0));
+        setScales(new Float32Array(0));
+        setVisualStats(null);
       }
       return;
     }
@@ -120,12 +150,13 @@ export default function GodView() {
     getSnapshotAtT(worldId, currentT)
       .then((snap) => {
         if (cancelled) return;
-        const { positions: p, colors: c, count } = cellsToInstanceBuffers(
-          snap.cells
-        );
+        const { positions: p, colors: c, scales: sc, count, totalCells, sampled } =
+          cellsToInstanceBuffers(snap.cells);
         setPositions(p);
         setColors(c);
+        setScales(sc);
         setCellCount(count);
+        setVisualStats({ totalCells, sampled });
       })
       .catch((e) => {
         if (!cancelled) setActionError((e as Error).message);
@@ -251,12 +282,44 @@ export default function GodView() {
         )}
       </section>
 
-      <Scene3DCanvas
-        count={cellCount}
-        positions={positions}
-        colors={colors}
-        maxInstances={8192}
+      <InjectPanel
+        worldId={worldId}
+        suggestedT={currentT}
+        simRunning={isRunning}
+        onInjected={handleInjected}
       />
+
+      <ScenarioTimeline
+        worldId={worldId}
+        refreshKey={chartRefreshKey}
+      />
+
+      {visualStats?.sampled && (
+        <p className="text-xs text-amber-200/80">
+          시각화 샘플링: {cellCount.toLocaleString()}개 인스턴스 / 전체{" "}
+          {visualStats.totalCells.toLocaleString()} 세포 (
+          <code className="text-slate-400">NEXT_PUBLIC_MAX_VISUAL_CELLS</code>)
+        </p>
+      )}
+
+      {mount3d ? (
+        <R3fErrorBoundary>
+          <Scene3DCanvas
+            count={cellCount}
+            positions={positions}
+            colors={colors}
+            scales={scales}
+            maxInstances={getMaxVisualCellsLimit() + 256}
+          />
+        </R3fErrorBoundary>
+      ) : (
+        <div
+          className="h-[min(70vh,560px)] w-full rounded-lg border border-slate-800 bg-slate-900/40 flex items-center justify-center text-sm text-slate-500"
+          data-testid="scene-placeholder"
+        >
+          3D 씬 준비 중…
+        </div>
+      )}
     </div>
   );
 }

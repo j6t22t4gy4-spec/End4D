@@ -151,6 +151,8 @@ Phase 8: 최적화·배포
 
 ## Phase 7: God View 주입 + 시나리오
 
+> **진행**: 7.1~7.4 반영됨 — `POST /worlds/{id}/inject`, `GET /worlds/{id}/timeline`, `create_resume_time_flow_graph`, God View `InjectPanel`·`ScenarioTimeline`. LLM·영속 DB는 `settings.py` 환경 변수만 정의(후속 연동).
+
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
 | 7.1 | **주입 API** | `POST /worlds/{id}/inject` | 2.1, 3.1 |
@@ -165,6 +167,8 @@ Phase 8: 최적화·배포
 ---
 
 ## Phase 8: 최적화·배포
+
+> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
 
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|

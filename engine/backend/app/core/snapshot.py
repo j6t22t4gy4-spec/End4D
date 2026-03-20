@@ -42,3 +42,10 @@ class SnapshotStore:
     def clear(self) -> None:
         """전체 삭제."""
         self._snapshots.clear()
+
+    def clear_after(self, t_keep: float, eps: float = 1e-9) -> int:
+        """t_keep 초과인 스냅샷만 제거 (주입 후 t>t_keep 재계산용). 제거 개수 반환."""
+        to_del = [k for k in self._snapshots if k > t_keep + eps]
+        for k in to_del:
+            del self._snapshots[k]
+        return len(to_del)

@@ -16,6 +16,11 @@ out/
 .npm
 *.log
 
+# Playwright (engine/frontend)
+engine/frontend/playwright-report/
+engine/frontend/test-results/
+engine/frontend/blob-report/
+
 # IDE / OS
 .DS_Store
 .idea/

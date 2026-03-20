@@ -1,0 +1,25 @@
+# Organic4D — 프로덕션 스택 (Phase 8.1)
+# 사용: docker compose -f docker-compose.prod.yml up --build
+# 브라우저에서 API 접근: 호스트에 8000 포트 노출 → NEXT_PUBLIC_API_URL=http://localhost:8000
+services:
+  backend:
+    build:
+      context: ./engine/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      ORGANIC4D_EMBED_BACKEND: ${ORGANIC4D_EMBED_BACKEND:-stub}
+      ORGANIC4D_CORS_ORIGINS: ${ORGANIC4D_CORS_ORIGINS:-}
+
+  frontend:
+    build:
+      context: ./engine/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy

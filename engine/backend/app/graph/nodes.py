@@ -1,12 +1,14 @@
 """Organic4D Engine — t 스텝 루프 노드 (Phase 2.2).
 
-한 t에서 성장→분열→사멸→융합→돌연변이 순서로 규칙 적용.
-ARCHITECTURE_CHECKLIST 5.2: 매 t: 성장/분열/사멸/융합/돌연변이 + Emotion
+한 t에서 성장→분열→사멸→융합→돌연변이 후 메모리·Emotion·Thought·Worldview 갱신.
+ARCHITECTURE_CHECKLIST 5.2~5.3
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from app.core.emotion import update_emotions
+from app.core.memory_step import append_step_memory
 from app.core.rules import (
     apply_growth,
     apply_division,
@@ -14,6 +16,8 @@ from app.core.rules import (
     apply_fusion,
     apply_mutation,
 )
+from app.llm.thought import update_thoughts_if_due
+from app.llm.worldview import update_worldviews_if_due
 
 if TYPE_CHECKING:
     from app.graph.time_flow import SimulationState
@@ -32,6 +36,10 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = apply_mutation(cells)
 
     next_t = current_t + 1
+    cells = append_step_memory(cells, next_t)
+    cells = update_emotions(cells, current_t)
+    cells = update_thoughts_if_due(cells, current_t)
+    cells = update_worldviews_if_due(cells, current_t)
     cells = [c.copy(t=next_t) for c in cells]
 
     store = state.get("snapshot_store")

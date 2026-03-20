@@ -94,3 +94,20 @@ def create_time_flow_graph():
     )
 
     return graph.compile()
+
+
+def create_resume_time_flow_graph():
+    """주입 후 t_inject→t_max만 재계산 (init 생략, START→step_loop).
+
+    state 필수 키: cells, current_t, t_max, snapshot_store
+    선택: nutrient_per_step
+    """
+    graph = StateGraph(SimulationState)
+    graph.add_node("step_loop", step_loop_node)
+    graph.add_edge(START, "step_loop")
+    graph.add_conditional_edges(
+        "step_loop",
+        _should_continue,
+        {"step": "step_loop", "done": END},
+    )
+    return graph.compile()

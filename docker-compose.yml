@@ -1,4 +1,5 @@
-# Organic4D Engine — Phase 0 초안
+# Organic4D — 로컬 개발 (볼륨 마운트 + --reload)
+# 프로덕션: docker compose -f docker-compose.prod.yml up --build
 services:
   backend:
     build:
@@ -8,17 +9,20 @@ services:
       - "8000:8000"
     volumes:
       - ./engine/backend:/app
+    user: root
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build:
       context: ./engine/frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     ports:
       - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     volumes:
       - ./engine/frontend:/app
       - /app/node_modules
-    command: npm run dev
+    command: npm run dev -- -H 0.0.0.0 -p 3000
     depends_on:
       - backend

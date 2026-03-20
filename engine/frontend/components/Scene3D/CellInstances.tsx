@@ -21,6 +21,10 @@ export type CellInstancesProps = {
   positions: Float32Array;
   /** 선택: 인스턴스별 RGB 0~1, length >= count * 3 (Emotion 시각화 대비) */
   colors?: Float32Array | null;
+  /** 선택: 인스턴스별 균일 스케일 (감정 강도), length >= count */
+  scales?: Float32Array | null;
+  /** Phase 8: 대량 인스턴스 시 frustum culling (미주입 시 count>2048이면 true) */
+  frustumCulled?: boolean;
 };
 
 export function CellInstances({
@@ -28,8 +32,11 @@ export function CellInstances({
   count,
   positions,
   colors = null,
+  scales = null,
+  frustumCulled,
 }: CellInstancesProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const effectiveFrustumCull = frustumCulled ?? count > 2048;
 
   const geometry = useMemo(
     () => new THREE.SphereGeometry(0.35, 8, 6),
@@ -71,6 +78,11 @@ export function CellInstances({
         positions[o + 1],
         positions[o + 2]
       );
+      const s =
+        scales && i < scales.length && Number.isFinite(scales[i])
+          ? scales[i]
+          : 1;
+      tempObject.scale.set(s, s, s);
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
 
@@ -96,7 +108,7 @@ export function CellInstances({
     <instancedMesh
       ref={meshRef}
       args={[geometry, material, maxInstances]}
-      frustumCulled={false}
+      frustumCulled={effectiveFrustumCull}
     />
   );
 }

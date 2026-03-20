@@ -82,6 +82,8 @@
 - React Three Fiber: React 컴포넌트 방식으로 Three.js 사용, 수천 세포 렌더링 최적화 가능
 - 시간 슬라이더: t를 드래그하면 해당 시점의 (x,y,z) 스냅샷을 3D로 표시
 
+**엔진 레포 실제 버전 (God View)**: Next.js 15.x, **React 19**, `@react-three/fiber` v9, `@react-three/drei` v10 — R3F v8·drei v9 + React 18 조합은 `ReactCurrentOwner` 류 오류가 날 수 있어 상향 정렬함.
+
 ### 2.3 메모리 & 스토리지
 
 | 영역 | 기술 | 용도 |
@@ -113,6 +115,11 @@
 **추천 조합 (비용 최소)**
 - 로컬 개발·POC: **Ollama + sentence-transformers** → API 비용 0
 - 프로덕션: 트래픽·품질에 따라 Groq / Together / OpenAI 등 선택
+
+**엔진 구현 상태 (Phase 6 POC)**  
+- **Emotion**: `engine/backend/app/core/emotion.py` — 8차원 규칙 기반, 매 t, LLM 0.  
+- **Thought / Worldview**: `llm/thought.py`, `llm/worldview.py` — 세포 상태·메모리에서 만든 짧은 텍스트를 `llm/embeddings.py`로 벡터화 (기본 모델 `all-MiniLM-L6-v2`, 차원 절단). **Ollama 문장 생성**은 아직 미연동; 테스트·CI는 `ORGANIC4D_EMBED_BACKEND=stub`으로 결정적 스텁.  
+- **메모리 POC**: `core/memory_step.py` — 세포 `memory` 리스트에 주기적 문자열 추가 (Redis/Zep은 후속).
 
 ### 2.5 인프라 & 배포
 
@@ -160,6 +167,16 @@ docker compose up -d redis postgres
 **God View 수동 E2E (Phase 5)**  
 1. 백엔드·프론트 모두 기동. 2. 「세계 생성」. 3. 「실행 (WebSocket 스트림)」 또는 「실행 (동기)」. 4. 슬라이더로 t 이동 → 3D 세포 위치 갱신.
 
+**Playwright (Phase 5.4)** — `engine/frontend` 기준:
+
+```
+cd engine/frontend
+npx playwright install chromium   # 최초 1회 (브라우저 바이너리)
+npm run test:e2e                  # 기본 포트 3333에서 dev 자동 기동
+# 이미 npm run dev(3000) 중이면: PW_PORT=3000 npm run test:e2e
+# CI: npm run test:e2e:ci  → build 후 next start (시간 소요)
+```
+
 ### 3.2 Docker One-Shot 실행
 
 ```
@@ -192,6 +209,38 @@ docker compose up -d
 | Redis | ElastiCache, Redis Cloud |
 | PostgreSQL | RDS, Supabase, Neon |
 | Docker | ECR → ECS, GCR → Cloud Run |
+
+### 3.5 환경 변수 (기능 분기 — LLM·DB 후속)
+
+| 변수 | 기본 | 설명 |
+|------|------|------|
+| `ORGANIC4D_LLM_CHAT_ENABLED` | (끔) | `1`/`true` 시 (후속) Ollama 등 대화형 LLM으로 Thought/Worldview 문장 생성. |
+| `ORGANIC4D_PERSISTENCE_BACKEND` | `memory` | `postgres` / `redis` 선택 시 영속 어댑터 연동 예정 (`app/core/settings.py`). |
+| `ORGANIC4D_DATABASE_URL` | — | PostgreSQL 등 연결 문자열 (미설정 시 인메모리 월드만). |
+| `ORGANIC4D_EMBED_BACKEND` | (자동) | `stub`이면 결정적 임베딩(테스트·CI). |
+| `ORGANIC4D_CORS_ORIGINS` | — | 쉼표로 구분한 추가 출처(기본 localhost:3000 유지). |
+| `NEXT_PUBLIC_MAX_VISUAL_CELLS` | `8192` | God View InstancedMesh 상한; 초과 시 균등 샘플링(Phase 8). |
+
+### 3.6a 프론트 404 (God View가 안 열릴 때)
+
+- 증상: 브라우저에서 Next 기본 **「404 This page could not be found」**, 특히 `.next`가 깨졌거나 **EMFILE (too many open files)** 로 감시가 실패한 뒤.
+- 조치: `cd engine/frontend` 후 **`npm run clean`** (또는 `rm -rf .next`) → **`npm run dev`** 다시 실행.
+- EMFILE이 자주 나오면 터미널에서 `ulimit -n 10240` 후 재시도하거나, `WATCHPACK_POLLING=true npm run dev` 로 폴링 모드(느리지만 안정적)를 쓸 수 있음.
+
+### 3.6 Docker (Phase 8)
+
+| 파일 | 용도 |
+|------|------|
+| `docker-compose.yml` | 로컬 개발: 백엔드 `--reload`, 프론트 `Dockerfile.dev` + 볼륨. |
+| `docker-compose.prod.yml` | 프로덕션 빌드: 백엔드 non-root + HEALTHCHECK, 프론트 Next **standalone** + `node server.js`. |
+
+```bash
+# 개발
+docker compose up --build
+
+# 프로덕션 (브라우저→API는 호스트 포트 기준 URL로 빌드)
+NEXT_PUBLIC_API_URL=http://localhost:8000 docker compose -f docker-compose.prod.yml up --build
+```
 
 ---
 
@@ -258,7 +307,8 @@ vitaswarm4D/                  # Organic4D 엔진 레포
 | 4 | FastAPI + WebSocket | `api/` |
 | 5 | Three.js 3D + t 슬라이더 | `Scene3D`, `TimeSlider` |
 | 6 | 3계층 감정·생각 (Emotion, Thought, Worldview) | `core/emotion.py`, `llm/thought.py`, `llm/worldview.py` |
-| 7 | God View 주입, 시나리오 리포트 | UI 완성 |
+| 7 | God View 주입, 타임라인 | `api/inject.py`, `api/timeline.py`, `InjectPanel`, `ScenarioTimeline` |
+| 8 | Docker·시각화 상한 | `docker-compose.prod.yml`, standalone Dockerfile, 샘플링·CORS |
 
 ---
 

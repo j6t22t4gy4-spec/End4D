@@ -16,6 +16,12 @@
 | [CODE_REFERENCE.md](docs/CODE_REFERENCE.md) | 파일별 코드 역할 설명 |
 | [SKILLS.md](docs/SKILLS.md) | 개발에 필요한 스킬 목록 |
 
+## Docker (Phase 8)
+
+- **개발**: 루트에서 `docker compose up --build` — API `http://localhost:8000`, God View `http://localhost:3000`.
+- **프로덕션 이미지**: `docker compose -f docker-compose.prod.yml up --build`  
+  프론트 빌드 시 `NEXT_PUBLIC_API_URL`을 브라우저에서 접근 가능한 API URL로 지정 (예: `http://localhost:8000`).
+
 ## 라이선스
 
 MIT License
