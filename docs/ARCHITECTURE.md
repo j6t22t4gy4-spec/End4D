@@ -137,9 +137,22 @@ flowchart LR
         api_snapshots["api/snapshots.py"]
     end
 
+    subgraph P4["Phase 4"]
+        fe_lib["lib/api.ts"]
+        fe_scene["Scene3D/"]
+        fe_slider["TimeSlider/"]
+    end
+
+    subgraph P5["Phase 5"]
+        fe_god["GodView.tsx"]
+        fe_hook["hooks/useSimulation.ts"]
+    end
+
     P0 --> P1
     P1 --> P2
     P2 --> P3
+    P3 --> P4
+    P4 --> P5
 ```
 
 ### 파일 참조 (Phase 1~2 기준)
@@ -158,6 +171,8 @@ flowchart LR
 | `api/run.py` | `core/store.py`, `graph/time_flow.py` |
 | `api/snapshots.py` | `core/store.py` |
 | `api/ws.py` | `core/store.py`, `core/ws_manager.py` |
+| `lib/api.ts` | 백엔드 REST (Phase 3) |
+| `components/Scene3D/CellInstances.tsx` | Three.js InstancedMesh 패턴 |
 
 ---
 

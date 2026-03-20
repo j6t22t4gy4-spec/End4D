@@ -134,16 +134,18 @@
 cd vitaswarm4D
 
 # 2. 백엔드
-cd backend
+cd engine/backend
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8000
 
 # 3. 프론트엔드 (별도 터미널)
-cd frontend
+cd engine/frontend
 npm install
 npm run dev
+# (선택) API URL — 기본 http://localhost:8000
+# NEXT_PUBLIC_API_URL=http://localhost:8000
 
 # 4. (선택) Redis, PostgreSQL — Docker로 실행
 docker compose up -d redis postgres
@@ -154,6 +156,9 @@ docker compose up -d redis postgres
 2. 백엔드 `uvicorn` 기동
 3. 프론트엔드 `npm run dev` 기동
 4. `http://localhost:3000` 접속 → God View
+
+**God View 수동 E2E (Phase 5)**  
+1. 백엔드·프론트 모두 기동. 2. 「세계 생성」. 3. 「실행 (WebSocket 스트림)」 또는 「실행 (동기)」. 4. 슬라이더로 t 이동 → 3D 세포 위치 갱신.
 
 ### 3.2 Docker One-Shot 실행
 

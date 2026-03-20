@@ -39,7 +39,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **main.py** | **FastAPI 앱 뼈대**. Phase 3용. `/health`, worlds/run/snapshots 라우터 등록. |
+| **main.py** | **FastAPI 앱 뼈대**. `/health`, worlds/run/snapshots/ws 라우터. **CORS** (localhost:3000) — God View 브라우저 fetch. |
 | **api/worlds.py** | **월드 REST API**. POST /worlds (생성), GET /worlds/{id} (메타정보 조회). |
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
@@ -67,15 +67,37 @@
 
 | 파일 | 역할 |
 |------|------|
-| **page.tsx** | **메인 페이지**. God View 초안. Phase 0 셋업 완료 안내. Phase 4에서 3D 씬·t 슬라이더 추가 예정. |
+| **page.tsx** | **메인 페이지**. `HomeWithCanvas` 마운트 (서버 컴포넌트). |
 | **layout.tsx** | **루트 레이아웃**. html/body 래퍼. `globals.css` import. |
 | **globals.css** | **전역 스타일**. Tailwind base/components/utilities. |
 
-### 2.2 설정
+### 2.2 컴포넌트 (components/)
 
 | 파일 | 역할 |
 |------|------|
-| **package.json** | **의존성 정의**. Next.js, React, Three.js, R3F, Zustand, TanStack Query, Tailwind, Recharts 등. |
+| **HomeWithCanvas.tsx** | **클라이언트 셸**. `next/dynamic`으로 `GodView` 로드 (`ssr: false`, WebGL). |
+| **GodView.tsx** | **God View E2E (Phase 5)**. 세계 생성·실행(WS/동기)·`TimeSlider`→`getSnapshotAtT`→`cellsToInstanceBuffers`→3D. |
+| **Scene3D/Scene3DCanvas.tsx** | **R3F Canvas**. 조명, `Grid`, `OrbitControls`, `CellInstances`. |
+| **Scene3D/CellInstances.tsx** | **InstancedMesh 세포**. `setMatrixAt` + `useFrame`, Float32Array 위치, `setColorAt` (Emotion 대비). |
+| **TimeSlider/TimeSlider.tsx** | **t 슬라이더**. range input, 스냅샷 t 탐색. |
+
+### 2.3 훅 (hooks/)
+
+| 파일 | 역할 |
+|------|------|
+| **useSimulation.ts** | **시뮬 + WebSocket (Phase 5.2)**. `runWithWebSocketStream`, `runSync`, `liveT` / `liveCellCount` 스트림 상태. |
+
+### 2.4 라이브러리 (lib/)
+
+| 파일 | 역할 |
+|------|------|
+| **api.ts** | **엔진 API 클라이언트**. REST + `getWorldWebSocketUrl`, `cellsToInstanceBuffers` (스냅샷→InstancedMesh 버퍼). `NEXT_PUBLIC_API_URL`. |
+
+### 2.5 설정
+
+| 파일 | 역할 |
+|------|------|
+| **package.json** | **의존성 정의**. Next.js, React, Three.js, R3F, drei, Zustand, TanStack Query, Tailwind, Recharts 등. |
 | **tsconfig.json** | **TypeScript 설정**. paths `@/*`, Next.js 플러그인. |
 | **next.config.ts** | **Next.js 설정**. Phase 0 기본값. |
 | **tailwind.config.ts** | **Tailwind 설정**. content 경로, theme 확장. |
@@ -108,8 +130,12 @@ api/worlds.py, api/run.py, api/snapshots.py, api/ws.py → core/store.py
 api/run.py → graph/time_flow.py, core/ws_manager.py
 api/snapshots.py → core/snapshot.py (store 경유)
 api/ws.py → core/ws_manager.py
+
+GodView → useSimulation → lib/api.ts (REST + WS)
+GodView → Scene3DCanvas → CellInstances (Three.js)
+GodView → lib/api.ts (getSnapshotAtT, cellsToInstanceBuffers)
 ```
 
 ---
 
-*문서 버전: v0.3 — Phase 0~3.3 기준*
+*문서 버전: v0.5 — Phase 0~5 기준*
