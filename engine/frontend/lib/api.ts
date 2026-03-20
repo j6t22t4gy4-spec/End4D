@@ -19,6 +19,8 @@ export type CellSnapshot = {
   emotion_vec: number[];
   thought_vec: number[];
   worldview_vec: number[];
+  role_key?: string;
+  role_label?: string;
 };
 
 export type SnapshotResponse = {
@@ -36,19 +38,30 @@ export type WorldMeta = {
   world_id: string;
   t_max: number;
   status: string;
+  genesis_prompt?: string | null;
+  genesis_rationale?: string | null;
+  role_catalog?: string[];
+  t_step_semantic?: string;
+  t_step_unit?: string;
+  nutrient_per_step?: number;
 };
 
-export async function createWorld(body: {
-  initial_cell_count?: number;
-  t_max?: number;
-}): Promise<{ world_id: string }> {
+export type CreateWorldResult = {
+  world_id: string;
+  t_max: number;
+  initial_cell_count: number;
+  rationale: string;
+  role_catalog: string[];
+  t_step_semantic: string;
+  t_step_unit: string;
+  nutrient_per_step: number;
+};
+
+export async function createWorld(body: { prompt: string }): Promise<CreateWorldResult> {
   const res = await fetch(`${API_BASE}/worlds`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      initial_cell_count: body.initial_cell_count ?? 5,
-      t_max: body.t_max ?? 100,
-    }),
+    body: JSON.stringify({ prompt: body.prompt }),
   });
   if (!res.ok) throw new Error(`createWorld: ${res.status}`);
   return res.json();

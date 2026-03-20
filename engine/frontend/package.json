@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "clean": "rm -rf .next",
+    "clean:all": "rm -rf .next node_modules/.cache",
     "dev": "next dev",
     "dev:clean": "npm run clean && next dev",
+    "dev:clean:poll": "npm run clean && WATCHPACK_POLLING=true next dev",
     "dev:poll": "WATCHPACK_POLLING=true next dev",
     "build": "next build",
+    "rebuild": "npm run clean:all && npm run build",
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",

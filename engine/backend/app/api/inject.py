@@ -97,6 +97,7 @@ def inject_event(world_id: str, body: InjectRequest):
 
     world_store.set_status(world_id, "running")
     try:
+        nps = world_store.get_nutrient_per_step(world_id)
         graph = create_resume_time_flow_graph()
         result = graph.invoke(
             {
@@ -104,7 +105,7 @@ def inject_event(world_id: str, body: InjectRequest):
                 "current_t": t_inject,
                 "t_max": t_max,
                 "snapshot_store": store,
-                "nutrient_per_step": 1.0,
+                "nutrient_per_step": nps,
             },
             config={"recursion_limit": int(max(t_max - t_inject, 0)) + 80},
         )

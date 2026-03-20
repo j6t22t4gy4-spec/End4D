@@ -59,12 +59,14 @@ def _run_stream_producer(
 
     graph = create_time_flow_graph()
     try:
+        nps = world_store.get_nutrient_per_step(world_id)
         for chunk in graph.stream(
             {
                 "t_max": t_max,
                 "initial_cell_count": initial_cell_count,
+                "role_catalog": world_store.get_role_catalog(world_id),
                 "snapshot_store": store,
-                "nutrient_per_step": 1.0,
+                "nutrient_per_step": nps,
             },
             config={"recursion_limit": int(t_max) + 50},
         ):
@@ -139,12 +141,14 @@ def run_simulation(
     world_store.set_status(world_id, "running")
     try:
         graph = create_time_flow_graph()
+        nps = world_store.get_nutrient_per_step(world_id)
         result = graph.invoke(
             {
                 "t_max": world.t_max,
                 "initial_cell_count": initial_cell_count,
+                "role_catalog": world_store.get_role_catalog(world_id),
                 "snapshot_store": store,
-                "nutrient_per_step": 1.0,
+                "nutrient_per_step": nps,
             },
             config={"recursion_limit": int(world.t_max) + 50},
         )

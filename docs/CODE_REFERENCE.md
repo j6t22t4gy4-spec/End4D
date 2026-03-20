@@ -12,7 +12,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **cell.py** | **세포(에이전트) 모델**. 4D 좌표 (x,y,z,t), 에너지, 유전자 벡터, 메모리, 3계층 벡터(emotion/thought/worldview) 정의. `position_4d()`, `position_3d()`, `copy()` 제공. |
+| **cell.py** | **세포(에이전트) 모델**. 4D 좌표, 에너지, **역할**(`role_key`, `role_label`), 유전자, 메모리, 3계층 벡터. `position_4d()`, `copy()` 등. |
 | **world.py** | **세계·스냅샷 모델**. World(4D 세계), Snapshot(t 시점 스냅샷), NutrientEvent(영양분 주입 이벤트) 정의. World → Snapshot → Cell 계층 구조. |
 | **__init__.py** | models 패키지 진입점. Cell, World, Snapshot, NutrientEvent export. |
 
@@ -27,7 +27,8 @@
 | **emotion.py** | **규칙 기반 8D Emotion (Phase 6.1)**. `update_emotions` — 에너지·이웃 밀집도로 갱신, LLM 0. `EMOTION_LABELS` 순서는 프론트 색 매핑과 동일. |
 | **memory_step.py** | **세포 메모리 누적 (Phase 6.7 POC)**. `append_step_memory` — 주기적 경험 문자열 추가(상한 `MEMORY_MAX_ENTRIES`). |
 | **snapshot.py** | **스냅샷 저장소**. `SnapshotStore` — `save`, `get`, `get_nearest`, `list_t`, **`clear_after`**(주입 후 t 이후 삭제). |
-| **store.py** | **월드 저장소**. `WorldStore` — world_id → {World, SnapshotStore, status} 매핑. `create()`, `get()`, `get_world()`, `get_snapshot_store()`, `set_status()`. |
+| **store.py** | **월드 저장소**. `WorldStore` — `create`에 genesis_prompt·**role_catalog**·`get_role_catalog()`. |
+| **world_genesis.py** | **프롬프트→세계 제안**. `propose_world_from_prompt`, `GenesisPlan` (후속 LLM 연동). |
 | **ws_manager.py** | **WebSocket 연결 관리**. `ConnectionManager` — world_id별 연결 등록·해제, `send_to_world()` 브로드캐스트. |
 | **__init__.py** | core 패키지 진입점. coordinates, rules, snapshot export. |
 
@@ -53,7 +54,7 @@
 | 파일 | 역할 |
 |------|------|
 | **main.py** | **FastAPI 앱 뼈대**. `/health`, 라우터 모음. **CORS** — `get_cors_origins()` + `ORGANIC4D_CORS_ORIGINS`. |
-| **api/worlds.py** | **월드 REST API**. POST /worlds (생성), GET /worlds/{id} (메타정보 조회). |
+| **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타). |
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
@@ -75,6 +76,8 @@
 | **test_emotion.py** | **Emotion 규칙 테스트**. 차원, 에너지·밀집도 효과, `update_emotions` 블렌딩. |
 | **test_phase6_step.py** | **Phase 6 통합**. LangGraph 실행 시 벡터 shape·Thought 간격 갱신. |
 | **test_inject.py** | **Phase 7**. 주입 404·영양 주입 후 재계산·timeline API. |
+| **test_world_genesis.py** | **Genesis 스텁**. 휴리스틱 `propose_world_from_prompt`. |
+| **test_worlds_api.py** | **POST /worlds** 프롬프트 계약. |
 | **conftest.py** | pytest 기본 `ORGANIC4D_EMBED_BACKEND=stub` 설정. |
 | **__init__.py** | tests 패키지 진입점. |
 

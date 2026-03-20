@@ -35,11 +35,17 @@ class Snapshot:
 @dataclass
 class World:
     """4D 세계."""
+
     world_id: str
     t_max: float
     initial_cells: List[Cell] = field(default_factory=list)
     nutrients: List[NutrientEvent] = field(default_factory=list)
     created_at: Optional[datetime] = None
+
+    # Genesis가 정하는 «한 스텝 t의 시간 의미» + 성장(영양) 스케일 (CONCEPT §5.3)
+    t_step_semantic: str = "1 스텝 ≈ 1일 (기본)"
+    t_step_unit: str = "day"
+    nutrient_per_step: float = 1.0
 
     def __post_init__(self):
         if self.created_at is None:

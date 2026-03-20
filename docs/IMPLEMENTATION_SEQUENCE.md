@@ -211,4 +211,16 @@ Phase 8: 최적화·배포
 
 ---
 
-*문서 버전: v0.1*
+---
+
+## Phase 9 (개념 반영 후속)
+
+| 순서 | 작업 | 산출물 |
+|------|------|--------|
+| 9.1 | Genesis **실 LLM API** 연동 | `world_genesis` → JSON 스키마 고정, Ollama/OpenAI 등 |
+| 9.2 | 역할별 Emotion 가중·규칙 | `emotion.py` 역할 키 분기 |
+| 9.3 | God View 역할 레이블·필터 시각화 | 색/필터로 역할 구분 |
+
+---
+
+*문서 버전: v0.2 — Phase 9 Genesis·역할 시각화 후속*

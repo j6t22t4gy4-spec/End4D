@@ -17,15 +17,16 @@ import {
   getSnapshotAtT,
   cellsToInstanceBuffers,
   getMaxVisualCellsLimit,
+  type CreateWorldResult,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
-const DEFAULT_CELLS = 5;
-const DEFAULT_T_MAX = 50;
+const PROMPT_PLACEHOLDER =
+  "예: 향후 5년간 탄소세와 보조금이 동시에 도입되면, 규제·시장·시민 행위자들 사이에 어떤 패턴이 나올까?";
 
 export default function GodView() {
-  const [initialCells, setInitialCells] = useState(DEFAULT_CELLS);
-  const [tMaxInput, setTMaxInput] = useState(DEFAULT_T_MAX);
+  const [genesisPrompt, setGenesisPrompt] = useState("");
+  const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
   const [availableT, setAvailableT] = useState<number[]>([]);
   const [currentT, setCurrentT] = useState(0);
@@ -77,13 +78,16 @@ export default function GodView() {
   const handleCreateWorld = useCallback(async () => {
     setCreateError(null);
     setActionError(null);
+    const p = genesisPrompt.trim();
+    if (!p) {
+      setCreateError("질의(프롬프트)를 입력해 주세요.");
+      return;
+    }
     try {
       disconnectWebSocket();
-      const { world_id } = await createWorld({
-        initial_cell_count: initialCells,
-        t_max: tMaxInput,
-      });
-      setWorldId(world_id);
+      const out = await createWorld({ prompt: p });
+      setLastGenesis(out);
+      setWorldId(out.world_id);
       setAvailableT([]);
       setCurrentT(0);
       setCellCount(0);
@@ -95,7 +99,7 @@ export default function GodView() {
     } catch (e) {
       setCreateError((e as Error).message);
     }
-  }, [initialCells, tMaxInput, disconnectWebSocket, bumpChartRefresh]);
+  }, [genesisPrompt, disconnectWebSocket, bumpChartRefresh]);
 
   const refreshSnapshots = useCallback(async (wid: string) => {
     const list = await listSnapshotTimes(wid);
@@ -190,38 +194,61 @@ export default function GodView() {
       )}
 
       <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-3">
-        <h2 className="text-sm font-medium text-slate-300">1. 세계 생성</h2>
-        <div className="flex flex-wrap gap-4 items-end">
-          <label className="flex flex-col gap-1 text-xs text-slate-400">
-            초기 세포 수
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={initialCells}
-              onChange={(e) => setInitialCells(Number(e.target.value))}
-              className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-white w-24"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-slate-400">
-            t_max
-            <input
-              type="number"
-              min={1}
-              max={5000}
-              value={tMaxInput}
-              onChange={(e) => setTMaxInput(Number(e.target.value))}
-              className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-white w-24"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={handleCreateWorld}
-            className="rounded-md bg-cyan-700 hover:bg-cyan-600 px-4 py-2 text-sm font-medium"
-          >
-            세계 생성
-          </button>
-        </div>
+        <h2 className="text-sm font-medium text-slate-300">
+          1. 세계 질의 (프롬프트만 입력)
+        </h2>
+        <p className="text-xs text-slate-500">
+          초기 세포 수·t_max 등은 고르지 않습니다. AI(현재는 스텁)가 질의를 바탕으로 제안한
+          세계가 생성됩니다.
+        </p>
+        <label className="flex flex-col gap-1 text-xs text-slate-400">
+          예측·탐색하고 싶은 시나리오
+          <textarea
+            value={genesisPrompt}
+            onChange={(e) => setGenesisPrompt(e.target.value)}
+            placeholder={PROMPT_PLACEHOLDER}
+            rows={5}
+            className="rounded bg-slate-800 border border-slate-600 px-3 py-2 text-sm text-white w-full max-w-2xl font-sans"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleCreateWorld}
+          className="rounded-md bg-cyan-700 hover:bg-cyan-600 px-4 py-2 text-sm font-medium"
+        >
+          세계 생성
+        </button>
+        {lastGenesis && (
+          <div className="rounded border border-slate-700/80 bg-slate-950/50 p-3 text-xs text-slate-300 space-y-2">
+            <p>
+              <span className="text-slate-500">제안 t_max</span>{" "}
+              <code className="text-cyan-300">{lastGenesis.t_max}</code>
+              {" · "}
+              <span className="text-slate-500">초기 에이전트</span>{" "}
+              <code className="text-cyan-300">
+                {lastGenesis.initial_cell_count}
+              </code>
+            </p>
+            <p className="text-slate-400">
+              <span className="text-slate-500">스텝 t의 의미</span>{" "}
+              {lastGenesis.t_step_semantic}{" "}
+              <code className="text-slate-500 text-[10px]">
+                ({lastGenesis.t_step_unit})
+              </code>
+            </p>
+            <p>
+              <span className="text-slate-500">스텝당 영양(성장)</span>{" "}
+              <code className="text-amber-300/90">
+                {lastGenesis.nutrient_per_step}
+              </code>
+            </p>
+            <p>
+              <span className="text-slate-500">역할 풀</span>{" "}
+              {lastGenesis.role_catalog.join(", ")}
+            </p>
+            <p className="text-slate-400 leading-relaxed">{lastGenesis.rationale}</p>
+          </div>
+        )}
         {worldId && (
           <p className="text-xs text-slate-500 font-mono break-all">
             world_id: {worldId}

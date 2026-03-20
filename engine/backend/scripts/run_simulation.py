@@ -51,6 +51,7 @@ def main():
         {
             "t_max": args.t_max,
             "initial_cell_count": args.cells,
+            "role_catalog": ["cli-agent"],
             "snapshot_store": store,
             "nutrient_per_step": 1.0,
         },

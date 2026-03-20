@@ -13,7 +13,9 @@ export default function HomeWithCanvas() {
       <h1 className="text-2xl font-semibold tracking-tight mb-1">
         Organic4D — God View
       </h1>
-      <p className="text-slate-500 text-sm mb-6">Phase 5 · API + WebSocket + t 슬라이더</p>
+      <p className="text-slate-500 text-sm mb-6">
+        프롬프트 기반 세계 생성 · 역할형 에이전트 · 3계층 사고
+      </p>
       <GodView />
     </main>
   );

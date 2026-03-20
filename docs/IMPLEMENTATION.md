@@ -25,7 +25,7 @@
 ```
 
 **엔진이 제공하는 것 (예시)**
-- `POST /worlds` — 세계 생성
+- `POST /worlds` — **프롬프트 기반 세계 생성** (`{ "prompt": "..." }` → AI/스텁이 `t_max`·초기 개체 수·역할 카탈로그 제안)
 - `POST /worlds/{id}/run` — 시뮬레이션 실행 (WebSocket 스트리밍)
 - `POST /worlds/{id}/inject` — t 시점에 이벤트·영양분 주입 (God View)
 - `GET /worlds/{id}/snapshots?t=` — t 시점 스냅샷 조회
@@ -120,6 +120,7 @@
 - **Emotion**: `engine/backend/app/core/emotion.py` — 8차원 규칙 기반, 매 t, LLM 0.  
 - **Thought / Worldview**: `llm/thought.py`, `llm/worldview.py` — 세포 상태·메모리에서 만든 짧은 텍스트를 `llm/embeddings.py`로 벡터화 (기본 모델 `all-MiniLM-L6-v2`, 차원 절단). **Ollama 문장 생성**은 아직 미연동; 테스트·CI는 `ORGANIC4D_EMBED_BACKEND=stub`으로 결정적 스텁.  
 - **메모리 POC**: `core/memory_step.py` — 세포 `memory` 리스트에 주기적 문자열 추가 (Redis/Zep은 후속).
+- **역할·Genesis**: 세포 `role_key`/`role_label`, `world_genesis.propose_world_from_prompt` 스텁(키워드·길이 휴리스틱). `POST /worlds`는 `{ "prompt" }`만 받음. Genesis가 **`t` 스텝의 시간 의미**(`t_step_semantic`/`t_step_unit`)와 **`nutrient_per_step`**(성장·에너지 유입)을 함께 제안·저장, `run`/`inject` 시 그래프에 전달. **실 LLM Genesis**는 Phase 9.
 
 ### 2.5 인프라 & 배포
 

@@ -23,6 +23,12 @@ class WorldStore:
         t_max: float,
         initial_cell_count: int = 5,
         world_id: Optional[str] = None,
+        genesis_prompt: Optional[str] = None,
+        genesis_rationale: Optional[str] = None,
+        role_catalog: Optional[list] = None,
+        t_step_semantic: str = "1 스텝 ≈ 1일 (기본)",
+        t_step_unit: str = "day",
+        nutrient_per_step: float = 1.0,
     ) -> str:
         """월드 생성. world_id 반환."""
         wid = world_id or str(uuid.uuid4())
@@ -32,12 +38,18 @@ class WorldStore:
             t_max=t_max,
             initial_cells=[],  # cells는 run 시 생성
             nutrients=[],
+            t_step_semantic=t_step_semantic,
+            t_step_unit=t_step_unit,
+            nutrient_per_step=float(nutrient_per_step),
         )
         self._worlds[wid] = {
             "world": world,
             "snapshot_store": store,
             "status": "idle",
             "initial_cell_count": initial_cell_count,
+            "genesis_prompt": genesis_prompt,
+            "genesis_rationale": genesis_rationale,
+            "role_catalog": list(role_catalog) if role_catalog else ["agent"],
         }
         return wid
 
@@ -64,6 +76,20 @@ class WorldStore:
         """초기 세포 수."""
         entry = self._worlds.get(world_id)
         return entry.get("initial_cell_count", 5) if entry else 5
+
+    def get_role_catalog(self, world_id: str) -> list:
+        """세계별 역할 카탈로그 (초기 세포에 순환 부여)."""
+        entry = self._worlds.get(world_id)
+        if not entry:
+            return ["agent"]
+        return list(entry.get("role_catalog") or ["agent"])
+
+    def get_nutrient_per_step(self, world_id: str) -> float:
+        """Genesis가 정한 스텝당 영양 유입 (성장·에너지)."""
+        w = self.get_world(world_id)
+        if w is None:
+            return 1.0
+        return float(w.nutrient_per_step)
 
 
 # 전역 싱글톤 (엔진 격리는 world_id로)

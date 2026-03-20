@@ -30,6 +30,8 @@ def _cell_to_dict(c: Cell) -> dict:
         "emotion_vec": c.emotion_vec.tolist(),
         "thought_vec": c.thought_vec.tolist(),
         "worldview_vec": c.worldview_vec.tolist(),
+        "role_key": c.role_key,
+        "role_label": c.role_label,
     }
 
 
@@ -45,6 +47,8 @@ class CellResponse(BaseModel):
     emotion_vec: List[float]
     thought_vec: List[float]
     worldview_vec: List[float]
+    role_key: str = "agent"
+    role_label: str = ""
 
 
 class SnapshotResponse(BaseModel):

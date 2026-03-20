@@ -1,6 +1,6 @@
 """Organic4D Engine — 세포(에이전트) 모델 (Phase 1.1).
 
-CONCEPT §5: 세포 = (x,y,z,t), energy, gene_vec, memory, emotion_vec, thought_vec, worldview_vec
+CONCEPT §5·§5.1: 세포 = 역할 + (x,y,z,t), energy, gene_vec, memory, 3계층 벡터
 ARCHITECTURE_CHECKLIST 2.1: 세포 위치는 반드시 (x, y, z, t) 4차원
 ARCHITECTURE_CHECKLIST 2.2: emotion_vec, thought_vec, worldview_vec 포함 (3계층)
 """
@@ -37,6 +37,10 @@ class Cell:
     thought_vec: np.ndarray = field(default_factory=lambda: np.zeros(256))
     worldview_vec: np.ndarray = field(default_factory=lambda: np.zeros(384))
 
+    # 역할 (CONCEPT §5.1) — 3계층은 이 역할 맥락에서 해석·갱신
+    role_key: str = "agent"
+    role_label: str = ""
+
     # 고유 ID (분열·융합 시 추적)
     cell_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -61,6 +65,8 @@ class Cell:
             "emotion_vec": self.emotion_vec.copy(),
             "thought_vec": self.thought_vec.copy(),
             "worldview_vec": self.worldview_vec.copy(),
+            "role_key": self.role_key,
+            "role_label": self.role_label,
         }
         d.update(overrides)
         return Cell(**d)

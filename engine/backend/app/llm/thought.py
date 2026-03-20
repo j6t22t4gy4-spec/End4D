@@ -23,8 +23,9 @@ def _thought_prompt(cell: Cell) -> str:
     ev = cell.emotion_vec
     dom = int(np.argmax(np.abs(ev))) if ev.size else 0
     label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
     return (
-        f"strategy for organic cell: energy {cell.energy:.2f}, "
+        f"strategy for role={role}: energy {cell.energy:.2f}, "
         f"dominant affect {label}, neighbors implied by emotion layer, "
         f"gene_norm {float(np.linalg.norm(cell.gene_vec)):.3f}"
     )

@@ -32,6 +32,9 @@
 |---|-----------|-----------|------|
 | 2.1 | 세포 위치는 반드시 `(x, y, z, t)` 4차원 | 3D만 쓰거나 t를 별도 필드로 분리 | CONCEPT §2, §5 |
 | 2.2 | 세포 상태에 `emotion_vec`, `thought_vec`, `worldview_vec` 포함 (3계층) | 단일 `ideology_vec` 등으로 축소 | CONCEPT §5, §6 |
+| 2.5 | 세포에 **역할**(`role_key` 등) 부여, 3계층은 역할 맥락에서 갱신·해석 | 역할 없이 동질 에이전트만 | CONCEPT §2.3, §5, §6 |
+| 2.6 | **세계 생성**은 사용자 파라미터 선택이 아니라 **프롬프트 → Genesis(AI)** | 수치 폼으로 월드 스펙을 사용자가 직접 고름 (제품 UX) | CONCEPT §5.3, §8 |
+| 2.7 | **스텝 t의 달력 의미·영양 스케일**은 Genesis가 정하고 `nutrient_per_step`으로 성장에 반영 | t 의미와 무관하게 항상 동일 영양만 주입 | CONCEPT §5.3 |
 | 2.3 | 4D 거리 함수는 (x,y,z)와 t에 가중치 적용 가능해야 함 | 단순 유클리드만 사용, t 무시 | CONCEPT §10.1, IMPLEMENTATION_SEQUENCE 1.2 |
 | 2.4 | World → Snapshot → Cell 계층 구조 유지 | 평탄화된 단일 테이블/모델 | ARCHITECTURE §2.2 |
 
@@ -59,6 +62,7 @@
 | 4.4 | Thought = 융합 조건의 **70%** (cosine sim 0.7+) | 비중 변경 또는 생략 | CONCEPT §6.2 |
 | 4.5 | **Worldview**: t≥200 또는 메모리 100+ 시에만 갱신 | 더 자주 호출 | CONCEPT §6.3 |
 | 4.6 | Worldview: 384차원, sentence-transformers | 차원·생성 방식 변경 시 문서 반영 | CONCEPT §6.3 |
+| 4.7 | Thought/Worldview 생성 시 **역할**을 프롬프트·임베딩 맥락에 포함 | 역할 무시한 동일 프롬프트만 사용 | CONCEPT §2.3, §6 |
 
 ---
 
@@ -78,8 +82,9 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 6.1 | 엔진 API: `POST /worlds`, `POST /worlds/{id}/run`, `POST /worlds/{id}/inject`, `GET /snapshots?t=` | 경로·메서드 변경 시 문서 동기화 | IMPLEMENTATION §0 |
-| 6.2 | 시각화용: `(x,y,z)`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec` 제공 | 스냅샷에서 3계층 벡터 누락 | IMPLEMENTATION §0 |
+| 6.2 | 시각화용: `(x,y,z)`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`** 제공 | 스냅샷에서 역할·3계층 누락 | IMPLEMENTATION §0 |
 | 6.3 | WebSocket: t, 세포 수, 스냅샷 델타 실시간 전송 | 폴링만 사용·스트리밍 없음 | IMPLEMENTATION_SEQUENCE 3.4 |
+| 6.4 | `POST /worlds` 본문은 **`{ "prompt": "..." }`** (Genesis). 레거시 수치 폼은 제품 UI에 두지 않음 | API·UI가 초기 개수·t_max를 사용자 선택에 의존 | CONCEPT §5.3 |
 
 ---
 
