@@ -48,6 +48,45 @@ Organic4D 엔진에서 사용하는 기술. 변경 시 이 룰과 docs/IMPLEMENT
 | 컨테이너 | Docker, Docker Compose |
 | 큐/워커 | Celery + Redis 또는 RQ |
 
+## 필수 패키지 (의존성)
+
+### 런타임 (사용자가 먼저 설치)
+
+| 도구 | 버전 | 설치 방법 |
+|------|------|-----------|
+| Python | 3.11+ | [python.org](https://www.python.org/downloads/) 또는 `brew install python@3.11` |
+| Node.js | 20 LTS+ | [nodejs.org](https://nodejs.org/) 또는 `brew install node` |
+| (선택) Docker | 최신 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) 또는 `brew install docker` |
+
+> macOS: Xcode Command Line Tools 필요 (`xcode-select --install`). brew 사용 시 [brew.sh](https://brew.sh)에서 설치.
+
+### 백엔드 (Python)
+
+| 패키지 | 용도 |
+|--------|------|
+| fastapi | REST + WebSocket API |
+| uvicorn | ASGI 서버 |
+| langgraph | 시간 흐름 엔진 |
+| pydantic | 스키마·검증 |
+| numpy | 수치 연산, 벡터 |
+| sentence-transformers | 임베딩 (Thought, Worldview) |
+
+→ `pip install -r requirements.txt`로 일괄 설치
+
+### 프론트엔드 (Node)
+
+| 패키지 | 용도 |
+|--------|------|
+| next | App Router, SSR |
+| react, react-dom | UI |
+| three, @react-three/fiber, @react-three/drei | 3D 시각화 |
+| zustand | 상태 관리 |
+| @tanstack/react-query | 서버 상태·캐싱 |
+| tailwindcss | 스타일 |
+| recharts | 차트 (시나리오 리포트) |
+
+→ `npm install`로 일괄 설치
+
 ## 룰
 
 - **기술 도입 시**: 위 표에 추가하고 docs/IMPLEMENTATION.md 반영

@@ -19,6 +19,138 @@
 
 ---
 
+## 0.5 흐름도 (Flow Diagrams)
+
+> 새 파일 추가 시 해당 Phase 다이어그램 업데이트. doc-sync 룰 참조.
+
+### 레이어 의존성 (백엔드)
+
+```mermaid
+flowchart TB
+    subgraph API["API Layer"]
+        main["main.py"]
+        worlds["api/worlds.py"]
+        run["api/run.py"]
+        ws["api/ws.py"]
+        snapshots["api/snapshots.py"]
+    end
+
+    subgraph Graph["Graph Layer"]
+        time_flow["graph/time_flow.py"]
+        nodes["graph/nodes.py"]
+    end
+
+    subgraph Core["Core Layer"]
+        rules["core/rules.py"]
+        coordinates["core/coordinates.py"]
+        snapshot["core/snapshot.py"]
+        emotion["core/emotion.py"]
+    end
+
+    subgraph Models["Models Layer"]
+        cell["models/cell.py"]
+        world["models/world.py"]
+    end
+
+    main --> worlds
+    main --> run
+    main --> ws
+    main --> snapshots
+    worlds --> world
+    run --> time_flow
+    ws --> time_flow
+    snapshots --> snapshot
+    time_flow --> nodes
+    nodes --> rules
+    nodes --> snapshot
+    rules --> cell
+    rules --> coordinates
+    rules --> emotion
+    snapshot --> world
+    world --> cell
+```
+
+### 데이터 흐름 (E2E)
+
+```mermaid
+flowchart LR
+    subgraph Frontend["God View (Frontend)"]
+        UI["God View UI"]
+        API_Client["lib/api.ts"]
+        Scene3D["Scene3D"]
+        Slider["TimeSlider"]
+    end
+
+    subgraph Backend["Engine (Backend)"]
+        FastAPI["FastAPI"]
+        LangGraph["LangGraph"]
+        Store["Snapshot Store"]
+    end
+
+    UI -->|POST /worlds| API_Client
+    UI -->|POST /run| API_Client
+    API_Client --> FastAPI
+    FastAPI --> LangGraph
+    LangGraph --> Store
+    FastAPI -->|WebSocket| API_Client
+    API_Client --> Scene3D
+    Slider -->|GET /snapshots?t=| API_Client
+    API_Client --> FastAPI
+    FastAPI --> Store
+    Store --> FastAPI
+```
+
+### Phase별 파일 맵
+
+```mermaid
+flowchart LR
+    subgraph P0["Phase 0"]
+        P0_backend["engine/backend/"]
+        P0_frontend["engine/frontend/"]
+        P0_docker["docker-compose.yml"]
+    end
+
+    subgraph P1["Phase 1"]
+        cell["models/cell.py"]
+        coords["core/coordinates.py"]
+        world["models/world.py"]
+        rules["core/rules.py"]
+        test_rules["tests/test_rules.py"]
+    end
+
+    subgraph P2["Phase 2"]
+        time_flow["graph/time_flow.py"]
+        nodes["graph/nodes.py"]
+        snapshot["core/snapshot.py"]
+        run_sim["scripts/run_simulation.py"]
+    end
+
+    subgraph P3["Phase 3"]
+        main["app/main.py"]
+        api_worlds["api/worlds.py"]
+        api_run["api/run.py"]
+        api_ws["api/ws.py"]
+        api_snapshots["api/snapshots.py"]
+    end
+
+    P0 --> P1
+    P1 --> P2
+    P2 --> P3
+```
+
+### 파일 참조 (Phase 1~2 기준)
+
+| 파일 | 참조하는 파일 |
+|------|---------------|
+| `core/rules.py` | `models/cell.py`, `core/coordinates.py` |
+| `core/coordinates.py` | `models/cell.py` |
+| `models/world.py` | `models/cell.py` |
+| `graph/time_flow.py` | `core/rules.py`, `models/world.py`, `core/snapshot.py` |
+| `graph/nodes.py` | `core/rules.py`, `models/cell.py` |
+| `core/snapshot.py` | `models/world.py`, `models/cell.py` |
+
+---
+
 ## 1. 4D 공간 & 시뮬레이션 아키텍처
 
 ### 1.1 공간 분할 (Spatial Partitioning)
