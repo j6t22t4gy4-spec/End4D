@@ -1,0 +1,9 @@
+---
+description: [SECONDARY] 코드 스타일
+alwaysApply: false
+globs: "**/*.{py,ts,tsx}"
+---
+
+# 코드 스타일
+
+추가 예정.

@@ -1,0 +1,9 @@
+---
+description: [SECONDARY] 문서 동기화
+alwaysApply: false
+globs: docs/**/*
+---
+
+# 문서 동기화
+
+추가 예정.

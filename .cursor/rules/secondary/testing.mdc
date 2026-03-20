@@ -1,0 +1,9 @@
+---
+description: [SECONDARY] 테스트
+alwaysApply: false
+globs: "**/test*/**/*"
+---
+
+# 테스트
+
+추가 예정.

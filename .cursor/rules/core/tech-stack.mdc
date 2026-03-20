@@ -1,0 +1,54 @@
+---
+description: [CORE] 사용 기술 스택 열거 — Organic4D 엔진
+alwaysApply: true
+---
+
+# 기술 스택 (Tech Stack)
+
+Organic4D 엔진에서 사용하는 기술. 변경 시 이 룰과 docs/IMPLEMENTATION.md를 함께 업데이트한다.
+
+## 백엔드
+
+| 영역 | 기술 |
+|------|------|
+| 언어 | Python 3.11+ |
+| 오케스트레이션 | LangGraph |
+| API | FastAPI (REST + WebSocket) |
+| 비동기 | asyncio |
+
+## 프론트엔드
+
+| 영역 | 기술 |
+|------|------|
+| 프레임워크 | Next.js 16+ (App Router, Turbopack·React 19 안정화) |
+| 3D 시각화 | Three.js + React Three Fiber |
+| 상태 관리 | Zustand + TanStack Query (React Query) 병행 |
+| 스타일 | Tailwind CSS |
+| 차트 | Recharts 또는 Visx |
+
+## 메모리 & 스토리지
+
+| 영역 | 기술 |
+|------|------|
+| DB | PostgreSQL 또는 SQLite |
+| 장기 메모리 | Zep 또는 Redis |
+| 벡터 | pgvector 우선, Qdrant 옵션 |
+
+## LLM & 임베딩
+
+| 영역 | 기술 |
+|------|------|
+| LLM | Ollama (로컬) / Groq / Together / OpenAI |
+| 임베딩 | sentence-transformers (all-MiniLM, BGE 등) |
+
+## 인프라
+
+| 영역 | 기술 |
+|------|------|
+| 컨테이너 | Docker, Docker Compose |
+| 큐/워커 | Celery + Redis 또는 RQ |
+
+## 룰
+
+- **기술 도입 시**: 위 표에 추가하고 docs/IMPLEMENTATION.md 반영
+- **기술 제거 시**: 의존성 정리 후 이 룰에서 삭제

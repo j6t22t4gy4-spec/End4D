@@ -1,0 +1,9 @@
+---
+description: [SECONDARY] API 일관성
+alwaysApply: false
+globs: "**/api/**/*"
+---
+
+# API 일관성
+
+추가 예정.
