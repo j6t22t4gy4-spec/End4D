@@ -23,6 +23,14 @@ export function RuntimeDock({
       >
         <InfoRow label="API" value={apiBase} />
         <InfoRow
+          label="LLM"
+          value={
+            runtime?.llm?.enabled
+              ? `${runtime.llm.provider} · ${runtime.llm.model}`
+              : "Disabled"
+          }
+        />
+        <InfoRow
           label="Manifest"
           value={runtime?.manifest_path ?? "Waiting for runtime"}
         />

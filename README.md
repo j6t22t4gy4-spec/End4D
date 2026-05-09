@@ -49,6 +49,22 @@
 - 로컬 실행 엔진은 설치된 데이터 팩 매니페스트를 읽을 수 있고, `GET /runtime/local-status`에서 현재 런타임 프로필과 로컬 pack 상태를 확인할 수 있다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
+## LLM Runtime
+
+- Thought / Worldview 갱신은 기본적으로 안전한 `stub` 경로를 사용한다.
+- 로컬 LLM 예시: Ollama
+  - `ORGANIC4D_LLM_CHAT_ENABLED=1`
+  - `ORGANIC4D_LLM_PROVIDER=ollama`
+  - `ORGANIC4D_LLM_MODEL=llama3.1`
+  - 선택: `ORGANIC4D_LLM_BASE_URL=http://127.0.0.1:11434`
+- 클라우드/호환 API 예시: OpenAI-compatible
+  - `ORGANIC4D_LLM_CHAT_ENABLED=1`
+  - `ORGANIC4D_LLM_PROVIDER=openai` 또는 `openai-compatible`
+  - `ORGANIC4D_LLM_MODEL=gpt-4.1-mini`
+  - `OPENAI_API_KEY=...` 또는 `ORGANIC4D_LLM_API_KEY=...`
+  - 선택: `ORGANIC4D_LLM_BASE_URL=https://api.openai.com/v1`
+- 현재 연결 상태는 `GET /runtime/local-status`의 `llm` 필드에서 확인할 수 있다.
+
 ## 라이선스
 
 MIT License

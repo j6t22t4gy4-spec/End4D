@@ -24,11 +24,19 @@ class RuntimePackResponse(BaseModel):
     updated_at: str = ""
 
 
+class RuntimeLlmResponse(BaseModel):
+    enabled: bool = False
+    provider: str = "stub"
+    model: str = "stub"
+    base_url: str = ""
+
+
 class LocalRuntimeStatusResponse(BaseModel):
     runtime_profile: str
     state_dir: str
     data_cache_dir: str
     manifest_path: str
+    llm: RuntimeLlmResponse
     installed_pack_count: int
     available_countries: List[str] = Field(default_factory=list)
     packs: List[RuntimePackResponse] = Field(default_factory=list)
@@ -42,6 +50,7 @@ def get_local_runtime_status():
         state_dir=str(status.get("state_dir") or ""),
         data_cache_dir=str(status.get("data_cache_dir") or ""),
         manifest_path=str(status.get("manifest_path") or ""),
+        llm=RuntimeLlmResponse(**dict(status.get("llm") or {})),
         installed_pack_count=int(status.get("installed_pack_count") or 0),
         available_countries=list(status.get("available_countries") or []),
         packs=[RuntimePackResponse(**pack) for pack in status.get("packs") or []],

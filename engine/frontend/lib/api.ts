@@ -94,11 +94,19 @@ export type RuntimePack = {
   updated_at: string;
 };
 
+export type RuntimeLlmStatus = {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  base_url: string;
+};
+
 export type LocalRuntimeStatus = {
   runtime_profile: string;
   state_dir: string;
   data_cache_dir: string;
   manifest_path: string;
+  llm: RuntimeLlmStatus;
   installed_pack_count: number;
   available_countries: string[];
   packs: RuntimePack[];

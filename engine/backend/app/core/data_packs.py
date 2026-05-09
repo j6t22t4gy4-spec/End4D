@@ -6,7 +6,15 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.core.settings import get_data_cache_dir, get_runtime_profile, get_state_dir
+from app.core.settings import (
+    get_data_cache_dir,
+    get_llm_base_url,
+    get_llm_chat_enabled,
+    get_llm_model,
+    get_llm_provider,
+    get_runtime_profile,
+    get_state_dir,
+)
 
 DATA_PACK_MANIFEST = "packs.json"
 
@@ -88,6 +96,12 @@ def local_runtime_status() -> Dict[str, Any]:
         "state_dir": str(get_state_dir()),
         "data_cache_dir": str(get_data_cache_dir()),
         "manifest_path": str(_manifest_path()),
+        "llm": {
+            "enabled": get_llm_chat_enabled(),
+            "provider": get_llm_provider(),
+            "model": get_llm_model(),
+            "base_url": str(get_llm_base_url() or ""),
+        },
         "installed_pack_count": len(installed),
         "available_countries": countries,
         "packs": packs,

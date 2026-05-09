@@ -20,6 +20,65 @@ def get_llm_chat_enabled() -> bool:
     )
 
 
+def get_llm_provider() -> Literal["stub", "openai", "openai-compatible", "ollama"]:
+    """LLM chat backend for Thought/Worldview text generation."""
+    v = os.getenv("ORGANIC4D_LLM_PROVIDER", "stub").strip().lower()
+    if v in ("openai",):
+        return "openai"
+    if v in ("openai-compatible", "openai_compatible", "openai-compatible-local"):
+        return "openai-compatible"
+    if v in ("ollama", "local", "ollama-local"):
+        return "ollama"
+    return "stub"
+
+
+def get_llm_model() -> str:
+    provider = get_llm_provider()
+    default_model = {
+        "openai": "gpt-4.1-mini",
+        "openai-compatible": "gpt-4.1-mini",
+        "ollama": "llama3.1",
+        "stub": "stub",
+    }[provider]
+    return os.getenv("ORGANIC4D_LLM_MODEL", default_model).strip() or default_model
+
+
+def get_llm_base_url() -> Optional[str]:
+    raw = os.getenv("ORGANIC4D_LLM_BASE_URL", "").strip()
+    if raw:
+        return raw.rstrip("/")
+    provider = get_llm_provider()
+    if provider == "openai":
+        return "https://api.openai.com/v1"
+    if provider == "ollama":
+        return "http://127.0.0.1:11434"
+    return None
+
+
+def get_llm_api_key() -> Optional[str]:
+    raw = os.getenv("ORGANIC4D_LLM_API_KEY", "").strip()
+    if raw:
+        return raw
+    raw = os.getenv("OPENAI_API_KEY", "").strip()
+    return raw or None
+
+
+def get_llm_timeout_s() -> float:
+    raw = os.getenv("ORGANIC4D_LLM_TIMEOUT_S", "20").strip()
+    try:
+        return max(1.0, min(120.0, float(raw)))
+    except ValueError:
+        return 20.0
+
+
+def get_llm_temperature() -> float:
+    raw = os.getenv("ORGANIC4D_LLM_TEMPERATURE", "0.2").strip()
+    try:
+        return max(0.0, min(2.0, float(raw)))
+    except ValueError:
+        return 0.2
+
+
 def get_persistence_backend() -> Literal["memory", "disk", "postgres", "redis"]:
     """저장소 백엔드. 기본은 disk, postgres/redis는 후속."""
     v = os.getenv("ORGANIC4D_PERSISTENCE_BACKEND", "disk").strip().lower()

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import List
 
 from app.llm.embeddings import embed_texts
+from app.llm.chat_runtime import generate_reasoning_texts
 from app.llm.prompt_engineering import build_worldview_prompt
 from app.models.cell import Cell
 
@@ -35,7 +36,8 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     if not texts:
         return cells
 
-    vecs = embed_texts(texts, 384)
+    generated = generate_reasoning_texts(texts, task="worldview")
+    vecs = embed_texts(generated, 384)
     out = list(cells)
     for k, idx in enumerate(indices):
         out[idx] = out[idx].copy(worldview_vec=vecs[k].copy())
