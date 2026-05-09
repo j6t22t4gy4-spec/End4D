@@ -90,3 +90,34 @@ def test_timeline_summary_classifies_result():
         "energy_depleted",
         "stable",
     }
+
+
+def test_state_export_and_restore_fork():
+    wid = world_store.create(t_max=4, initial_cell_count=2)
+    entry = world_store.get(wid)
+    graph = create_time_flow_graph()
+    graph.invoke(
+        {"t_max": 4.0, "initial_cell_count": 2, "snapshot_store": entry["snapshot_store"]},
+        config={"recursion_limit": 20},
+    )
+
+    export_res = client.get(f"/worlds/{wid}/state?t=2")
+    assert export_res.status_code == 200
+    export_data = export_res.json()
+    assert export_data["t"] == 2.0
+    assert export_data["cell_count"] >= 1
+
+    fork_res = client.post(
+        f"/worlds/{wid}/restore",
+        json={"t": 2.0, "target": "fork", "resume": True},
+    )
+    assert fork_res.status_code == 200
+    fork_data = fork_res.json()
+    assert fork_data["source_world_id"] == wid
+    assert fork_data["world_id"] != wid
+    assert fork_data["final_t"] == 4.0
+
+    fork_entry = world_store.get(fork_data["world_id"])
+    assert fork_entry is not None
+    assert fork_entry["snapshot_store"].get(2.0) is not None
+    assert fork_entry["snapshot_store"].get(4.0) is not None

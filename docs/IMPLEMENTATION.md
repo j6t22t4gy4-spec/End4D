@@ -28,6 +28,8 @@
 - `POST /worlds` — **프롬프트 기반 세계 생성** (`{ "prompt": "..." }` → AI/스텁이 `t_max`·초기 개체 수·역할 카탈로그 제안)
 - `POST /worlds/{id}/run` — 시뮬레이션 실행 (WebSocket 스트리밍)
 - `POST /worlds/{id}/inject` — t 시점에 이벤트·영양분 주입 (God View)
+- `GET /worlds/{id}/state` — 특정/최신 snapshot export
+- `POST /worlds/{id}/restore` — snapshot 시점 복원 또는 fork 후 재실행
 - `GET /worlds/{id}/snapshots?t=` — t 시점 스냅샷 조회
 - 시각화용 (x,y,z, energy, emotion_vec, thought_vec, worldview_vec) 등 프리미티브
 
@@ -45,7 +47,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  [Storage]           [Memory]         [LLM]                      │
 │  PostgreSQL/         Zep / Redis       Ollama / OpenAI 등         │
-│  SQLite          (장기 메모리)                                   │
+│  disk JSON bridge  (장기 메모리)                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -120,7 +122,8 @@
 **엔진 구현 상태 (Phase 6 POC)**  
 - **Emotion**: `engine/backend/app/core/emotion.py` — 8차원 규칙 기반, 매 t, LLM 0.  
 - **Thought / Worldview**: `llm/thought.py`, `llm/worldview.py` — 세포 상태·메모리에서 만든 짧은 텍스트를 `llm/embeddings.py`로 벡터화 (기본 모델 `all-MiniLM-L6-v2`, 차원 절단). **Ollama 문장 생성**은 아직 미연동; 테스트·CI는 `ORGANIC4D_EMBED_BACKEND=stub`으로 결정적 스텁.  
-- **메모리 POC**: `core/memory_step.py` — 세포 `memory` 리스트에 주기적 문자열 추가 (Redis/Zep은 후속).
+- **메모리 POC**: `core/memory_step.py` — 세포 `memory` 리스트에 주기적 문자열 추가. `core/memory_reflection.py`가 social observation과 반복 role을 요약해 Thought/Worldview 품질을 보강.
+- **영속화 브리지**: `core/persistence.py`, `core/serialization.py`, `core/store.py` — 기본 `disk` backend가 world/snapshot/memory를 JSON 파일로 저장해 재시작 후 복원 가능. PostgreSQL은 후속.
 - **역할·Genesis**: 세포 `role_key`/`role_label`, `world_genesis.propose_world_from_prompt` 스텁(키워드·길이 휴리스틱). `POST /worlds`는 `{ "prompt" }`만 받음. Genesis가 **`t` 스텝의 시간 의미**(`t_step_semantic`/`t_step_unit`)와 **`nutrient_per_step`**(성장·에너지 유입)을 함께 제안·저장, `run`/`inject` 시 그래프에 전달. 국가별 persona dataset이 설정되어 있으면 초기 세포의 `persona_*`, 역할, 초기 memory seed로 사용. 한국은 `nvidia/Nemotron-Personas-Korea` 같은 CC BY 4.0 데이터셋을 `ORGANIC4D_PERSONA_HF_DATASET_KR`로 연결 가능. **실 LLM Genesis**는 Phase 9.
 
 ### 2.5 인프라 & 배포
@@ -217,8 +220,9 @@ docker compose up -d
 | 변수 | 기본 | 설명 |
 |------|------|------|
 | `ORGANIC4D_LLM_CHAT_ENABLED` | (끔) | `1`/`true` 시 (후속) Ollama 등 대화형 LLM으로 Thought/Worldview 문장 생성. |
-| `ORGANIC4D_PERSISTENCE_BACKEND` | `memory` | `postgres` / `redis` 선택 시 영속 어댑터 연동 예정 (`app/core/settings.py`). |
+| `ORGANIC4D_PERSISTENCE_BACKEND` | `disk` | `disk`(기본), `memory`, `postgres`, `redis`. 현재 구현은 `disk`와 `memory`. |
 | `ORGANIC4D_DATABASE_URL` | — | PostgreSQL 등 연결 문자열 (미설정 시 인메모리 월드만). |
+| `ORGANIC4D_STATE_DIR` | `engine/backend/data/worlds` | `disk` backend의 world/snapshot/memory JSON 저장 디렉터리. |
 | `ORGANIC4D_EMBED_BACKEND` | (자동) | `stub`이면 결정적 임베딩(테스트·CI). |
 | `ORGANIC4D_CORS_ORIGINS` | — | 쉼표로 구분한 추가 출처(기본 localhost:3000 유지). |
 | `ORGANIC4D_PERSONA_DATASET_DIR` | — | 국가별 persona 샘플 파일 디렉터리. 예: `kr.jsonl`, `us.csv`, `jp.json`. |

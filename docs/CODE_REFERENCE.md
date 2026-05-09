@@ -24,13 +24,16 @@
 | **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought cosine≥0.7+Worldview), `apply_mutation`(유전자 변이; 감정은 `emotion.py`). |
 | **spatial_index.py** | **인접 검색 최적화**. `SpatialHashGrid` — Emotion 이웃 밀집도와 융합 후보 탐색을 uniform grid로 pruning해 전수 비교를 줄임. |
 | **agent_interactions.py** | **에이전트 간 내부 상호작용 메모리**. 가까운 role/persona 이웃을 주기적으로 관찰해 `social_observation` memory를 남기고 Thought/Worldview 갱신의 데이터 플라이휠 입력으로 사용. |
+| **memory_reflection.py** | **메모리 반성 요약기**. social observation, alignment, recurring role을 압축 요약해 Thought/Worldview 프롬프트 품질을 높임. |
 | **persona_dataset.py** | **국가별 페르소나 데이터셋 어댑터**. JSONL/JSON/CSV 샘플 또는 선택적 Hugging Face streaming dataset을 `PersonaSeed`로 변환해 Genesis 초기 세포의 역할·메모리·페르소나 필드에 주입. |
+| **serialization.py** | **직렬화 유틸**. Cell/World/Snapshot를 JSON 저장 가능한 dict로 변환하고 복원. |
+| **persistence.py** | **파일 영속화 브리지**. `DiskWorldPersistence`가 world/snapshot/memory를 world 단위 JSON 파일로 저장·로드. |
 | **settings.py** | **엔진 환경 분기**. `get_llm_chat_enabled`, `get_persistence_backend`, `get_database_url`, **`get_cors_origins`** (Phase 8). |
 | **inject_handlers.py** | **주입 이벤트 적용**. `apply_inject_to_cells` — nutrient_burst / append_memory / emotion_spike / noop. |
 | **emotion.py** | **규칙 기반 8D Emotion (Phase 6.1)**. `update_emotions` — 에너지·이웃 밀집도로 갱신, LLM 0. `EMOTION_LABELS` 순서는 프론트 색 매핑과 동일. |
 | **memory_step.py** | **세포 메모리 누적 (Phase 6.7 POC)**. `append_step_memory` — 주기적 경험 문자열 추가(상한 `MEMORY_MAX_ENTRIES`). |
 | **snapshot.py** | **스냅샷 저장소**. `SnapshotStore` — `save`, `get`, `get_nearest`, `list_t`, **`clear_after`**(주입 후 t 이후 삭제). |
-| **store.py** | **월드 저장소**. `WorldStore` — `create`에 genesis_prompt·**role_catalog**·persona_catalog·`get_role_catalog()`. |
+| **store.py** | **월드 저장소**. `WorldStore` — 기본 disk+memory cache, `create`, persistence preload/flush, `clone_from_snapshot`, role/persona/world 메타 관리. |
 | **world_genesis.py** | **프롬프트→세계 제안**. `propose_world_from_prompt`, `GenesisPlan` (후속 LLM 연동). |
 | **ws_manager.py** | **WebSocket 연결 관리**. `ConnectionManager` — world_id별 연결 등록·해제, `send_to_world()` 브로드캐스트. |
 | **__init__.py** | core 패키지 진입점. coordinates, rules, snapshot export. |
@@ -61,6 +64,7 @@
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
 | **api/agents.py** | **에이전트 그룹 관측 API**. GET /worlds/{id}/agents/summary — 최신/지정 t의 role/persona 그룹별 에너지·감정·국가·memory 집계. 챗봇이 아니라 엔진 내부 상태 확인용. |
+| **api/state.py** | **상태 export/restore API**. GET /worlds/{id}/state, POST /worlds/{id}/restore — 중간 snapshot 복원·fork what-if 실행. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **api/inject.py** | **God View 주입 (Phase 7.1, 7.3)**. POST /worlds/{id}/inject — 스냅샷 수정, `clear_after`, 재실행. |
 | **api/timeline.py** | **시나리오 집계 (Phase 7.4)**. GET /worlds/{id}/timeline — t별 cell_count, total_energy. GET /worlds/{id}/timeline/summary — cell/energy delta와 outcome 요약. |
@@ -83,6 +87,7 @@
 | **test_phase6_step.py** | **Phase 6 통합**. LangGraph 실행 시 벡터 shape·Thought 간격 갱신. |
 | **test_agent_interactions.py** | **에이전트 내부 상호작용 테스트**. 가까운 이웃만 `social_observation` memory를 남기는지 검증. |
 | **test_agents_api.py** | **에이전트 그룹 API 테스트**. `/agents/summary`가 최신 snapshot을 role group으로 집계하는지 검증. |
+| **test_persistence.py** | **disk persistence 테스트**. world/snapshot/memory JSON 저장 후 새 `WorldStore`에서 복원되는지 검증. |
 | **test_inject.py** | **Phase 7**. 주입 404·영양 주입 후 재계산·timeline API. |
 | **test_world_genesis.py** | **Genesis 스텁**. 휴리스틱 `propose_world_from_prompt`. |
 | **test_persona_dataset.py** | **국가별 페르소나 seed**. JSONL adapter, 국가 추론, 초기 세포 persona 주입 검증. |
@@ -176,4 +181,4 @@ GodView → lib/api.ts (getSnapshotAtT, cellsToInstanceBuffers)
 
 ---
 
-*문서 버전: v0.7 — 엔진/에이전트 데이터 플라이휠 기초 반영*
+*문서 버전: v0.8 — 영속화·restore·reflection 반영*

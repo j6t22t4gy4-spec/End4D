@@ -77,4 +77,9 @@ def test_graph_writes_agent_social_memory_before_thought_refresh():
         for cell in snap20.cells
         for line in cell.memory
     )
+    assert any(
+        "borrowed_signal=" in line
+        for cell in snap20.cells
+        for line in cell.memory
+    )
     assert not np.allclose(snap20.cells[0].thought_vec, snap21.cells[0].thought_vec)

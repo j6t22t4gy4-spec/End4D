@@ -238,8 +238,11 @@ Phase 10A: 엔진/에이전트 데이터 플라이휠 기초
 | 10A.2 | Thought 입력에 최근 memory 반영 | `thought.py` prompt에 recent memory 포함 |
 | 10A.3 | role/persona 그룹 관측 API | `GET /worlds/{id}/agents/summary` |
 | 10A.4 | 내부 플라이휠 테스트 | `test_agent_interactions.py`, `test_agents_api.py`, Phase 6 loop test |
-| 10A.5 | 다음 단계: persona-aware Genesis 강화 | persona 분포가 초기 위치·energy·role mix에 반영 |
-| 10A.6 | 다음 단계: group-level stance summary | role group의 갈등·합의·리스크 요약 |
+| 10A.5 | memory 영속화 + restart 복원 | `serialization.py`, `persistence.py`, disk-backed `WorldStore` |
+| 10A.6 | snapshot export/restore + fork | `GET /worlds/{id}/state`, `POST /worlds/{id}/restore` |
+| 10A.7 | Thought/Worldview reflection 품질 강화 | `memory_reflection.py`, 장기 belief 요약 |
+| 10A.8 | 다음 단계: persona-aware Genesis 강화 | persona 분포가 초기 위치·energy·role mix에 반영 |
+| 10A.9 | 다음 단계: group-level stance summary | role group의 갈등·합의·리스크 요약 |
 
 ---
 

@@ -5,7 +5,7 @@ ARCHITECTURE §2.2: World → Snapshot → Cell 계층
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from app.models.cell import Cell
 from app.models.world import Snapshot
@@ -14,14 +14,20 @@ from app.models.world import Snapshot
 class SnapshotStore:
     """메모리 내 스냅샷 저장소."""
 
-    def __init__(self, world_id: str = ""):
+    def __init__(self, world_id: str = "", on_change: Optional[Callable[[], None]] = None):
         self.world_id = world_id
         self._snapshots: Dict[float, Snapshot] = {}
+        self._on_change = on_change
+
+    def _notify(self) -> None:
+        if self._on_change is not None:
+            self._on_change()
 
     def save(self, t: float, cells: List[Cell]) -> Snapshot:
         """t 시점 스냅샷 저장."""
         snap = Snapshot(world_id=self.world_id, t=t, cells=list(cells))
         self._snapshots[t] = snap
+        self._notify()
         return snap
 
     def get(self, t: float) -> Optional[Snapshot]:
@@ -42,10 +48,17 @@ class SnapshotStore:
     def clear(self) -> None:
         """전체 삭제."""
         self._snapshots.clear()
+        self._notify()
 
     def clear_after(self, t_keep: float, eps: float = 1e-9) -> int:
         """t_keep 초과인 스냅샷만 제거 (주입 후 t>t_keep 재계산용). 제거 개수 반환."""
         to_del = [k for k in self._snapshots if k > t_keep + eps]
         for k in to_del:
             del self._snapshots[k]
+        if to_del:
+            self._notify()
         return len(to_del)
+
+    def load_snapshots(self, snapshots: List[Snapshot]) -> None:
+        """Load persisted snapshots into memory."""
+        self._snapshots = {float(snap.t): snap for snap in snapshots}

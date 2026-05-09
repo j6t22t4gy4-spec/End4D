@@ -1,4 +1,4 @@
-"""Organic4D Engine — 인메모리 월드 저장소 (Phase 3.1.1).
+"""Organic4D Engine — 월드 저장소 (Phase 3.1.1).
 
 world_id → {World, SnapshotStore, 실행 상태} 매핑
 ARCHITECTURE_CHECKLIST 1.3: 엔진 격리는 world_id 기준
@@ -8,15 +8,54 @@ from __future__ import annotations
 from typing import Dict, Optional
 import uuid
 
-from app.models.world import World
+from app.core.persistence import DiskWorldPersistence
+from app.core.settings import get_persistence_backend, get_state_dir
 from app.core.snapshot import SnapshotStore
+from app.models.world import World
 
 
 class WorldStore:
-    """인메모리 월드 저장소."""
+    """월드 저장소. 기본은 disk+memory cache."""
 
     def __init__(self):
         self._worlds: Dict[str, dict] = {}
+        backend = get_persistence_backend()
+        self._persistence = (
+            DiskWorldPersistence(get_state_dir()) if backend == "disk" else None
+        )
+        self._preload()
+
+    def _preload(self) -> None:
+        if self._persistence is None:
+            return
+        for world_id in self._persistence.list_world_ids():
+            self._load_from_persistence(world_id)
+
+    def _make_snapshot_store(self, world_id: str) -> SnapshotStore:
+        return SnapshotStore(
+            world_id=world_id,
+            on_change=lambda wid=world_id: self._persist(wid),
+        )
+
+    def _persist(self, world_id: str) -> None:
+        if self._persistence is None:
+            return
+        entry = self._worlds.get(world_id)
+        if entry is None:
+            return
+        self._persistence.save(world_id, entry)
+
+    def _load_from_persistence(self, world_id: str) -> Optional[dict]:
+        if self._persistence is None:
+            return None
+        payload = self._persistence.load(world_id)
+        if payload is None:
+            return None
+        store = self._make_snapshot_store(world_id)
+        store.load_snapshots(payload.pop("snapshots", []))
+        entry = {**payload, "snapshot_store": store}
+        self._worlds[world_id] = entry
+        return entry
 
     def create(
         self,
@@ -35,7 +74,7 @@ class WorldStore:
     ) -> str:
         """월드 생성. world_id 반환."""
         wid = world_id or str(uuid.uuid4())
-        store = SnapshotStore(world_id=wid)
+        store = self._make_snapshot_store(wid)
         world = World(
             world_id=wid,
             t_max=t_max,
@@ -57,10 +96,13 @@ class WorldStore:
             "persona_source": persona_source,
             "persona_catalog": list(persona_catalog or []),
         }
+        self._persist(wid)
         return wid
 
     def get(self, world_id: str) -> Optional[dict]:
         """월드 정보 조회."""
+        if world_id not in self._worlds:
+            self._load_from_persistence(world_id)
         return self._worlds.get(world_id)
 
     def get_world(self, world_id: str) -> Optional[World]:
@@ -77,6 +119,7 @@ class WorldStore:
         """실행 상태 설정 (idle, running, done)."""
         if world_id in self._worlds:
             self._worlds[world_id]["status"] = status
+            self._persist(world_id)
 
     def get_initial_cell_count(self, world_id: str) -> int:
         """초기 세포 수."""
@@ -103,6 +146,43 @@ class WorldStore:
         if not entry:
             return []
         return list(entry.get("persona_catalog") or [])
+
+    def clone_from_snapshot(
+        self,
+        source_world_id: str,
+        *,
+        snapshot_t: float,
+        world_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Create a new world entry that starts from a stored snapshot."""
+        source = self.get(source_world_id)
+        if source is None:
+            return None
+        source_store = source["snapshot_store"]
+        snap = source_store.get(snapshot_t)
+        if snap is None:
+            return None
+
+        new_world_id = self.create(
+            t_max=float(source["world"].t_max),
+            initial_cell_count=len(snap.cells),
+            world_id=world_id,
+            genesis_prompt=source.get("genesis_prompt"),
+            genesis_rationale=source.get("genesis_rationale"),
+            role_catalog=list(source.get("role_catalog") or []),
+            t_step_semantic=source["world"].t_step_semantic,
+            t_step_unit=source["world"].t_step_unit,
+            nutrient_per_step=float(source["world"].nutrient_per_step),
+            persona_country=str(source.get("persona_country") or ""),
+            persona_source=str(source.get("persona_source") or ""),
+            persona_catalog=list(source.get("persona_catalog") or []),
+        )
+        new_entry = self.get(new_world_id)
+        if new_entry is None:
+            return None
+        new_entry["snapshot_store"].save(float(snapshot_t), [c.copy() for c in snap.cells])
+        self._persist(new_world_id)
+        return new_world_id
 
 
 # 전역 싱글톤 (엔진 격리는 world_id로)

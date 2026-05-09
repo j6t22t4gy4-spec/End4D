@@ -2,3 +2,4 @@
 import os
 
 os.environ.setdefault("ORGANIC4D_EMBED_BACKEND", "stub")
+os.environ.setdefault("ORGANIC4D_PERSISTENCE_BACKEND", "memory")

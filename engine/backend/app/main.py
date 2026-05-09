@@ -10,6 +10,7 @@ from app.api.ws import router as ws_router
 from app.api.inject import router as inject_router
 from app.api.timeline import router as timeline_router
 from app.api.agents import router as agents_router
+from app.api.state import router as state_router
 
 app = FastAPI(title="Organic4D Engine", version="0.1.0")
 
@@ -28,6 +29,7 @@ app.include_router(ws_router)
 app.include_router(inject_router)
 app.include_router(timeline_router)
 app.include_router(agents_router)
+app.include_router(state_router)
 
 
 @app.get("/health")

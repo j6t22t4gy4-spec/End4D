@@ -12,6 +12,7 @@ from typing import List
 import numpy as np
 
 from app.core.emotion import EMOTION_LABELS
+from app.core.memory_reflection import build_memory_reflection
 from app.llm.embeddings import embed_texts
 from app.models.cell import Cell
 
@@ -25,10 +26,12 @@ def _thought_prompt(cell: Cell) -> str:
     label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
     role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
     recent_memory = "; ".join(cell.memory[-5:]) if cell.memory else "none"
+    reflection = build_memory_reflection(cell)
     return (
         f"strategy for role={role}: energy {cell.energy:.2f}, "
         f"dominant affect {label}, neighbors implied by emotion layer, "
         f"gene_norm {float(np.linalg.norm(cell.gene_vec)):.3f}, "
+        f"reflection={reflection[:320]}, "
         f"recent_memory={recent_memory[:480]}, "
         f"persona={cell.persona_text[:240]}"
     )

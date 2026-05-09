@@ -30,6 +30,7 @@
 - 로컬 샘플 파일도 가능: `ORGANIC4D_PERSONA_DATASET_DIR=/path/to/personas` 아래 `kr.jsonl`, `us.csv`, `jp.json` 등.
 - 대용량 HF 데이터셋은 `engine/backend/scripts/sample_personas.py`로 작은 JSONL 샘플을 먼저 만들 수 있다.
 - 생성된 world의 seed는 `GET /worlds/{world_id}/personas`에서 확인한다.
+- world/snapshot/memory는 기본 `disk` backend로 JSON 영속화되며, `GET /worlds/{world_id}/state`, `POST /worlds/{world_id}/restore`로 what-if 복원/fork가 가능하다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
 ## 라이선스
