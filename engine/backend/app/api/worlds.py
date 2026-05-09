@@ -32,6 +32,10 @@ class CreateWorldRequest(BaseModel):
         max_length=16_000,
         description="예측·탐색하고 싶은 세계/시나리오를 자연어로 기술",
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="결과를 연결할 실행 세션 ID. 미지정 시 자동 생성",
+    )
 
 
 class CreateWorldResponse(BaseModel):
@@ -49,6 +53,7 @@ class CreateWorldResponse(BaseModel):
     persona_source: str
     persona_count: int
     config_version: str
+    session_id: str
 
 
 class WorldResponse(BaseModel):
@@ -68,6 +73,7 @@ class WorldResponse(BaseModel):
     config_version: str = ""
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
+    session_id: str = ""
 
 
 class PersonaPreviewItem(BaseModel):
@@ -129,6 +135,7 @@ def create_world(req: CreateWorldRequest):
         persona_country=plan.persona_country,
         persona_source=persona_source,
         persona_catalog=persona_catalog,
+        session_id=req.session_id,
     )
     entry = world_store.get(world_id)
     return CreateWorldResponse(
@@ -144,6 +151,7 @@ def create_world(req: CreateWorldRequest):
         persona_source=persona_source,
         persona_count=len(persona_catalog),
         config_version=str((entry or {}).get("config_version") or ""),
+        session_id=str((entry or {}).get("session_id") or ""),
     )
 
 
@@ -170,6 +178,7 @@ def get_world(world_id: str):
         config_version=str(entry.get("config_version") or ""),
         simulation_config=dict(entry.get("simulation_config") or {}),
         comparison_meta=dict(entry.get("comparison_meta") or {}),
+        session_id=str(entry.get("session_id") or ""),
     )
 
 

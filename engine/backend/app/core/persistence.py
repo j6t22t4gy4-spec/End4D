@@ -45,5 +45,6 @@ class DiskWorldPersistence:
             "simulation_config": dict(payload.get("simulation_config") or {}),
             "config_version": str(payload.get("config_version") or ""),
             "comparison_meta": dict(payload.get("comparison_meta") or {}),
+            "session_id": str(payload.get("session_id") or ""),
             "snapshots": [snapshot_from_dict(item) for item in payload.get("snapshots") or []],
         }

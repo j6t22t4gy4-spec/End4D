@@ -137,9 +137,33 @@ export type CreateWorldResult = {
   persona_country: string;
   persona_source: string;
   persona_count: number;
+  session_id: string;
 };
 
-export async function createWorld(body: { prompt: string }): Promise<CreateWorldResult> {
+export type SessionWorldSummary = {
+  world_id: string;
+  status: string;
+  created_at: string;
+  genesis_prompt?: string | null;
+  persona_country: string;
+  config_version: string;
+  session_id: string;
+};
+
+export type SessionSummary = {
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  world_count: number;
+  latest_world_id: string;
+  worlds: SessionWorldSummary[];
+};
+
+export async function createWorld(body: {
+  prompt: string;
+  session_id?: string | null;
+}): Promise<CreateWorldResult> {
   const res = await fetch(`${API_BASE}/worlds`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -184,6 +208,12 @@ export async function getAgentSummary(
 export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
   const res = await fetch(`${API_BASE}/runtime/local-status`);
   if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
+  return res.json();
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const res = await fetch(`${API_BASE}/sessions`);
+  if (!res.ok) throw new Error(`listSessions: ${res.status}`);
   return res.json();
 }
 

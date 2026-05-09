@@ -1,12 +1,14 @@
 "use client";
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
-import type { LocalRuntimeStatus } from "@/lib/api";
+import type { LocalRuntimeStatus, SessionSummary } from "@/lib/api";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 
 type OverviewWorkspaceProps = {
   runtime: LocalRuntimeStatus | null;
   runtimeError: string | null;
+  sessions: SessionSummary[];
+  sessionsError: string | null;
   apiBase: string;
   onOpenView: (view: WorkbenchView) => void;
 };
@@ -14,6 +16,8 @@ type OverviewWorkspaceProps = {
 export function OverviewWorkspace({
   runtime,
   runtimeError,
+  sessions,
+  sessionsError,
   apiBase,
   onOpenView,
 }: OverviewWorkspaceProps) {
@@ -121,18 +125,38 @@ export function OverviewWorkspace({
         </AppPanel>
 
         <AppPanel
-          title="Operator Notes"
-          subtitle="Why this layout is different"
-          bodyClassName="space-y-3 text-sm leading-7 text-slate-600"
+          title="Session Threads"
+          subtitle="Persistent run history on this machine"
+          bodyClassName="space-y-3"
         >
-          <p>
-            디자인 레이어는 툴바, 액티비티 레일, 워크스페이스 컴포넌트로 분리되어
-            있습니다.
-          </p>
-          <p>
-            엔진 로직은 기존 시뮬레이션 컴포넌트에 남겨 두어서, 데이터팩과 에이전트
-            개발에 방해가 되지 않게 했습니다.
-          </p>
+          {sessionsError ? (
+            <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              세션 목록을 불러오지 못했습니다: {sessionsError}
+            </p>
+          ) : null}
+          {sessions.length === 0 ? (
+            <p className="text-sm leading-7 text-slate-600">
+              아직 저장된 실행 세션이 없습니다. 시뮬레이션에서 세계를 만들면 자동으로
+              세션 스레드가 생성됩니다.
+            </p>
+          ) : (
+            sessions.slice(0, 4).map((session) => (
+              <div
+                key={session.session_id}
+                className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-sm"
+              >
+                <p className="text-sm font-semibold text-slate-900">{session.title}</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {session.world_count} worlds · latest {session.latest_world_id || "—"}
+                </p>
+                {session.worlds[0]?.genesis_prompt ? (
+                  <p className="mt-3 max-h-[4.5rem] overflow-hidden text-sm leading-6 text-slate-600">
+                    {session.worlds[0].genesis_prompt}
+                  </p>
+                ) : null}
+              </div>
+            ))
+          )}
           {runtimeError && (
             <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               런타임 상태를 불러오지 못했습니다: {runtimeError}

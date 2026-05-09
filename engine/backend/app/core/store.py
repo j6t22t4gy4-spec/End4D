@@ -10,6 +10,7 @@ import uuid
 
 from app.core.config_versions import build_simulation_config, simulation_config_version
 from app.core.persistence import DiskWorldPersistence
+from app.core.session_store import session_store
 from app.core.settings import get_persistence_backend, get_state_dir
 from app.core.snapshot import SnapshotStore
 from app.models.world import World
@@ -75,6 +76,7 @@ class WorldStore:
         simulation_config: Optional[dict] = None,
         config_version: str = "",
         comparison_meta: Optional[dict] = None,
+        session_id: Optional[str] = None,
     ) -> str:
         """월드 생성. world_id 반환."""
         wid = world_id or str(uuid.uuid4())
@@ -101,6 +103,10 @@ class WorldStore:
             comparison_meta=dict(comparison_meta or {}),
         )
         version = config_version or simulation_config_version(config)
+        session = session_store.ensure(
+            session_id,
+            title=(genesis_prompt or "").strip()[:80],
+        )
         self._worlds[wid] = {
             "world": world,
             "snapshot_store": store,
@@ -115,7 +121,9 @@ class WorldStore:
             "simulation_config": dict(config),
             "config_version": version,
             "comparison_meta": dict(comparison_meta or {}),
+            "session_id": str(session.get("session_id") or ""),
         }
+        session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
         return wid
 
@@ -204,6 +212,7 @@ class WorldStore:
                 "mode": "fork",
                 "baseline_config_version": str(source.get("config_version") or ""),
             },
+            session_id=str(source.get("session_id") or ""),
         )
         new_entry = self.get(new_world_id)
         if new_entry is None:

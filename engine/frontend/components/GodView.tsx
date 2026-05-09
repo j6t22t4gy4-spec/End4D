@@ -44,6 +44,7 @@ export default function GodView() {
   const [mount3d, setMount3d] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
   const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     setMount3d(true);
@@ -84,9 +85,10 @@ export default function GodView() {
     }
     try {
       disconnectWebSocket();
-      const out = await createWorld({ prompt });
+      const out = await createWorld({ prompt, session_id: activeSessionId });
       setLastGenesis(out);
       setWorldId(out.world_id);
+      setActiveSessionId(out.session_id);
       setAvailableT([]);
       setCurrentT(0);
       setCellCount(0);
@@ -185,7 +187,7 @@ export default function GodView() {
   const sliderDisabled = availableT.length === 0 || snapshotLoading;
 
   return (
-    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[320px_minmax(0,1fr)_340px]">
+    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
         <AppPanel
           title="Scenario Genesis"
@@ -215,9 +217,14 @@ export default function GodView() {
             )}
           </div>
           {worldId && (
-            <p className="rounded-2xl bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
-              world_id: {worldId}
-            </p>
+            <div className="grid gap-2">
+              <p className="rounded-2xl bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
+                world_id: {worldId}
+              </p>
+              <p className="rounded-2xl bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
+                session_id: {activeSessionId ?? "pending"}
+              </p>
+            </div>
           )}
         </AppPanel>
 
@@ -250,7 +257,7 @@ export default function GodView() {
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
               {mount3d ? (
                 <R3fErrorBoundary>
@@ -264,7 +271,7 @@ export default function GodView() {
                 </R3fErrorBoundary>
               ) : (
                 <div
-                  className="flex h-[min(62vh,540px)] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
+                  className="flex h-[min(72vh,680px)] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
                   data-testid="scene-placeholder"
                 >
                   3D scene loading…
@@ -289,7 +296,7 @@ export default function GodView() {
           </div>
         </AppPanel>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
           <AppPanel
             title="Time Navigation"
             subtitle="Browse saved snapshots"
@@ -319,33 +326,6 @@ export default function GodView() {
         </div>
       </div>
 
-      <div className="hidden min-h-0 xl:flex xl:flex-col xl:gap-4 xl:overflow-y-auto xl:pr-1">
-        <AppPanel
-          title="Operator Notes"
-          subtitle="Design separated from engine and data workflows"
-          bodyClassName="space-y-3 text-sm leading-6 text-slate-600"
-        >
-          <p>
-            툴바, 런처, 패널 시스템은 워크벤치 셸 컴포넌트로 분리되어 있습니다.
-          </p>
-          <p>
-            엔진 로직은 그대로 `GodView`, 시뮬 훅, API 계층에서 계속 개발할 수 있게 유지합니다.
-          </p>
-        </AppPanel>
-
-        <AppPanel
-          title="Current Session"
-          subtitle="Workspace health"
-          bodyClassName="grid gap-3"
-        >
-          <MetricChip label="Cells in view" value={cellCount.toLocaleString()} />
-          <MetricChip label="Snapshots" value={String(availableT.length)} />
-          <MetricChip
-            label="Simulation state"
-            value={isRunning ? "Running" : worldId ? "Ready" : "Idle"}
-          />
-        </AppPanel>
-      </div>
     </div>
   );
 }

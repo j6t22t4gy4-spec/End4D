@@ -5,7 +5,9 @@ import dynamic from "next/dynamic";
 import {
   getApiBase,
   getLocalRuntimeStatus,
+  listSessions,
   type LocalRuntimeStatus,
+  type SessionSummary,
 } from "@/lib/api";
 import { ActivityRail } from "@/components/app-shell/ActivityRail";
 import { AppToolbar } from "@/components/app-shell/AppToolbar";
@@ -25,6 +27,8 @@ const GodView = dynamic(() => import("@/components/GodView"), {
 export default function HomeWithCanvas() {
   const [runtime, setRuntime] = useState<LocalRuntimeStatus | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<WorkbenchView>("overview");
 
   useEffect(() => {
@@ -39,6 +43,25 @@ export default function HomeWithCanvas() {
       .catch((error: Error) => {
         if (!cancelled) {
           setRuntimeError(error.message);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSessions()
+      .then((items) => {
+        if (!cancelled) {
+          setSessions(items);
+          setSessionsError(null);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setSessionsError(error.message);
         }
       });
     return () => {
@@ -74,6 +97,8 @@ export default function HomeWithCanvas() {
               <OverviewWorkspace
                 runtime={runtime}
                 runtimeError={runtimeError}
+                sessions={sessions}
+                sessionsError={sessionsError}
                 apiBase={getApiBase()}
                 onOpenView={setActiveView}
               />
