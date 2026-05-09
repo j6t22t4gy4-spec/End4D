@@ -23,6 +23,7 @@
 | 1.1 | 핵심 코어는 엔진이다. 4D 좌표, 5대 규칙, 시간 흐름, 3계층이 전부 엔진 책임 | 제품·UI 로직이 엔진 코어에 섞여 있음 | CONCEPT §0 |
 | 1.2 | 엔진 + God View = 제품으로 바로 사용 가능. 제품 확장은 엔진 API 위에 구축 | God View 없이 엔진만 쓸 수 없는 구조 | CONCEPT §0 |
 | 1.3 | 엔진 격리는 `world_id` 기준. 멀티테넌시·과금은 제품 레이어 | world_id 없이 전역 상태 혼재 | ARCHITECTURE §5 |
+| 1.4 | 현재 최상위 목표는 `국가 단위 장기 사회 시뮬레이션 플랫폼`이다 | 챗 UX·앱 셸이 코어 시뮬레이션 설명력보다 앞섬 | PRODUCT_STRATEGY, DEVELOPMENT_GAPS |
 
 ---
 
@@ -64,6 +65,7 @@
 | 4.5 | **Worldview**: t≥200 또는 메모리 100+ 시에만 갱신 | 더 자주 호출 | CONCEPT §6.3 |
 | 4.6 | Worldview: 384차원, sentence-transformers | 차원·생성 방식 변경 시 문서 반영 | CONCEPT §6.3 |
 | 4.7 | Thought/Worldview 생성 시 **역할**을 프롬프트·임베딩 맥락에 포함 | 역할 무시한 동일 프롬프트만 사용 | CONCEPT §2.3, §6 |
+| 4.8 | Genesis / Thought / Worldview는 provider·model·prompt_version을 추적 가능해야 한다 | 나중에 어떤 LLM 설정으로 결과가 나왔는지 알 수 없음 | IMPLEMENTATION_SEQUENCE Phase 11 |
 
 ---
 
@@ -76,6 +78,7 @@
 | 5.3 | 매 10~50 t: Thought, 매 200 t+ (또는 메모리 100+): Worldview | 주기 혼동 | CONCEPT §7 |
 | 5.4 | God View 주입: `(t_inject, event_type, payload)` 도달 시 적용 | 주입 무시·즉시 반영 | ARCHITECTURE §3.2 |
 | 5.5 | 사용자 대화 이전에도 에이전트 간 관찰이 memory → Thought/Worldview로 흐르는 내부 플라이휠이 있어야 한다 | 챗 UI가 없으면 엔진이 학습/변화하지 않음 | IMPLEMENTATION_SEQUENCE Phase 10A |
+| 5.6 | 세션은 단순 로그가 아니라 world·snapshot·branch 비교의 단위여야 한다 | 실행 결과는 쌓이지만 다시 열거나 비교하기 어려움 | IMPLEMENTATION_SEQUENCE Phase 11, 12 |
 
 ---
 
@@ -124,7 +127,19 @@
 
 ---
 
-## 10. 구현 시점별 핵심 체크
+## 10. 국가 단위 장기 시뮬레이션 체크
+
+| # | 체크 항목 | 위반 징후 | 참조 |
+|---|-----------|-----------|------|
+| 10.1 | persona dataset 분포가 초기 세계 구조에 반영된다 | seed는 붙었지만 세계 생성은 거의 랜덤/휴리스틱 | DEVELOPMENT_GAPS §1 |
+| 10.2 | group-level stance/cohesion/tension을 조회·비교할 수 있다 | cell 수준 정보만 많고 사회 수준 상태가 약함 | DEVELOPMENT_GAPS §1 |
+| 10.3 | policy/event는 강도·범위·지속시간을 가진다 | 이벤트가 단발성 key-value 주입에 머묾 | IMPLEMENTATION_SEQUENCE Phase 11 |
+| 10.4 | dataset / prompt / provider provenance가 결과와 함께 남는다 | 장기 예측 결과의 재현·감사가 어려움 | PRODUCT_STRATEGY §6 |
+| 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | IMPLEMENTATION_SEQUENCE Phase 12 |
+
+---
+
+## 11. 구현 시점별 핵심 체크
 
 | Phase | 반드시 확인할 본질 |
 |-------|---------------------|
@@ -139,7 +154,9 @@
 | 9 | 2.8(persona dataset), 8.4(attribution) |
 | 10A | 5.5(내부 플라이휠), 4.7(역할 맥락), 6.x(API 관측 계약) |
 | 10B | 9.x(대화 엔진·사용자 데이터 플라이휠) |
+| 11 | 10.x(국가 단위 장기 시뮬레이션 체크) |
+| 12 | 5.6(session 비교), 10.5(world comparison) |
 
 ---
 
-*문서 버전: v0.3 — 엔진/에이전트 내부 플라이휠 우선순위 추가*
+*문서 버전: v0.4 — 국가 단위 장기 시뮬레이션 목표 기준 체크 추가*

@@ -4,6 +4,29 @@
 
 ---
 
+## 0. 현재 기준선
+
+이 문서는 단순한 기능 나열이 아니라, 아래 **최상위 제품 목표**를 기준으로 우선순위를 고정한다.
+
+> **목표**: End4D를 `국가 단위 사회를 장기적으로 시뮬레이션·비교·예측`할 수 있는 범용 플랫폼으로 만든다.
+
+이 목표 기준에서 중요한 순서는 다음과 같다.
+
+1. **엔진 설명력**
+   - 장기 시간축에서 belief dynamics가 실제로 누적·분기·군집화되어야 한다.
+2. **데이터 설명력**
+   - 국가별 persona / policy / scenario 데이터가 엔진 상태를 의미 있게 바꿔야 한다.
+3. **재현성과 비교 가능성**
+   - 세션, 스냅샷, 설정 버전, prompt version, dataset provenance가 남아야 한다.
+4. **전문가 워크플로우**
+   - what-if, 복원, 비교, 리포트, 세션 스레드가 있어야 한다.
+5. **제품 셸**
+   - 앱형 UI, 로컬 런처, 추후 네이티브 셸은 그 다음이다.
+
+즉, **채팅형 데모**보다 먼저 **국가 단위 장기 시뮬레이션 엔진의 정확한 루프와 재현성**을 완성해야 한다.
+
+---
+
 ## 전체 흐름
 
 ```
@@ -26,6 +49,14 @@ Phase 7: God View 주입 + 시나리오 리포트
 Phase 8: 최적화·배포
     ↓
 Phase 10A: 엔진/에이전트 데이터 플라이휠 기초
+    ↓
+Phase 11: 국가 단위 시뮬레이션 코어
+    ↓
+Phase 12: 비교·리포트·전문가 워크플로우
+    ↓
+Phase 13: 데이터 레이어 운영화
+    ↓
+Phase 14: 네이티브 앱 / 기관 배포
 ```
 
 ---
@@ -262,3 +293,68 @@ Phase 10A: 엔진/에이전트 데이터 플라이휠 기초
 ---
 
 *문서 버전: v0.5 — Phase 10A 엔진/에이전트 우선순위 반영*
+
+---
+
+## Phase 11 (현재 최우선) — 국가 단위 시뮬레이션 코어
+
+> 이 단계가 흔들리면 End4D는 “그럴듯한 에이전트 앱”으로 밀리고, 목표인 국가 단위 장기 시뮬레이션 플랫폼이 되기 어렵다.
+
+| 순서 | 작업 | 산출물 | 이유 |
+|------|------|--------|------|
+| 11.1 | **persona-aware Genesis 강화** | 국가별 persona 분포 기반 `t_max`, role mix, nutrient scale, initial bias | 초기 세계가 실제 사회 구조를 반영해야 함 |
+| 11.2 | **group-level belief state** | role/persona group cohesion, tension, stance, drift | 국가 단위 분석은 개별 cell보다 집단 상태가 핵심 |
+| 11.3 | **policy/event semantics 강화** | 정책 이벤트 타입 체계, 강도, 범위, 지속시간 | what-if가 장난감 이벤트가 아니라 정책 실험이 되게 함 |
+| 11.4 | **prompt version + provider provenance 저장** | genesis/thought/worldview 결과에 LLM 메타 저장 | 장기 예측은 재현성과 감사 가능성이 필수 |
+| 11.5 | **session → world → snapshot 비교 루프 완성** | 세션 단위 비교, 최근 world reopen, fork lineage | 장기 시나리오 실험 워크플로우의 핵심 |
+| 11.6 | **long-horizon calibration hooks** | 시계열·정책·충격 입력용 calibration interface | 국가 단위 장기 예측으로 확장할 발판 |
+
+---
+
+## Phase 12 — 비교·리포트·전문가 워크플로우
+
+| 순서 | 작업 | 산출물 | 이유 |
+|------|------|--------|------|
+| 12.1 | 세션별 world comparison 화면 | baseline vs branch 비교 | 전문가 사용성 핵심 |
+| 12.2 | stance/cohesion diff report | before/after 변화 요약 | 정책·시장 비교 설명력 강화 |
+| 12.3 | snapshot lineage / fork graph | 복원·분기 이력 시각화 | 실험 추적성 |
+| 12.4 | exportable report payload | JSON/PDF/slide용 결과 구조 | 기관 보고 워크플로우 대응 |
+
+---
+
+## Phase 13 — 데이터 레이어 운영화
+
+| 순서 | 작업 | 산출물 | 이유 |
+|------|------|--------|------|
+| 13.1 | 국가별 dataset registry 정식화 | registry schema, version policy | 다국가 구조의 핵심 |
+| 13.2 | entitlement / subscription 메타 | 사용 가능한 pack 판정 | 구독형 제품 기반 |
+| 13.3 | data provenance UI/API | 출처, 라이선스, 갱신 이력 | 기관 신뢰 확보 |
+| 13.4 | sector / policy pack 구조 | persona 외 시나리오 입력 팩 | 범용 플랫폼화 |
+
+---
+
+## Phase 14 — 네이티브 앱 / 기관 배포
+
+| 순서 | 작업 | 산출물 | 이유 |
+|------|------|--------|------|
+| 14.1 | Tauri/Electron 셸 | 브라우저 대신 전용 앱 창 | 제품 완성도 |
+| 14.2 | 기관용 로컬 배포 패키지 | 오프라인/폐쇄망 고려 | 실제 판매 가능성 |
+| 14.3 | 운영자 권한/로그 | 실행 추적, 설정 감사 | 엔터프라이즈 요구 |
+
+---
+
+## 현재 6주 체크리스트
+
+아래는 **지금 당장 개발 집중도를 유지하기 위한 단기 체크리스트**다.
+
+- [ ] `persona-aware Genesis`가 occupation/region/age 분포를 실제로 반영한다
+- [ ] `group stance summary`가 world/session 비교 가능한 구조로 저장된다
+- [ ] policy/event injection이 강도·범위·지속시간을 가진다
+- [ ] `session comparison` 화면에서 최소 2개 world를 나란히 볼 수 있다
+- [ ] LLM 결과에 `provider / model / prompt_version / timestamp`가 남는다
+- [ ] dataset source / license / version이 report payload까지 전달된다
+- [ ] 브라우저 런처가 아닌 네이티브 셸 PoC 방향이 문서화된다
+
+---
+
+*문서 버전: v0.6 — 국가 단위 장기 시뮬레이션 플랫폼 목표 기준으로 재정렬*

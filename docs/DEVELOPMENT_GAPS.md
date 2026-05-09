@@ -1,7 +1,23 @@
 # Organic4D — 핵심 결손 및 보완 로드맵
 
 > 목적: 개발 중 방향을 잃지 않기 위해, 현재 엔진이 제품 목표에 비해 무엇이 부족한지 명시한다.  
-> 기준 목표: 국가별 실제 persona seed를 바탕으로 사용자가 대화하고, 그 대화가 Thought/Worldview와 시뮬레이션 상태를 갱신하며, 데이터 동의·익명화·피드백 루프까지 갖춘 복잡계 시나리오 엔진.
+> 기준 목표: **국가 단위 사회를 장기적으로 시뮬레이션·비교·예측**할 수 있고, 이후 다국가 데이터 레이어와 전문가 워크플로우까지 확장 가능한 범용 플랫폼.
+
+---
+
+## 0. 방향 고정 메모
+
+지금 기준에서 가장 위험한 흔들림은 아래 둘이다.
+
+1. **엔진이 장기 사회 시뮬레이터가 아니라 “에이전트 앱”처럼 흘러가는 것**
+2. **제품 셸 개선이 코어 시뮬레이션 설명력보다 앞서가는 것**
+
+따라서 모든 우선순위는 아래 질문으로 다시 판단한다.
+
+> 이 작업이 `국가 단위 장기 시뮬레이션의 설명력 / 비교 가능성 / 재현성`을 올리는가?
+
+`예`면 상위 우선순위,
+`아니오`면 후순위다.
 
 ---
 
@@ -9,13 +25,16 @@
 
 | 영역 | 현재 상태 | 우선순위 | 문제 |
 |------|-----------|----------|------|
-| 챗봇 UI / 대화 엔진 | 전무 | 최상 | God View는 있으나 사용자가 페르소나/세계와 대화하는 인터페이스가 없음 |
-| 사용자 입력 → Thought/Worldview 업데이트 파이프라인 | 전무 | 최상 | 데이터 플라이휠의 핵심이 아직 설계·구현되지 않음 |
-| 사용자 데이터 수집·동의·익명화 체계 | 전무 | 최상 | 법적 리스크와 데이터 품질 리스크가 동시에 존재 |
-| Nemotron-Personas-Korea 실제 운영 연동 | seed adapter + Phase 9 계획 수준 | 높음 | HF streaming/sample script는 있으나 실데이터 연결 검증, 필드 매핑 품질, 운영 설정 검증이 부족 |
-| 페르소나 기반 초기 세계 자동 생성 | 부분 구현 | 중 | Prompt Genesis는 있으나 persona 분포가 t_max, role mix, nutrient scale 등에 충분히 반영되지 않음 |
-| 멀티 에이전트 대화 / 집단 상호작용 | 부분 구현 | 중 | interaction quality, stance summary, structured memory는 생겼지만 집단 대화·정책 토론 레이어는 아직 없음 |
-| 메모리 중요도/장기 신념 학습 | 부분 구현 | 중 | short/long memory, importance, reflection, belief update는 생겼지만 아직 heuristic 중심이며 학습형/정책형 모델은 아님 |
+| persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 초기 세계 구조를 충분히 결정하지 못함 |
+| group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 집단 stance/cohesion/tension drift가 아직 약함 |
+| session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
+| prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
+| policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
+| Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + 운영 전 단계 | 높음 | 필드 매핑 품질, 국가별 registry, 운영 검증이 더 필요 |
+| 챗봇 UI / 대화 엔진 | 전무 | 중 | 중요하지만 현재는 코어 시뮬레이션 설명력보다 후순위 |
+| 사용자 입력 → Thought/Worldview 업데이트 파이프라인 | 전무 | 중 | 데이터 플라이휠 핵심이지만 내부 엔진 플라이휠 이후가 더 적절 |
+| 사용자 데이터 수집·동의·익명화 체계 | 전무 | 중 | 제품화에는 필수지만 지금은 엔진 코어보다 후순위 |
+| 멀티 에이전트 자연어 토론 | 부분 구현 | 중 | 집단 상태가 먼저 안정화되어야 함 |
 
 ---
 
@@ -88,21 +107,20 @@
 
 ---
 
-## 3. 권장 구현 순서
+## 3. 현재 권장 구현 순서
 
 | 순서 | 작업 | 이유 |
 |------|------|------|
-| 1 | 내부 에이전트 상호작용 memory | 챗 UI 없이도 엔진의 본질인 agent↔agent 변화 루프가 생김 |
-| 2 | short/long memory + importance 구조 | 장기 Worldview가 단순 최근 로그가 아니라 중요 기억에 기대게 만듦 |
-| 3 | interaction quality + structured behavior log | 진짜 cluster/이념 형성을 판정하고 나중 분석·ML에 재사용 가능 |
-| 4 | Prompt Engineering 모듈화 | Thought/Worldview 프롬프트 복잡도 증가에 대비 |
-| 5 | simulation config version 관리 | 실험 재현성과 what-if 비교 기반 확보 |
-| 6 | persona-aware Genesis | 단순 seed를 넘어 세계 생성 자체를 dataset 기반화 |
-| 7 | Nemotron 실제 샘플 검증 + field mapping | persona seed의 품질을 현실적으로 확인 |
-| 8 | ChatPanel + `POST /worlds/{id}/chat` | 엔진 내부 루프 위에 사용자 상호작용을 얹음 |
-| 9 | 사용자 발화 → memory/event 변환 | 대화가 시뮬레이션 상태를 바꾸는 연결 |
-| 10 | consent/anonymization 기본 모델 | 사용자 데이터 플라이휠 전에 법적 리스크 차단 |
-| 11 | group conversation | 멀티 에이전트 제품 가치를 강화 |
+| 1 | persona-aware Genesis | 국가 단위 사회의 초기 조건 품질을 끌어올림 |
+| 2 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
+| 3 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
+| 4 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
+| 5 | prompt/provider/dataset provenance 저장 | 예측 결과의 재현성과 감사 가능성 확보 |
+| 6 | Nemotron 및 다국가 registry 운영 검증 | 데이터 레이어를 제품화 가능한 수준으로 올림 |
+| 7 | ChatPanel + 대화 엔진 | 코어 시뮬레이션 위에 자연어 인터페이스를 얹음 |
+| 8 | 사용자 발화 → memory/event 변환 | 대화가 실제 시뮬레이션 상태를 바꾸게 함 |
+| 9 | consent/anonymization | 사용자 데이터 플라이휠의 법적 안전성 확보 |
+| 10 | group conversation | 집단 정책 토론/협상 시뮬레이션 강화 |
 
 ---
 
@@ -134,11 +152,30 @@
 
 ---
 
-## 5. 현재 우선순위 메모
+## 5. 현재 핵심 체크리스트
 
-현재 개발 우선순위는 **채팅 인터페이스 이전의 엔진/에이전트 본질 구현**이다.  
-사용자 발화 플라이휠도 중요하지만, 그 전에 에이전트가 서로를 관찰하고, 관찰 결과가 memory에 남고, memory가 Thought/Worldview에 반영되는 내부 루프가 있어야 한다.
+### 5.1 반드시 먼저 완성할 것
 
-따라서 다음 개발 목표는 다음 한 문장으로 고정한다:
+- [ ] persona distribution이 Genesis 결과(`t_max`, role mix, nutrient scale, initial bias)에 반영된다
+- [ ] role/persona group 기준의 stance/cohesion/tension drift가 저장·조회된다
+- [ ] policy/event injection이 강도, 범위, 지속시간을 가진다
+- [ ] session에서 world 간 비교와 최근 world reopen이 가능하다
+- [ ] 결과물에 `provider / model / prompt_version / dataset_version` 메타가 남는다
 
-> 먼저 엔진 안에서 페르소나/역할 에이전트들이 서로를 관찰하고 memory·Thought·Worldview를 바꾸는 데이터 플라이휠을 만든 뒤, 그 위에 사용자 대화·동의·익명화 레이어를 얹는다.
+### 5.2 그 다음 완성할 것
+
+- [ ] Nemotron-KR 포함 국가별 dataset registry가 운영 가능한 구조가 된다
+- [ ] sector/policy pack을 데이터 레이어로 추가할 수 있다
+- [ ] report/export payload가 전문가 워크플로우에 맞게 정리된다
+
+### 5.3 아직 후순위로 둘 것
+
+- [ ] 챗봇형 대화 UX
+- [ ] 사용자 데이터 동의/익명화
+- [ ] 멀티 에이전트 자연어 토론
+
+---
+
+## 6. 현재 개발 목표 한 문장
+
+> 먼저 End4D를 `국가 단위 장기 사회 시뮬레이션의 초기 조건·집단 상태·정책 비교`를 신뢰성 있게 다루는 엔진으로 만들고, 그 위에 대화형 제품 레이어를 얹는다.
