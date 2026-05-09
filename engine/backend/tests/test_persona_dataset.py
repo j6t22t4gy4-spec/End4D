@@ -77,3 +77,50 @@ def test_initial_cells_use_persona_catalog():
     assert cells[0].memory == ["서울의 제조업 기술자"]
     assert len(cells[0].long_memory) == 1
     assert cells[0].behavior_log[0]["event_type"] == "persona_seed"
+
+
+def test_load_persona_seeds_from_local_pack_manifest(tmp_path, monkeypatch):
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    persona_file = packs_dir / "kr_persona.jsonl"
+    rows = [
+        {
+            "uuid": "pack-a",
+            "professional_persona": "서울의 데이터 분석가",
+            "occupation": "분석가",
+            "country": "KR",
+        }
+    ]
+    persona_file.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in rows),
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v1",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "2026.05",
+                "relative_path": "kr_persona.jsonl",
+                "license": "CC BY 4.0",
+                "source_url": "https://example.test/kr-pack",
+            }
+        ],
+    }
+    (packs_dir / "packs.json").write_text(
+        json.dumps(manifest, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ORGANIC4D_PERSONA_DATASET_DIR", raising=False)
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(packs_dir / "packs.json"))
+
+    personas = load_persona_seeds("KR", count=1, seed_text="정책")
+    assert len(personas) == 1
+    assert personas[0].role_label == "분석가"
+    assert persona_source_label("KR") == "local-pack:nemotron-kr-core@2026.05"
+    info = persona_source_info("KR")
+    assert info["dataset_id"] == "nemotron-kr-core"
+    assert info["license"] == "CC BY 4.0"

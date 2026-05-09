@@ -1,4 +1,6 @@
 """POST /worlds 프롬프트 계약."""
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -58,3 +60,47 @@ def test_world_persona_preview():
     assert data["source"]["country"] == "KR"
     assert data["source"]["source"] == "local:test"
     assert data["source"]["configured"] is True
+
+
+def test_world_persona_preview_uses_local_pack_source(tmp_path, monkeypatch):
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    persona_file = packs_dir / "kr_persona.jsonl"
+    persona_file.write_text(
+        json.dumps(
+            {
+                "uuid": "p1",
+                "professional_persona": "서울의 제조업 기술자",
+                "occupation": "기술자",
+                "country": "KR",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v1",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "2026.05",
+                "relative_path": "kr_persona.jsonl",
+                "license": "CC BY 4.0",
+            }
+        ],
+    }
+    manifest_path = packs_dir / "packs.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(manifest_path))
+
+    r = client.post("/worlds", json={"prompt": "한국 산업 정책 시뮬레이션"})
+    assert r.status_code == 200
+    world_id = r.json()["world_id"]
+    preview = client.get(f"/worlds/{world_id}/personas?limit=1")
+    assert preview.status_code == 200
+    data = preview.json()
+    assert data["source"]["source"] == "local-pack:nemotron-kr-core@2026.05"

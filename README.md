@@ -15,6 +15,7 @@
 | [ARCHITECTURE_CHECKLIST.md](docs/ARCHITECTURE_CHECKLIST.md) | 코드 작성 시 아키텍처 본질 체크리스트 |
 | [DEVELOPMENT_GAPS.md](docs/DEVELOPMENT_GAPS.md) | 핵심 결손, 리스크, 다음 개발 우선순위 |
 | [CODE_REFERENCE.md](docs/CODE_REFERENCE.md) | 파일별 코드 역할 설명 |
+| [PRODUCT_STRATEGY.md](docs/PRODUCT_STRATEGY.md) | 로컬 실행 + 클라우드 데이터 + 다국가 제품 전략 |
 | [SKILLS.md](docs/SKILLS.md) | 개발에 필요한 스킬 목록 |
 
 ## Docker (Phase 8)
@@ -22,6 +23,14 @@
 - **개발**: 루트에서 `docker compose up --build` — API `http://localhost:8000`, God View `http://localhost:3000`.
 - **프로덕션 이미지**: `docker compose -f docker-compose.prod.yml up --build`  
   프론트 빌드 시 `NEXT_PUBLIC_API_URL`을 브라우저에서 접근 가능한 API URL로 지정 (예: `http://localhost:8000`).
+
+## Local App Launch
+
+- **한 번에 실행**: 루트에서 `engine/backend/.venv/bin/python scripts/launch_local_end4d.py`
+- **macOS 더블클릭 실행**: [Launch_End4D.command](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/Launch_End4D.command)
+- 런처는 백엔드와 프론트를 함께 띄우고, `http://127.0.0.1:3000`이 준비될 때까지 기다린다.
+- 프론트 빌드가 있으면 `start`, 없으면 자동으로 `dev` 모드로 실행한다.
+- 현재 로컬 런타임 상태와 설치된 데이터 팩은 `GET /runtime/local-status`에서 확인할 수 있다.
 
 ## Persona Dataset Seed
 
@@ -33,6 +42,7 @@
 - world/snapshot/memory는 기본 `disk` backend로 JSON 영속화되며, `GET /worlds/{world_id}/state`, `POST /worlds/{world_id}/restore`로 what-if 복원/fork가 가능하다.
 - 메모리는 레거시 문자열 외에 `short_memory`, `long_memory`, `behavior_log`로 구조화되며, Thought/Worldview는 전용 prompt engineering 모듈을 통해 이를 반영한다.
 - 에이전트 집단 상태는 `GET /worlds/{world_id}/agents/summary`, `GET /worlds/{world_id}/agents/stance-summary`에서 cohesion/tension/stance까지 확인할 수 있다.
+- 로컬 실행 엔진은 설치된 데이터 팩 매니페스트를 읽을 수 있고, `GET /runtime/local-status`에서 현재 런타임 프로필과 로컬 pack 상태를 확인할 수 있다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
 ## 라이선스

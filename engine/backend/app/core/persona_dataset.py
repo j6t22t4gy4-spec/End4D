@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.core.data_packs import resolve_country_pack_info, resolve_country_pack_path
+
 
 COUNTRY_ALIASES = {
     "kr": "KR",
@@ -103,6 +105,10 @@ def configured_persona_path(country: str) -> Optional[Path]:
     if specific:
         return Path(specific)
 
+    pack_path = resolve_country_pack_path(code, kind="persona")
+    if pack_path is not None and pack_path.exists():
+        return pack_path
+
     base_dir = os.getenv("ORGANIC4D_PERSONA_DATASET_DIR", "").strip()
     if not base_dir or not code:
         return None
@@ -121,6 +127,9 @@ def configured_hf_dataset(country: str) -> str:
 def persona_source_label(country: str) -> str:
     path = configured_persona_path(country)
     if path is not None and path.exists():
+        pack = resolve_country_pack_info(normalize_country(country), kind="persona")
+        if pack is not None and str(pack.get("path") or "") == str(path):
+            return f"local-pack:{pack['pack_id']}@{pack['version']}"
         return f"local:{path}"
     hf_dataset = configured_hf_dataset(country)
     if hf_dataset:
@@ -135,6 +144,19 @@ def persona_source_info(country: str) -> dict:
     hf_dataset = configured_hf_dataset(code)
 
     if path is not None and path.exists():
+        pack = resolve_country_pack_info(code, kind="persona")
+        if pack is not None and str(pack.get("path") or "") == str(path):
+            return {
+                "country": code,
+                "source": f"local-pack:{pack['pack_id']}@{pack['version']}",
+                "dataset_id": str(pack.get("pack_id") or ""),
+                "path": str(path),
+                "license": str(pack.get("license") or ""),
+                "url": str(pack.get("source_url") or ""),
+                "attribution_required": bool(pack.get("license")),
+                "citation": "",
+                "configured": True,
+            }
         return {
             "country": code,
             "source": f"local:{path}",
@@ -200,6 +222,21 @@ def persona_source_info_from_label(country: str, source: str, configured: bool) 
             "license": "",
             "url": "",
             "attribution_required": False,
+            "citation": "",
+            "configured": configured,
+        }
+    if source.startswith("local-pack:"):
+        pack = resolve_country_pack_info(code, kind="persona") or {}
+        pack_id_version = source[len("local-pack:") :]
+        pack_id = pack_id_version.split("@", 1)[0]
+        return {
+            "country": code,
+            "source": source,
+            "dataset_id": pack_id,
+            "path": str(pack.get("path") or ""),
+            "license": str(pack.get("license") or ""),
+            "url": str(pack.get("source_url") or ""),
+            "attribution_required": bool(pack.get("license")),
             "citation": "",
             "configured": configured,
         }

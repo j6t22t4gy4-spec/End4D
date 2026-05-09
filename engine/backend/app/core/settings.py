@@ -46,6 +46,19 @@ def get_state_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "worlds"
 
 
+def get_data_cache_dir() -> Path:
+    """Local cache directory for cloud-delivered data packs."""
+    raw = os.getenv("ORGANIC4D_DATA_CACHE_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parents[2] / "data" / "packs"
+
+
+def get_runtime_profile() -> str:
+    """Human-readable runtime profile label for local engine packaging."""
+    return os.getenv("ORGANIC4D_RUNTIME_PROFILE", "local-pro").strip() or "local-pro"
+
+
 def get_cors_origins() -> list[str]:
     """브라우저 CORS 허용 출처. 기본 localhost + ORGANIC4D_CORS_ORIGINS(쉼표) 추가."""
     defaults = [

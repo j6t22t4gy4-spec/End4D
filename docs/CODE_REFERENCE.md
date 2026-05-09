@@ -29,6 +29,7 @@
 | **memory_store.py** | **구조화 메모리 관리기**. short vs long memory, behavior log, importance 기반 승격, 레거시 `memory` 문자열 뷰 동기화. |
 | **memory_reflection.py** | **메모리 반성 요약기**. social observation, alignment, recurring role을 압축 요약해 Thought/Worldview 프롬프트 품질을 높임. |
 | **config_versions.py** | **시뮬레이션 설정 버전 관리**. world 생성 파라미터 + 엔진 옵션을 구조화하고 stable hash `config_version`을 계산. |
+| **data_packs.py** | **로컬 데이터 팩 매니페스트**. 클라우드에서 내려받은 국가별 pack의 로컬 캐시 상태와 경로를 읽고 runtime/profile 정보를 제공. |
 | **persona_dataset.py** | **국가별 페르소나 데이터셋 어댑터**. JSONL/JSON/CSV 샘플 또는 선택적 Hugging Face streaming dataset을 `PersonaSeed`로 변환해 Genesis 초기 세포의 역할·메모리·페르소나 필드에 주입. |
 | **serialization.py** | **직렬화 유틸**. Cell/World/Snapshot를 JSON 저장 가능한 dict로 변환하고 복원. |
 | **persistence.py** | **파일 영속화 브리지**. `DiskWorldPersistence`가 world/snapshot/memory를 world 단위 JSON 파일로 저장·로드. |
@@ -69,6 +70,7 @@
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
 | **api/agents.py** | **에이전트 그룹 관측 API**. GET /worlds/{id}/agents/summary + `/agents/stance-summary` — role/persona 그룹별 에너지·감정·interaction quality·stance/cohesion 집계. |
+| **api/runtime.py** | **로컬 런타임 상태 API**. GET `/runtime/local-status` — runtime profile, local state dir, installed data packs를 반환. |
 | **api/state.py** | **상태 export/restore API**. GET /worlds/{id}/state, POST /worlds/{id}/restore — 중간 snapshot 복원·fork what-if 실행. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **api/inject.py** | **God View 주입 (Phase 7.1, 7.3)**. POST /worlds/{id}/inject — 스냅샷 수정, `clear_after`, 재실행. |
@@ -82,6 +84,8 @@
 | **run_simulation.py** | **커맨드라인 시뮬레이션**. `--t-max`, `--cells`, `--world-id` 옵션. LangGraph invoke → t=0..t_max 실행, 스냅샷 저장, 결과 출력. |
 | **sample_personas.py** | **Hugging Face persona 샘플링**. 대용량 persona dataset을 deterministic JSONL 샘플로 저장해 운영 환경에서 빠르게 사용. |
 | **benchmark_simulation.py** | **엔진 성능 계측**. 세포 수·스텝별 실행 시간과 throughput을 출력해 최적화 회귀를 확인. |
+| **/scripts/launch_local_end4d.py** | **로컬 앱 런처**. 백엔드와 프론트를 한 번에 띄우고 readiness를 기다려 End4D를 앱처럼 실행. |
+| **/Launch_End4D.command** | **macOS 더블클릭 런처**. `launch_local_end4d.py`를 호출해 로컬 런타임을 시작. |
 
 ### 1.7 테스트 (tests/)
 
@@ -97,6 +101,7 @@
 | **test_world_genesis.py** | **Genesis 스텁**. 휴리스틱 `propose_world_from_prompt`. |
 | **test_persona_dataset.py** | **국가별 페르소나 seed**. JSONL adapter, 국가 추론, 초기 세포 persona 주입 검증. |
 | **test_worlds_api.py** | **POST /worlds** 프롬프트 계약. |
+| **test_runtime_api.py** | **로컬 런타임 상태 API 테스트**. 설치된 data pack manifest가 `/runtime/local-status`에 반영되는지 검증. |
 | **conftest.py** | pytest 기본 `ORGANIC4D_EMBED_BACKEND=stub` 설정. |
 | **__init__.py** | tests 패키지 진입점. |
 

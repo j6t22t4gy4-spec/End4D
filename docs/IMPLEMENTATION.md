@@ -192,6 +192,19 @@ docker compose up -d
 # 접속: http://localhost:3000
 ```
 
+### 3.2a 로컬 앱처럼 실행
+
+```bash
+cd vitaswarm4D
+engine/backend/.venv/bin/python scripts/launch_local_end4d.py
+```
+
+macOS에서는 루트의 `Launch_End4D.command`를 더블클릭해도 된다.
+
+- 백엔드와 프론트를 함께 기동한다.
+- 프론트 빌드 결과가 있으면 `start`, 없으면 `dev` 모드로 자동 선택한다.
+- `GET /runtime/local-status`로 현재 로컬 runtime profile과 설치된 데이터 팩을 확인할 수 있다.
+
 ### 3.3 시뮬레이션 실행 흐름
 
 ```
