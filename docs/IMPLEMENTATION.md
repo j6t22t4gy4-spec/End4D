@@ -227,6 +227,24 @@ docker compose up -d
 | `ORGANIC4D_PERSONA_MAX_SCAN` | `20000` | HF/대용량 데이터셋에서 초기 persona 샘플링 시 최대 스캔 행 수. |
 | `NEXT_PUBLIC_MAX_VISUAL_CELLS` | `8192` | God View InstancedMesh 상한; 초과 시 균등 샘플링(Phase 8). |
 
+### 3.5a Persona Dataset 준비
+
+```bash
+# Hugging Face에서 직접 streaming 사용
+export ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea
+
+# 또는 대용량 원본에서 작은 로컬 샘플 생성 후 사용
+cd engine/backend
+python scripts/sample_personas.py \
+  --dataset nvidia/Nemotron-Personas-Korea \
+  --country KR \
+  --output data/personas/kr.jsonl \
+  --count 1000
+export ORGANIC4D_PERSONA_DATASET_DIR=$PWD/data/personas
+```
+
+`GET /worlds/{world_id}/personas`로 world에 연결된 persona seed와 source/attribution 메타데이터를 확인할 수 있다.
+
 ### 3.6a 프론트 404 (God View가 안 열릴 때)
 
 - 증상: 브라우저에서 Next 기본 **「404 This page could not be found」**, 특히 `.next`가 깨졌거나 **EMFILE (too many open files)** 로 감시가 실패한 뒤.

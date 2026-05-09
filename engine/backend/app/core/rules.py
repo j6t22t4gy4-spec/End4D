@@ -93,16 +93,23 @@ def apply_death(
     if not dead:
         return alive
 
+    spatial_index = SpatialHashGrid(alive, cell_size=FUSION_DISTANCE_THRESHOLD)
     for dead_cell in dead:
         if not alive:
             break
-        dists = [(distance_4d(dead_cell, a), a) for a in alive]
+        candidates = spatial_index.nearest_candidates(
+            dead_cell,
+            k=min(3, len(alive)),
+            initial_radius=FUSION_DISTANCE_THRESHOLD,
+        )
+        dists = [(distance_4d(dead_cell, a), a) for a in candidates]
         dists.sort(key=lambda x: x[0])
         k = min(3, len(alive))
         share = nutrient_to_neighbors / k
         for _, neighbor in dists[:k]:
             idx = next(i for i, c in enumerate(alive) if c.cell_id == neighbor.cell_id)
-            alive[idx] = neighbor.copy(energy=neighbor.energy + share, cell_id=neighbor.cell_id)
+            current = alive[idx]
+            alive[idx] = current.copy(energy=current.energy + share, cell_id=current.cell_id)
 
     return alive
 

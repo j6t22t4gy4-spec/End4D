@@ -4,6 +4,8 @@ import json
 from app.core.persona_dataset import (
     infer_country_from_prompt,
     load_persona_seeds,
+    persona_source_info,
+    persona_source_label,
 )
 from app.graph.time_flow import _create_initial_cells
 
@@ -40,6 +42,19 @@ def test_load_persona_seeds_from_jsonl(tmp_path, monkeypatch):
     assert len(personas) == 2
     assert {p.role_label for p in personas} == {"기술자", "자영업자"}
     assert all(p.persona_text for p in personas)
+    assert persona_source_label("KR").startswith("local:")
+    info = persona_source_info("KR")
+    assert info["configured"] is True
+    assert info["country"] == "KR"
+
+
+def test_hf_source_info_for_known_korea_dataset(monkeypatch):
+    monkeypatch.delenv("ORGANIC4D_PERSONA_DATASET_DIR", raising=False)
+    monkeypatch.setenv("ORGANIC4D_PERSONA_HF_DATASET_KR", "nvidia/Nemotron-Personas-Korea")
+    info = persona_source_info("KR")
+    assert info["source"] == "hf:nvidia/Nemotron-Personas-Korea"
+    assert info["license"] == "CC BY 4.0"
+    assert info["attribution_required"] is True
 
 
 def test_initial_cells_use_persona_catalog():

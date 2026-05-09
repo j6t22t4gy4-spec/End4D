@@ -53,6 +53,34 @@ export type WorldMeta = {
   persona_count?: number;
 };
 
+export type PersonaPreviewItem = {
+  persona_id: string;
+  persona_text: string;
+  role_key: string;
+  role_label: string;
+  country: string;
+  attrs: Record<string, unknown>;
+};
+
+export type PersonaSource = {
+  country: string;
+  source: string;
+  dataset_id: string;
+  path: string;
+  license: string;
+  url: string;
+  attribution_required: boolean;
+  citation: string;
+  configured: boolean;
+};
+
+export type PersonaPreviewResponse = {
+  world_id: string;
+  persona_count: number;
+  source: PersonaSource;
+  items: PersonaPreviewItem[];
+};
+
 export type CreateWorldResult = {
   world_id: string;
   t_max: number;
@@ -80,6 +108,18 @@ export async function createWorld(body: { prompt: string }): Promise<CreateWorld
 export async function getWorld(worldId: string): Promise<WorldMeta> {
   const res = await fetch(`${API_BASE}/worlds/${worldId}`);
   if (!res.ok) throw new Error(`getWorld: ${res.status}`);
+  return res.json();
+}
+
+export async function getWorldPersonas(
+  worldId: string,
+  limit = 20
+): Promise<PersonaPreviewResponse> {
+  const q = new URLSearchParams({ limit: String(limit) });
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/personas?${q}`
+  );
+  if (!res.ok) throw new Error(`getWorldPersonas: ${res.status}`);
   return res.json();
 }
 

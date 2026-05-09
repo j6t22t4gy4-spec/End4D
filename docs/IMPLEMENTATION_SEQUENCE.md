@@ -168,7 +168,7 @@ Phase 8: 최적화·배포
 
 ## Phase 8: 최적화·배포
 
-> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계, 백엔드 `SpatialHashGrid` 기반 Emotion·Fusion 인접 검색 pruning. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
+> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계, 백엔드 `SpatialHashGrid` 기반 Emotion·Death·Fusion 인접 검색 pruning, `benchmark_simulation.py`. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
 
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
@@ -178,6 +178,7 @@ Phase 8: 최적화·배포
 | | LOD, 시각화 샘플링, setColorAt(에너지 색상) — 4.3 패턴은 Phase 4에서 이미 적용 | | |
 | 8.4 | **델타 저장 (선택)** | ARCHITECTURE 1.2 | 2.3 |
 | 8.5 | **Celery 워커 (선택)** | 장기 시뮬 | 3.3 |
+| 8.6 | **성능 벤치마크** | `scripts/benchmark_simulation.py` | 2.1 |
 
 ---
 
@@ -219,7 +220,7 @@ Phase 8: 최적화·배포
 |------|------|--------|
 | 9.1 | Genesis **실 LLM API** 연동 | `world_genesis` → JSON 스키마 고정, Ollama/OpenAI 등 |
 | 9.2 | 국가별 persona dataset seed | `persona_dataset.py`, `persona_*` cell fields, `ORGANIC4D_PERSONA_*` 환경 변수 |
-| 9.3 | NVIDIA Nemotron-Personas-Korea 등 국가별 데이터셋 연결 | `ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea`, 타 국가 dataset 확장 |
+| 9.3 | NVIDIA Nemotron-Personas-Korea 등 국가별 데이터셋 연결 | `ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea`, `sample_personas.py`, 타 국가 dataset 확장 |
 | 9.4 | 역할별 Emotion 가중·규칙 | `emotion.py` 역할 키/페르소나 속성 분기 |
 | 9.5 | God View 역할·페르소나 레이블/필터 시각화 | 색/필터로 역할·국가·페르소나 구분 |
 

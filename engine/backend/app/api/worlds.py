@@ -5,12 +5,18 @@ GET /worlds/{id} — 월드 메타정보 조회
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, conint
 
-from app.core.persona_dataset import load_persona_seeds, personas_to_dicts
+from app.core.persona_dataset import (
+    load_persona_seeds,
+    persona_source_info,
+    persona_source_info_from_label,
+    persona_source_label,
+    personas_to_dicts,
+)
 from app.core.store import world_store
 from app.core.world_genesis import propose_world_from_prompt
 
@@ -60,6 +66,34 @@ class WorldResponse(BaseModel):
     persona_count: int = 0
 
 
+class PersonaPreviewItem(BaseModel):
+    persona_id: str
+    persona_text: str
+    role_key: str = "agent"
+    role_label: str = "agent"
+    country: str = ""
+    attrs: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PersonaSourceResponse(BaseModel):
+    country: str
+    source: str
+    dataset_id: str = ""
+    path: str = ""
+    license: str = ""
+    url: str = ""
+    attribution_required: bool = False
+    citation: str = ""
+    configured: bool = False
+
+
+class PersonaPreviewResponse(BaseModel):
+    world_id: str
+    persona_count: int
+    source: PersonaSourceResponse
+    items: List[PersonaPreviewItem]
+
+
 @router.post("", response_model=CreateWorldResponse)
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
@@ -77,7 +111,7 @@ def create_world(req: CreateWorldRequest):
             if p.role_label and p.role_label not in persona_roles:
                 persona_roles.append(p.role_label)
         role_catalog = persona_roles[:8] or role_catalog
-    persona_source = plan.persona_source if persona_catalog else f"not_configured:{plan.persona_country}"
+    persona_source = persona_source_label(plan.persona_country) if persona_catalog else f"not_configured:{plan.persona_country}"
 
     world_id = world_store.create(
         t_max=plan.t_max,
@@ -127,4 +161,28 @@ def get_world(world_id: str):
         persona_country=str(entry.get("persona_country") or ""),
         persona_source=str(entry.get("persona_source") or ""),
         persona_count=len(entry.get("persona_catalog") or []),
+    )
+
+
+@router.get("/{world_id}/personas", response_model=PersonaPreviewResponse)
+def get_world_personas(
+    world_id: str,
+    limit: conint(ge=1, le=100) = 20,
+):
+    """Preview the persona seeds attached to a world."""
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+
+    catalog = list(entry.get("persona_catalog") or [])
+    country = str(entry.get("persona_country") or "")
+    source = str(entry.get("persona_source") or "")
+    items = [PersonaPreviewItem(**p) for p in catalog[: int(limit)]]
+    return PersonaPreviewResponse(
+        world_id=world_id,
+        persona_count=len(catalog),
+        source=PersonaSourceResponse(
+            **persona_source_info_from_label(country, source, configured=bool(catalog))
+        ),
+        items=items,
     )

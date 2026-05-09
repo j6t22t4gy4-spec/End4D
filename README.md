@@ -27,6 +27,8 @@
 - 국가별 페르소나 데이터셋을 초기 에이전트 seed로 사용할 수 있다.
 - 예: `ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea`
 - 로컬 샘플 파일도 가능: `ORGANIC4D_PERSONA_DATASET_DIR=/path/to/personas` 아래 `kr.jsonl`, `us.csv`, `jp.json` 등.
+- 대용량 HF 데이터셋은 `engine/backend/scripts/sample_personas.py`로 작은 JSONL 샘플을 먼저 만들 수 있다.
+- 생성된 world의 seed는 `GET /worlds/{world_id}/personas`에서 확인한다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
 ## 라이선스

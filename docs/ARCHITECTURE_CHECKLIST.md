@@ -83,7 +83,7 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 6.1 | 엔진 API: `POST /worlds`, `POST /worlds/{id}/run`, `POST /worlds/{id}/inject`, `GET /snapshots?t=` | 경로·메서드 변경 시 문서 동기화 | IMPLEMENTATION §0 |
-| 6.2 | 시각화용: `(x,y,z)`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`** 제공 | 스냅샷에서 역할·3계층 누락 | IMPLEMENTATION §0 |
+| 6.2 | 시각화용: `(x,y,z)`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`**, 선택적 `persona_*` 제공 | 스냅샷에서 역할·3계층·페르소나 seed 누락 | IMPLEMENTATION §0 |
 | 6.3 | WebSocket: t, 세포 수, 스냅샷 델타 실시간 전송 | 폴링만 사용·스트리밍 없음 | IMPLEMENTATION_SEQUENCE 3.4 |
 | 6.4 | `POST /worlds` 본문은 **`{ "prompt": "..." }`** (Genesis). 레거시 수치 폼은 제품 UI에 두지 않음 | API·UI가 초기 개수·t_max를 사용자 선택에 의존 | CONCEPT §5.3 |
 

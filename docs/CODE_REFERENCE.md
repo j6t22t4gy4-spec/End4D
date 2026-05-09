@@ -56,7 +56,7 @@
 | 파일 | 역할 |
 |------|------|
 | **main.py** | **FastAPI 앱 뼈대**. `/health`, 라우터 모음. **CORS** — `get_cors_origins()` + `ORGANIC4D_CORS_ORIGINS`. |
-| **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타). |
+| **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타), GET /worlds/{id}/personas (persona seed preview·attribution). |
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
@@ -69,6 +69,8 @@
 | 파일 | 역할 |
 |------|------|
 | **run_simulation.py** | **커맨드라인 시뮬레이션**. `--t-max`, `--cells`, `--world-id` 옵션. LangGraph invoke → t=0..t_max 실행, 스냅샷 저장, 결과 출력. |
+| **sample_personas.py** | **Hugging Face persona 샘플링**. 대용량 persona dataset을 deterministic JSONL 샘플로 저장해 운영 환경에서 빠르게 사용. |
+| **benchmark_simulation.py** | **엔진 성능 계측**. 세포 수·스텝별 실행 시간과 throughput을 출력해 최적화 회귀를 확인. |
 
 ### 1.7 테스트 (tests/)
 
@@ -119,7 +121,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline/timeline summary + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
+| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline/timeline summary/persona preview + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
 
 ### 2.5 설정
 

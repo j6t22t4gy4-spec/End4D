@@ -62,6 +62,15 @@ ATTR_FIELDS = (
     "career_goals_and_ambitions",
 )
 
+KNOWN_HF_DATASETS = {
+    "nvidia/Nemotron-Personas-Korea": {
+        "license": "CC BY 4.0",
+        "url": "https://huggingface.co/datasets/nvidia/Nemotron-Personas-Korea",
+        "attribution_required": True,
+        "citation": "Nemotron-Personas-Korea: Synthetic Personas Aligned to Real-World Distributions for Korea, NVIDIA Corporation, 2026.",
+    }
+}
+
 
 @dataclass
 class PersonaSeed:
@@ -107,6 +116,94 @@ def configured_persona_path(country: str) -> Optional[Path]:
 def configured_hf_dataset(country: str) -> str:
     code = normalize_country(country)
     return os.getenv(f"ORGANIC4D_PERSONA_HF_DATASET_{code}", "").strip()
+
+
+def persona_source_label(country: str) -> str:
+    path = configured_persona_path(country)
+    if path is not None and path.exists():
+        return f"local:{path}"
+    hf_dataset = configured_hf_dataset(country)
+    if hf_dataset:
+        return f"hf:{hf_dataset}"
+    return f"not_configured:{normalize_country(country)}"
+
+
+def persona_source_info(country: str) -> dict:
+    """Return configured source and attribution metadata for a country."""
+    code = normalize_country(country)
+    path = configured_persona_path(code)
+    hf_dataset = configured_hf_dataset(code)
+
+    if path is not None and path.exists():
+        return {
+            "country": code,
+            "source": f"local:{path}",
+            "dataset_id": "",
+            "path": str(path),
+            "license": "",
+            "url": "",
+            "attribution_required": False,
+            "citation": "",
+            "configured": True,
+        }
+
+    if hf_dataset:
+        meta = KNOWN_HF_DATASETS.get(hf_dataset, {})
+        return {
+            "country": code,
+            "source": f"hf:{hf_dataset}",
+            "dataset_id": hf_dataset,
+            "path": "",
+            "license": str(meta.get("license", "")),
+            "url": str(meta.get("url", "")),
+            "attribution_required": bool(meta.get("attribution_required", False)),
+            "citation": str(meta.get("citation", "")),
+            "configured": True,
+        }
+
+    return {
+        "country": code,
+        "source": f"not_configured:{code}",
+        "dataset_id": "",
+        "path": "",
+        "license": "",
+        "url": "",
+        "attribution_required": False,
+        "citation": "",
+        "configured": False,
+    }
+
+
+def persona_source_info_from_label(country: str, source: str, configured: bool) -> dict:
+    """Build source metadata from the source stored on a world."""
+    code = normalize_country(country)
+    if source.startswith("hf:"):
+        dataset_id = source[3:]
+        meta = KNOWN_HF_DATASETS.get(dataset_id, {})
+        return {
+            "country": code,
+            "source": source,
+            "dataset_id": dataset_id,
+            "path": "",
+            "license": str(meta.get("license", "")),
+            "url": str(meta.get("url", "")),
+            "attribution_required": bool(meta.get("attribution_required", False)),
+            "citation": str(meta.get("citation", "")),
+            "configured": configured,
+        }
+    if source.startswith("local:"):
+        return {
+            "country": code,
+            "source": source,
+            "dataset_id": "",
+            "path": source[6:],
+            "license": "",
+            "url": "",
+            "attribution_required": False,
+            "citation": "",
+            "configured": configured,
+        }
+    return persona_source_info(code)
 
 
 def _max_scan_rows() -> int:

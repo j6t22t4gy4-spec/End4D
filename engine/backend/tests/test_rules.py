@@ -95,6 +95,19 @@ class TestDeath:
         assert len(out) == 1
         assert out[0].energy > 10.0
 
+    def test_death_distributes_to_three_nearest_with_grid(self):
+        near1 = _make_cell(energy=10.0, x=0, y=0, z=0)
+        near2 = _make_cell(energy=10.0, x=1, y=0, z=0)
+        near3 = _make_cell(energy=10.0, x=2, y=0, z=0)
+        far = _make_cell(energy=10.0, x=100, y=0, z=0)
+        dead = _make_cell(energy=0.0, x=0.5, y=0, z=0)
+        out = apply_death([far, near1, near2, near3, dead], nutrient_to_neighbors=9.0)
+        by_id = {c.cell_id: c for c in out}
+        assert by_id[near1.cell_id].energy == 13.0
+        assert by_id[near2.cell_id].energy == 13.0
+        assert by_id[near3.cell_id].energy == 13.0
+        assert by_id[far.cell_id].energy == 10.0
+
 
 class TestFusion:
     """융합: 가까운 거리 + Thought 0.7+ + Worldview 호환."""
