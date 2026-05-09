@@ -36,6 +36,13 @@ def generate_reasoning_texts(prompts: Iterable[str], *, task: str) -> List[str]:
 
 
 def _system_prompt(task: str) -> str:
+    if task == "genesis":
+        return (
+            "You design initial conditions for a long-horizon societal simulation. "
+            "Return compact JSON only with keys: "
+            "t_max, initial_cell_count, role_catalog, rationale, "
+            "t_step_semantic, t_step_unit, nutrient_per_step, persona_country, persona_source."
+        )
     if task == "worldview":
         return (
             "You summarize long-term beliefs, social alignment, and durable priorities. "

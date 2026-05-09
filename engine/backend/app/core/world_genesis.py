@@ -6,11 +6,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from typing import List
 
 from app.core.persona_dataset import infer_country_from_prompt
+from app.core.settings import get_llm_chat_enabled
+from app.llm.chat_runtime import generate_reasoning_texts
+from app.llm.prompt_registry import get_prompt_version
 
 
 # 기본 역할 풀 — 시나리오가 구체적이지 않을 때
@@ -99,6 +103,16 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
     if not text:
         text = "일반 복잡계 시나리오"
 
+    heuristic = _heuristic_plan(text)
+    if not get_llm_chat_enabled():
+        return heuristic
+
+    llm_plan = _llm_plan(text, heuristic)
+    return llm_plan or heuristic
+
+
+def _heuristic_plan(text: str) -> GenesisPlan:
+
     # 시간 범위: 질문 길이·키워드로 거칠게 스케일
     t_max = 80.0
     if len(text) > 200:
@@ -148,3 +162,65 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
         persona_country=persona_country,
         persona_source=persona_source,
     )
+
+
+def _llm_plan(text: str, fallback: GenesisPlan) -> GenesisPlan | None:
+    prompt = (
+        f"prompt_version={get_prompt_version('genesis')}\n"
+        f"user_prompt={text}\n"
+        "Heuristic baseline:\n"
+        f"{json.dumps(_plan_to_dict(fallback), ensure_ascii=False)}\n"
+        "Return JSON only."
+    )
+    out = generate_reasoning_texts([prompt], task="genesis")[0]
+    payload = _extract_json_object(out)
+    if payload is None:
+        return None
+    try:
+        role_catalog = [str(x).strip() for x in payload.get("role_catalog") or [] if str(x).strip()]
+        if len(role_catalog) < 3:
+            role_catalog = list(fallback.role_catalog)
+        return GenesisPlan(
+            t_max=float(payload.get("t_max", fallback.t_max)),
+            initial_cell_count=max(6, min(64, int(payload.get("initial_cell_count", fallback.initial_cell_count)))),
+            role_catalog=role_catalog[:8],
+            rationale=str(payload.get("rationale") or fallback.rationale),
+            t_step_semantic=str(payload.get("t_step_semantic") or fallback.t_step_semantic),
+            t_step_unit=str(payload.get("t_step_unit") or fallback.t_step_unit),
+            nutrient_per_step=max(0.01, float(payload.get("nutrient_per_step", fallback.nutrient_per_step))),
+            persona_country=str(payload.get("persona_country") or fallback.persona_country),
+            persona_source=str(payload.get("persona_source") or fallback.persona_source),
+        )
+    except Exception:
+        return None
+
+
+def _extract_json_object(text: str) -> dict | None:
+    raw = text.strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(raw[start : end + 1])
+            except Exception:
+                return None
+    return None
+
+
+def _plan_to_dict(plan: GenesisPlan) -> dict:
+    return {
+        "t_max": plan.t_max,
+        "initial_cell_count": plan.initial_cell_count,
+        "role_catalog": list(plan.role_catalog),
+        "rationale": plan.rationale,
+        "t_step_semantic": plan.t_step_semantic,
+        "t_step_unit": plan.t_step_unit,
+        "nutrient_per_step": plan.nutrient_per_step,
+        "persona_country": plan.persona_country,
+        "persona_source": plan.persona_source,
+    }

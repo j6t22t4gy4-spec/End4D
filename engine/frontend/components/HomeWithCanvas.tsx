@@ -30,6 +30,7 @@ export default function HomeWithCanvas() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<WorkbenchView>("overview");
+  const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,11 +102,15 @@ export default function HomeWithCanvas() {
                 sessionsError={sessionsError}
                 apiBase={getApiBase()}
                 onOpenView={setActiveView}
+                onOpenWorld={(worldId) => {
+                  setSelectedWorldId(worldId);
+                  setActiveView("simulation");
+                }}
               />
             ) : null}
 
             {activeView === "simulation" ? (
-              <GodView />
+              <GodView initialWorldId={selectedWorldId} />
             ) : null}
 
             {activeView === "data-packs" ? (

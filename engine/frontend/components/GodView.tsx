@@ -11,6 +11,7 @@ import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
   createWorld,
+  getWorld,
   listSnapshotTimes,
   getSnapshotAtT,
   cellsToInstanceBuffers,
@@ -22,7 +23,11 @@ import { useSimulation } from "@/hooks/useSimulation";
 const PROMPT_PLACEHOLDER =
   "예: 향후 5년간 금리 인상과 주거 보조금이 동시에 시행되면, 시장·가계·정책 주체들이 어떤 장기 신념 변화를 보일까?";
 
-export default function GodView() {
+export default function GodView({
+  initialWorldId = null,
+}: {
+  initialWorldId?: string | null;
+}) {
   const [genesisPrompt, setGenesisPrompt] = useState("");
   const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -185,6 +190,27 @@ export default function GodView() {
   }, [availableKey, currentT, worldId]);
 
   const sliderDisabled = availableT.length === 0 || snapshotLoading;
+
+  useEffect(() => {
+    if (!initialWorldId) return;
+    let cancelled = false;
+    setActionError(null);
+    Promise.all([getWorld(initialWorldId), listSnapshotTimes(initialWorldId)])
+      .then(([meta, snapshots]) => {
+        if (cancelled) return;
+        setWorldId(meta.world_id);
+        setGenesisPrompt(meta.genesis_prompt ?? "");
+        setAvailableT(snapshots.available_t);
+        const lastT = snapshots.available_t[snapshots.available_t.length - 1] ?? 0;
+        setCurrentT(lastT);
+      })
+      .catch((e) => {
+        if (!cancelled) setActionError((e as Error).message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialWorldId]);
 
   return (
     <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">

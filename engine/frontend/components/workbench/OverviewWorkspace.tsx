@@ -11,6 +11,7 @@ type OverviewWorkspaceProps = {
   sessionsError: string | null;
   apiBase: string;
   onOpenView: (view: WorkbenchView) => void;
+  onOpenWorld: (worldId: string) => void;
 };
 
 export function OverviewWorkspace({
@@ -20,6 +21,7 @@ export function OverviewWorkspace({
   sessionsError,
   apiBase,
   onOpenView,
+  onOpenWorld,
 }: OverviewWorkspaceProps) {
   return (
     <div className="workspace-grid">
@@ -153,6 +155,15 @@ export function OverviewWorkspace({
                   <p className="mt-3 max-h-[4.5rem] overflow-hidden text-sm leading-6 text-slate-600">
                     {session.worlds[0].genesis_prompt}
                   </p>
+                ) : null}
+                {session.latest_world_id ? (
+                  <button
+                    type="button"
+                    className="mt-4 app-button app-button--secondary"
+                    onClick={() => onOpenWorld(session.latest_world_id)}
+                  >
+                    Open Latest World
+                  </button>
                 ) : null}
               </div>
             ))
