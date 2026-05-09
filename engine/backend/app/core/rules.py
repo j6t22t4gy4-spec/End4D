@@ -26,6 +26,14 @@ FUSION_WORLDVIEW_SIM_THRESHOLD = 0.5
 MUTATION_RATE = 0.05
 
 
+def _action_float(cell: Cell, key: str, default: float) -> float:
+    try:
+        value = float(cell.action_state.get(key, default))
+    except Exception:
+        return default
+    return max(0.0, min(1.0, value))
+
+
 def _mutate_vector(vec: np.ndarray, rate: float = MUTATION_RATE) -> np.ndarray:
     """벡터에 작은 랜덤 변이 적용 (돌연변이)."""
     out = vec.copy()
@@ -39,10 +47,15 @@ def apply_growth(
     nutrient_per_step: float = 1.0,
 ) -> List[Cell]:
     """성장: 영양분 흡수 → 에너지 증가 (CONCEPT §4)."""
-    return [
-        cell.copy(energy=cell.energy + nutrient_per_step)
-        for cell in cells
-    ]
+    out: List[Cell] = []
+    for cell in cells:
+        resource_bias = _action_float(cell, "resource_bias", 0.5)
+        risk_tolerance = _action_float(cell, "risk_tolerance", 0.5)
+        # Neutral action_state should preserve the original growth rule.
+        gain = nutrient_per_step * max(0.4, 0.7 + 0.6 * resource_bias)
+        upkeep = max(0.0, 0.35 * (risk_tolerance - 0.5))
+        out.append(cell.copy(energy=cell.energy + gain - upkeep))
+    return out
 
 
 def apply_division(
@@ -54,6 +67,12 @@ def apply_division(
     result: List[Cell] = []
     for cell in cells:
         if cell.energy <= energy_threshold:
+            result.append(cell)
+            continue
+
+        risk_tolerance = _action_float(cell, "risk_tolerance", 0.5)
+        local_threshold = energy_threshold * max(0.7, 1.08 - 0.32 * risk_tolerance)
+        if cell.energy <= local_threshold:
             result.append(cell)
             continue
 
@@ -149,8 +168,13 @@ def apply_fusion(
 
             thought_sim = cosine_similarity(c1.thought_vec, c2.thought_vec)
             worldview_sim = cosine_similarity(c1.worldview_vec, c2.worldview_vec)
+            coop_bias = (
+                _action_float(c1, "cooperation_bias", 0.5)
+                + _action_float(c2, "cooperation_bias", 0.5)
+            ) / 2.0
+            local_thought_threshold = max(0.52, thought_sim_threshold - 0.16 * (coop_bias - 0.5))
 
-            if thought_sim >= thought_sim_threshold and worldview_sim >= worldview_sim_threshold:
+            if thought_sim >= local_thought_threshold and worldview_sim >= worldview_sim_threshold:
                 if thought_sim > best_sim:
                     best_sim = thought_sim
                     best_j = j

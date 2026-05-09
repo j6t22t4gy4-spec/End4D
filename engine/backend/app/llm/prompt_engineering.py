@@ -5,6 +5,7 @@ import numpy as np
 
 from app.core.emotion import EMOTION_LABELS
 from app.core.memory_reflection import build_memory_reflection, build_worldview_reflection
+from app.llm.prompt_registry import get_prompt_version
 from app.models.cell import Cell
 
 
@@ -35,3 +36,28 @@ def build_worldview_prompt(cell: Cell) -> str:
     role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
     reflection = build_worldview_reflection(cell)
     return f"role={role}; persona={cell.persona_text[:240]}; {reflection}"
+
+
+def build_action_prompt(cell: Cell) -> str:
+    ev = cell.emotion_vec
+    dom = int(np.argmax(np.abs(ev))) if ev.size else 0
+    label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    reflection = build_memory_reflection(cell)
+    worldview = build_worldview_reflection(cell)
+    return (
+        f"prompt_version={get_prompt_version('action')}; "
+        f"role={role}; energy={cell.energy:.2f}; dominant_emotion={label}; "
+        f"persona={cell.persona_text[:220]}; recent_memory={reflection[:320]}; "
+        f"worldview={worldview[:320]}"
+    )
+
+
+def build_policy_prompt(cell: Cell, event_type: str, payload: dict) -> str:
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    worldview = build_worldview_reflection(cell)
+    return (
+        f"prompt_version={get_prompt_version('policy')}; "
+        f"role={role}; persona={cell.persona_text[:220]}; "
+        f"event_type={event_type}; payload={payload}; worldview={worldview[:320]}"
+    )

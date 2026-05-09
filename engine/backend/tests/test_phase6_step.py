@@ -25,6 +25,7 @@ def test_graph_run_preserves_vector_shapes_and_advances_t():
         assert isinstance(c.short_memory, list)
         assert isinstance(c.long_memory, list)
         assert isinstance(c.behavior_log, list)
+        assert isinstance(c.action_state, dict)
 
 
 def test_thought_refresh_at_interval_changes_vector():

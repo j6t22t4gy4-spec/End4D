@@ -24,6 +24,12 @@ const EVENT_OPTIONS: { value: string; label: string; defaultPayload: string }[] 
       label: "감정 스파이크 (emotion_spike)",
       defaultPayload: '{"index": 2, "delta": 0.4}',
     },
+    {
+      value: "policy_shift",
+      label: "정책 변화 해석 (policy_shift)",
+      defaultPayload:
+        '{"name":"housing subsidy reform","summary":"정부가 주거 보조금 구조를 개편한다","intensity":0.7,"target_roles":["규제자","시민","시장참여자"]}',
+    },
     { value: "noop", label: "변경 없음 (noop)", defaultPayload: "{}" },
   ];
 

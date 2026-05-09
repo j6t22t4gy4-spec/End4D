@@ -34,6 +34,7 @@ class Cell:
     short_memory: List[Dict[str, Any]] = field(default_factory=list)
     long_memory: List[Dict[str, Any]] = field(default_factory=list)
     behavior_log: List[Dict[str, Any]] = field(default_factory=list)
+    action_state: Dict[str, Any] = field(default_factory=dict)
 
     # 3계층 감정·생각·세계관 (Phase 1: 고정/임의 값)
     emotion_vec: np.ndarray = field(default_factory=lambda: np.zeros(8))
@@ -74,6 +75,7 @@ class Cell:
             "short_memory": [dict(item) for item in self.short_memory],
             "long_memory": [dict(item) for item in self.long_memory],
             "behavior_log": [dict(item) for item in self.behavior_log],
+            "action_state": dict(self.action_state),
             "emotion_vec": self.emotion_vec.copy(),
             "thought_vec": self.thought_vec.copy(),
             "worldview_vec": self.worldview_vec.copy(),

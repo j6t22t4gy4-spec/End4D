@@ -39,6 +39,7 @@ def _cell_to_dict(c: Cell) -> dict:
         "short_memory": [dict(item) for item in c.short_memory],
         "long_memory": [dict(item) for item in c.long_memory],
         "behavior_log": [dict(item) for item in c.behavior_log],
+        "action_state": dict(c.action_state),
     }
 
 
@@ -63,6 +64,7 @@ class CellResponse(BaseModel):
     short_memory: List[Dict[str, Any]] = Field(default_factory=list)
     long_memory: List[Dict[str, Any]] = Field(default_factory=list)
     behavior_log: List[Dict[str, Any]] = Field(default_factory=list)
+    action_state: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SnapshotResponse(BaseModel):

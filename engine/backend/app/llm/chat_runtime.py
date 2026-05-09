@@ -43,6 +43,18 @@ def _system_prompt(task: str) -> str:
             "t_max, initial_cell_count, role_catalog, rationale, "
             "t_step_semantic, t_step_unit, nutrient_per_step, persona_country, persona_source."
         )
+    if task == "action":
+        return (
+            "You convert an agent state into an action profile for the next simulation interval. "
+            "Return compact JSON only with keys: strategy_summary, resource_bias, risk_tolerance, "
+            "cooperation_bias, policy_sensitivity, mobility_bias."
+        )
+    if task == "policy":
+        return (
+            "You interpret a policy event for one social agent. "
+            "Return compact JSON only with keys: memory_summary, emotion_index, emotion_delta, "
+            "cooperation_shift, policy_sensitivity_shift, importance."
+        )
     if task == "worldview":
         return (
             "You summarize long-term beliefs, social alignment, and durable priorities. "

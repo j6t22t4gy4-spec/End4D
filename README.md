@@ -51,7 +51,7 @@
 
 ## LLM Runtime
 
-- Thought / Worldview 갱신은 기본적으로 안전한 `stub` 경로를 사용한다.
+- 기본적으로 안전한 `stub` 경로를 사용하며, 활성화 시 LLM은 `Genesis`, `Thought`, `Worldview`, `action planning`, `policy interpretation`에 연결된다.
 - 로컬 LLM 예시: Ollama
   - `ORGANIC4D_LLM_CHAT_ENABLED=1`
   - `ORGANIC4D_LLM_PROVIDER=ollama`

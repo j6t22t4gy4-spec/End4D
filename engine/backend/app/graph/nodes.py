@@ -17,6 +17,7 @@ from app.core.rules import (
     apply_fusion,
     apply_mutation,
 )
+from app.llm.actions import update_action_states_if_due
 from app.llm.thought import update_thoughts_if_due
 from app.llm.worldview import update_worldviews_if_due
 
@@ -42,6 +43,7 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = update_emotions(cells, current_t)
     cells = update_thoughts_if_due(cells, current_t)
     cells = update_worldviews_if_due(cells, current_t)
+    cells = update_action_states_if_due(cells, current_t)
     cells = [c.copy(t=next_t) for c in cells]
 
     store = state.get("snapshot_store")
