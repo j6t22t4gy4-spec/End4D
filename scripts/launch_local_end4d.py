@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import http.client
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -17,6 +19,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional
+from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,7 +50,15 @@ def _request_ok(url: str, timeout: float = 1.5) -> bool:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
             return 200 <= int(response.status) < 500
-    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError):
+    except (
+        urllib.error.URLError,
+        TimeoutError,
+        ConnectionError,
+        ValueError,
+        socket.timeout,
+        OSError,
+        http.client.HTTPException,
+    ):
         return False
 
 
@@ -58,6 +69,32 @@ def _wait_until_ready(url: str, *, timeout_s: float, name: str) -> None:
             return
         time.sleep(0.4)
     raise RuntimeError(f"{name} did not become ready at {url} within {timeout_s:.0f}s")
+
+
+def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _wait_until_port_open(url: str, *, timeout_s: float, name: str) -> None:
+    parsed = urlparse(url)
+    host = parsed.hostname or "127.0.0.1"
+    if parsed.port is not None:
+        port = parsed.port
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = 80
+
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        if _port_open(host, port):
+            return
+        time.sleep(0.4)
+    raise RuntimeError(f"{name} did not open port {host}:{port} within {timeout_s:.0f}s")
 
 
 def _frontend_command(frontend_port: int) -> List[str]:
@@ -148,7 +185,8 @@ def main() -> int:
 
     frontend = _spawn("frontend", _frontend_command(args.frontend_port), FRONTEND_DIR, frontend_env)
     managed.append(frontend)
-    _wait_until_ready(frontend_url, timeout_s=args.frontend_timeout, name="Frontend")
+    _wait_until_port_open(frontend_url, timeout_s=args.frontend_timeout, name="Frontend")
+    time.sleep(1.0)
     print(f"Frontend ready: {frontend_url}")
     if not args.no_browser:
         webbrowser.open(frontend_url)

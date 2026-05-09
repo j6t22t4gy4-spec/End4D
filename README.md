@@ -27,10 +27,13 @@
 ## Local App Launch
 
 - **한 번에 실행**: 루트에서 `engine/backend/.venv/bin/python scripts/launch_local_end4d.py`
-- **macOS 더블클릭 실행**: [Launch_End4D.command](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/Launch_End4D.command)
+- **macOS 더블클릭 실행**: [End4D Launcher.app](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/End4D%20Launcher.app)
+- **대체 더블클릭 실행**: [Launch_End4D.command](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/Launch_End4D.command)
 - 런처는 백엔드와 프론트를 함께 띄우고, `http://127.0.0.1:3000`이 준비되면 브라우저 클라이언트를 자동으로 연다.
+- Next.js 개발 서버의 초기 컴파일 동안에도 종료되지 않도록 프론트 readiness 판정을 포트 기준으로 처리한다.
 - 프론트 빌드가 있으면 `start`, 없으면 자동으로 `dev` 모드로 실행한다.
 - 브라우저 자동 실행을 끄려면 `--no-browser` 옵션을 사용한다.
+- macOS 앱 번들을 다시 만들려면 `python3 scripts/build_macos_launcher_app.py`
 - 현재 로컬 런타임 상태와 설치된 데이터 팩은 `GET /runtime/local-status`에서 확인할 수 있다.
 
 ## Persona Dataset Seed

@@ -1,0 +1,12 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT_DIR="/Users/sejun/Desktop/Project_endpoint/vitaswarm4D"
+COMMAND_PATH="$ROOT_DIR/Launch_End4D.command"
+
+if [ ! -f "$COMMAND_PATH" ]; then
+  osascript -e 'display alert "End4D Launcher" message "Launch_End4D.command was not found." as critical'
+  exit 1
+fi
+
+open -a Terminal "$COMMAND_PATH"
