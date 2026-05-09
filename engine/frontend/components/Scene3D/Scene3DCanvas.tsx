@@ -12,21 +12,21 @@ type Scene3DCanvasProps = CellInstancesProps;
  */
 export default function Scene3DCanvas(props: Scene3DCanvasProps) {
   return (
-    <div className="h-[min(70vh,560px)] w-full rounded-lg overflow-hidden border border-slate-700">
+    <div className="h-[min(62vh,540px)] w-full overflow-hidden rounded-[24px] border border-slate-200 bg-white">
       <Canvas
         camera={{ position: [14, 10, 14], fov: 50 }}
         gl={{ antialias: true, alpha: false }}
         dpr={[1, 2]}
       >
-        <color attach="background" args={["#0a0e14"]} />
-        <ambientLight intensity={0.45} />
-        <directionalLight position={[12, 18, 8]} intensity={1.1} />
+        <color attach="background" args={["#f8fafc"]} />
+        <ambientLight intensity={0.7} />
+        <directionalLight position={[12, 18, 8]} intensity={1.2} />
         <Grid
           infiniteGrid
           fadeDistance={40}
           cellSize={1}
-          cellColor="#1e3a4a"
-          sectionColor="#2d5a6e"
+          cellColor="#dbeafe"
+          sectionColor="#93c5fd"
         />
         <CellInstances {...props} />
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />

@@ -5,6 +5,7 @@
  */
 import { useState, useCallback, useEffect } from "react";
 import { injectEvent, type InjectBody } from "@/lib/api";
+import { AppPanel } from "@/components/app-shell/AppPanel";
 
 const EVENT_OPTIONS: { value: string; label: string; defaultPayload: string }[] =
   [
@@ -91,30 +92,30 @@ export function InjectPanel({
   }, [worldId, injectT, eventType, payloadJson, onInjected]);
 
   return (
-    <section
-      className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-3"
-      data-testid="inject-panel"
+    <AppPanel
+      title="Policy Injection"
+      subtitle="Apply an event and recompute from that point"
+      className="space-y-0"
+      bodyClassName="space-y-3"
+      testId="inject-panel"
     >
-      <h2 className="text-sm font-medium text-slate-300">
-        4. God View 주입 (t 시점 → 이후 재계산)
-      </h2>
       <div className="flex flex-wrap gap-4 items-end">
-        <label className="flex flex-col gap-1 text-xs text-slate-400">
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
           주입 t
           <input
             type="number"
             step={1}
             value={injectT}
             onChange={(e) => setInjectT(Number(e.target.value))}
-            className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-white w-28"
+            className="app-input w-28"
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-slate-400">
+        <label className="flex flex-col gap-1 text-xs text-slate-500">
           이벤트 타입
           <select
             value={eventType}
             onChange={(e) => setEventType(e.target.value)}
-            className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-white text-sm min-w-[220px]"
+            className="app-input min-w-[220px] text-sm"
           >
             {EVENT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -124,32 +125,32 @@ export function InjectPanel({
           </select>
         </label>
       </div>
-      <label className="flex flex-col gap-1 text-xs text-slate-400">
+      <label className="flex flex-col gap-1 text-xs text-slate-500">
         payload (JSON)
         <textarea
           value={payloadJson}
           onChange={(e) => setPayloadJson(e.target.value)}
           rows={3}
-          className="rounded bg-slate-800 border border-slate-600 px-2 py-1 text-white font-mono text-xs w-full max-w-lg"
+          className="app-textarea max-w-lg font-mono text-xs"
         />
       </label>
       <button
         type="button"
         disabled={!worldId || busy || simRunning}
         onClick={handleSubmit}
-        className="rounded-md bg-amber-700 hover:bg-amber-600 disabled:opacity-40 px-4 py-2 text-sm"
+        className="app-button app-button--warning"
       >
         {busy ? "처리 중…" : "주입 실행"}
       </button>
       {err && (
-        <p className="text-xs text-red-300" role="alert">
+        <p className="text-xs text-rose-700" role="alert">
           {err}
         </p>
       )}
-      {msg && <p className="text-xs text-emerald-200/90">{msg}</p>}
+      {msg && <p className="text-xs text-emerald-700">{msg}</p>}
       <p className="text-xs text-slate-500">
         해당 t에 저장된 스냅샷이 있어야 합니다. 실행 후 슬라이더의 t를 참고하세요.
       </p>
-    </section>
+    </AppPanel>
   );
 }

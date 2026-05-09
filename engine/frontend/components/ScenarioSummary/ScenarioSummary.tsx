@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getTimelineSummary, type TimelineSummaryResponse } from "@/lib/api";
+import { AppPanel } from "@/components/app-shell/AppPanel";
 
 type ScenarioSummaryProps = {
   worldId: string | null;
@@ -48,8 +49,11 @@ export function ScenarioSummary({ worldId, refreshKey }: ScenarioSummaryProps) {
   if (!worldId) return null;
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-3">
-      <h2 className="text-sm font-medium text-slate-300">Scenario Summary</h2>
+    <AppPanel
+      title="Scenario Summary"
+      subtitle="Outcome and trajectory snapshot"
+      bodyClassName="space-y-3"
+    >
       {err && (
         <p className="text-xs text-slate-500">
           시뮬 실행 후 요약이 표시됩니다.
@@ -63,15 +67,15 @@ export function ScenarioSummary({ worldId, refreshKey }: ScenarioSummaryProps) {
           <Metric label="peak energy" value={formatNumber(summary.peak_total_energy)} />
         </div>
       )}
-    </section>
+    </AppPanel>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border border-slate-800 bg-slate-950/40 px-3 py-2">
+    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
       <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-slate-200">{value}</p>
+      <p className="mt-1 truncate text-sm font-medium text-slate-900">{value}</p>
     </div>
   );
 }

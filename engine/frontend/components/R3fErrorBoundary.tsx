@@ -25,7 +25,7 @@ export class R3fErrorBoundary extends Component<Props, State> {
       return (
         <div
           data-testid="r3f-scene-fallback"
-          className="rounded-lg border border-amber-900/50 bg-amber-950/30 px-4 py-8 text-center text-sm text-amber-200/90"
+          className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-8 text-center text-sm text-amber-800"
         >
           3D 씬을 표시할 수 없습니다. (WebGL·헤드리스 환경 제한일 수 있습니다)
         </div>

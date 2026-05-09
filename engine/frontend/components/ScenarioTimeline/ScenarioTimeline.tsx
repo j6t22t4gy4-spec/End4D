@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { getTimeline, type TimelinePoint } from "@/lib/api";
+import { AppPanel } from "@/components/app-shell/AppPanel";
 
 type ScenarioTimelineProps = {
   worldId: string | null;
@@ -55,15 +56,14 @@ export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps)
   }));
 
   return (
-    <section
-      className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-2"
-      data-testid="scenario-timeline"
+    <AppPanel
+      title="Timeline"
+      subtitle="Cells and energy over time"
+      bodyClassName="space-y-2"
+      testId="scenario-timeline"
     >
-      <h2 className="text-sm font-medium text-slate-300">
-        5. 시나리오 타임라인 (t별 세포 수·에너지 합)
-      </h2>
       {err && (
-        <p className="text-xs text-red-300" role="alert">
+        <p className="text-xs text-rose-700" role="alert">
           {err}
         </p>
       )}
@@ -81,8 +81,10 @@ export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps)
               <YAxis stroke="#94a3b8" fontSize={11} />
               <Tooltip
                 contentStyle={{
-                  background: "#0f172a",
-                  border: "1px solid #334155",
+                  background: "#ffffff",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "16px",
+                  boxShadow: "0 12px 32px rgba(15, 23, 42, 0.08)",
                 }}
               />
               <Legend />
@@ -106,6 +108,6 @@ export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps)
           </ResponsiveContainer>
         </div>
       )}
-    </section>
+    </AppPanel>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getWorldPersonas, type PersonaPreviewResponse } from "@/lib/api";
+import { AppPanel } from "@/components/app-shell/AppPanel";
 
 type PersonaPreviewProps = {
   worldId: string | null;
@@ -38,20 +39,20 @@ export function PersonaPreview({ worldId, refreshKey }: PersonaPreviewProps) {
   const items = data?.items ?? [];
 
   return (
-    <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-medium text-slate-300">
-          Persona Seed
-        </h2>
-        {data && (
-          <span className="text-xs text-slate-500">
+    <AppPanel
+      title="Persona Seeds"
+      subtitle="Dataset preview for the initial world"
+      action={
+        data ? (
+          <span className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-600">
             {data.persona_count.toLocaleString()} seeds
           </span>
-        )}
-      </div>
-
+        ) : undefined
+      }
+      bodyClassName="space-y-3"
+    >
       {err && (
-        <p className="text-xs text-red-300" role="alert">
+        <p className="text-xs text-rose-700" role="alert">
           {err}
         </p>
       )}
@@ -62,19 +63,19 @@ export function PersonaPreview({ worldId, refreshKey }: PersonaPreviewProps) {
 
       {data && (
         <>
-          <div className="rounded border border-slate-700/80 bg-slate-950/50 p-3 text-xs text-slate-300 space-y-1">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
             <p>
               <span className="text-slate-500">source</span>{" "}
-              <code className="text-cyan-300 break-all">{source?.source}</code>
+              <code className="break-all text-slate-900">{source?.source}</code>
             </p>
             {source?.license && (
               <p>
                 <span className="text-slate-500">license</span>{" "}
-                <code className="text-amber-200">{source.license}</code>
+                <code className="text-amber-700">{source.license}</code>
               </p>
             )}
             {source?.attribution_required && (
-              <p className="text-amber-200/90 leading-relaxed">
+              <p className="leading-relaxed text-amber-700">
                 Attribution required: {source.citation || source.url}
               </p>
             )}
@@ -89,17 +90,17 @@ export function PersonaPreview({ worldId, refreshKey }: PersonaPreviewProps) {
               {items.map((p) => (
                 <article
                   key={p.persona_id}
-                  className="rounded border border-slate-800 bg-slate-950/40 p-3 text-xs"
+                  className="rounded-2xl border border-slate-200 bg-white p-3 text-xs shadow-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-200 truncate">
+                    <span className="truncate font-medium text-slate-900">
                       {p.role_label || p.role_key}
                     </span>
                     <code className="text-[10px] text-slate-500">
                       {p.country || "?"}
                     </code>
                   </div>
-                  <p className="mt-2 max-h-14 overflow-hidden leading-relaxed text-slate-400">
+                  <p className="mt-2 max-h-14 overflow-hidden leading-relaxed text-slate-600">
                     {p.persona_text}
                   </p>
                 </article>
@@ -108,6 +109,6 @@ export function PersonaPreview({ worldId, refreshKey }: PersonaPreviewProps) {
           )}
         </>
       )}
-    </section>
+    </AppPanel>
   );
 }

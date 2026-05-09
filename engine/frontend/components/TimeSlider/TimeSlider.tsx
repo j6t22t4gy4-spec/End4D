@@ -24,10 +24,10 @@ export function TimeSlider({
   label = "시간 t",
 }: TimeSliderProps) {
   return (
-    <div className="flex flex-col gap-2 w-full max-w-xl">
-      <div className="flex justify-between text-sm text-slate-300">
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex justify-between text-sm text-slate-600">
         <span>{label}</span>
-        <span className="font-mono text-cyan-300">{t.toFixed(1)}</span>
+        <span className="font-mono text-slate-900">{t.toFixed(1)}</span>
       </div>
       <input
         type="range"
@@ -37,7 +37,7 @@ export function TimeSlider({
         value={t}
         disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-2 rounded-lg appearance-none bg-slate-700 accent-cyan-500 disabled:opacity-50"
+        className="app-range"
       />
     </div>
   );
