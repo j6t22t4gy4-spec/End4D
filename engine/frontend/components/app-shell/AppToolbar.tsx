@@ -1,22 +1,24 @@
 "use client";
 
+import {
+  WORKBENCH_ITEMS,
+  type WorkbenchView,
+} from "@/components/app-shell/workbench-types";
+
 type AppToolbarProps = {
   runtimeProfile: string;
   installedPackCount: number;
   countriesLabel: string;
+  activeView: WorkbenchView;
+  onChangeView: (view: WorkbenchView) => void;
 };
-
-const TOOL_ITEMS = [
-  { label: "Simulation", active: true },
-  { label: "Data Packs", active: false },
-  { label: "Snapshots", active: false },
-  { label: "Policies", active: false },
-];
 
 export function AppToolbar({
   runtimeProfile,
   installedPackCount,
   countriesLabel,
+  activeView,
+  onChangeView,
 }: AppToolbarProps) {
   return (
     <header className="app-toolbar">
@@ -31,11 +33,12 @@ export function AppToolbar({
       </div>
 
       <nav className="app-toolbar__nav" aria-label="Primary">
-        {TOOL_ITEMS.map((item) => (
+        {WORKBENCH_ITEMS.map((item) => (
           <button
-            key={item.label}
+            key={item.id}
             type="button"
-            className={`app-toolbar__button ${item.active ? "is-active" : ""}`}
+            className={`app-toolbar__button ${item.id === activeView ? "is-active" : ""}`}
+            onClick={() => onChangeView(item.id)}
           >
             {item.label}
           </button>
