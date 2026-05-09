@@ -14,6 +14,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -106,6 +107,7 @@ def main() -> int:
     parser.add_argument("--runtime-profile", default="local-pro")
     parser.add_argument("--backend-timeout", type=float, default=25.0)
     parser.add_argument("--frontend-timeout", type=float, default=45.0)
+    parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
     _check_prerequisites()
@@ -148,6 +150,9 @@ def main() -> int:
     managed.append(frontend)
     _wait_until_ready(frontend_url, timeout_s=args.frontend_timeout, name="Frontend")
     print(f"Frontend ready: {frontend_url}")
+    if not args.no_browser:
+        webbrowser.open(frontend_url)
+        print("Browser opened for local client.")
     print("End4D is running locally. Press Ctrl+C to stop both services.")
 
     try:

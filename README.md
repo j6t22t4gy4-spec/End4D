@@ -28,8 +28,9 @@
 
 - **한 번에 실행**: 루트에서 `engine/backend/.venv/bin/python scripts/launch_local_end4d.py`
 - **macOS 더블클릭 실행**: [Launch_End4D.command](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/Launch_End4D.command)
-- 런처는 백엔드와 프론트를 함께 띄우고, `http://127.0.0.1:3000`이 준비될 때까지 기다린다.
+- 런처는 백엔드와 프론트를 함께 띄우고, `http://127.0.0.1:3000`이 준비되면 브라우저 클라이언트를 자동으로 연다.
 - 프론트 빌드가 있으면 `start`, 없으면 자동으로 `dev` 모드로 실행한다.
+- 브라우저 자동 실행을 끄려면 `--no-browser` 옵션을 사용한다.
 - 현재 로컬 런타임 상태와 설치된 데이터 팩은 `GET /runtime/local-status`에서 확인할 수 있다.
 
 ## Persona Dataset Seed

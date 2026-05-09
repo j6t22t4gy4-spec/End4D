@@ -81,6 +81,29 @@ export type PersonaPreviewResponse = {
   items: PersonaPreviewItem[];
 };
 
+export type RuntimePack = {
+  pack_id: string;
+  kind: string;
+  country: string;
+  version: string;
+  relative_path: string;
+  path: string;
+  installed: boolean;
+  license: string;
+  source_url: string;
+  updated_at: string;
+};
+
+export type LocalRuntimeStatus = {
+  runtime_profile: string;
+  state_dir: string;
+  data_cache_dir: string;
+  manifest_path: string;
+  installed_pack_count: number;
+  available_countries: string[];
+  packs: RuntimePack[];
+};
+
 export type AgentGroupSummary = {
   group_id: string;
   role_key: string;
@@ -155,6 +178,12 @@ export async function getAgentSummary(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/summary${suffix}`
   );
   if (!res.ok) throw new Error(`getAgentSummary: ${res.status}`);
+  return res.json();
+}
+
+export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
+  const res = await fetch(`${API_BASE}/runtime/local-status`);
+  if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
   return res.json();
 }
 
