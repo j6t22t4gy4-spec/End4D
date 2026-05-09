@@ -9,7 +9,7 @@ from typing import Dict, Optional
 import uuid
 
 from app.core.config_versions import build_simulation_config, simulation_config_version
-from app.core.persistence import DiskWorldPersistence
+from app.core.persistence import DiskWorldPersistence, WorldPersistenceBackend
 from app.core.session_store import session_store
 from app.core.settings import get_persistence_backend, get_state_dir
 from app.core.snapshot import SnapshotStore
@@ -22,7 +22,7 @@ class WorldStore:
     def __init__(self):
         self._worlds: Dict[str, dict] = {}
         backend = get_persistence_backend()
-        self._persistence = (
+        self._persistence: Optional[WorldPersistenceBackend] = (
             DiskWorldPersistence(get_state_dir()) if backend == "disk" else None
         )
         self._preload()

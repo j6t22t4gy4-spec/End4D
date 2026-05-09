@@ -44,14 +44,17 @@
 - 대용량 HF 데이터셋은 `engine/backend/scripts/sample_personas.py`로 작은 JSONL 샘플을 먼저 만들 수 있다.
 - 생성된 world의 seed는 `GET /worlds/{world_id}/personas`에서 확인한다.
 - world/snapshot/memory는 기본 `disk` backend로 JSON 영속화되며, `GET /worlds/{world_id}/state`, `POST /worlds/{world_id}/restore`로 what-if 복원/fork가 가능하다.
+- 저장 파일은 `organic4d-file-envelope/v1` envelope와 SHA-256 digest를 포함해 스냅샷/포크 재현성에 필요한 무결성을 검증한다.
 - 메모리는 레거시 문자열 외에 `short_memory`, `long_memory`, `behavior_log`로 구조화되며, Thought/Worldview는 전용 prompt engineering 모듈을 통해 이를 반영한다.
 - 에이전트 집단 상태는 `GET /worlds/{world_id}/agents/summary`, `GET /worlds/{world_id}/agents/stance-summary`에서 cohesion/tension/stance까지 확인할 수 있다.
 - 로컬 실행 엔진은 설치된 데이터 팩 매니페스트를 읽을 수 있고, `GET /runtime/local-status`에서 현재 런타임 프로필과 로컬 pack 상태를 확인할 수 있다.
+- 클라우드/사내 manifest는 `ORGANIC4D_DATA_PACK_REMOTE_MANIFEST_URL` 또는 `POST /runtime/data-packs/sync`로 로컬 cache manifest에 병합한다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
 ## LLM Runtime
 
-- 기본적으로 안전한 `stub` 경로를 사용하며, 활성화 시 LLM은 `Genesis`, `Thought`, `Worldview`, `action planning`, `policy interpretation`에 연결된다.
+- 기본적으로 안전한 `stub` 경로를 사용하며, 활성화 시 LLM은 `Genesis`, `Thought`, `Worldview`, `action planning`, `policy interpretation`, `agent dialogue`, `group deliberation`에 연결된다.
+- 장시간 실행 제어: `ORGANIC4D_LLM_MAX_PROMPTS_PER_TASK`, `ORGANIC4D_LLM_AGENT_SAMPLE_SIZE`, `ORGANIC4D_DIALOGUE_INTERVAL`, `ORGANIC4D_GROUP_DELIBERATION_INTERVAL`, `ORGANIC4D_SNAPSHOT_INTERVAL`로 비용과 저장 주기를 조절한다.
 - 로컬 LLM 예시: Ollama
   - `ORGANIC4D_LLM_CHAT_ENABLED=1`
   - `ORGANIC4D_LLM_PROVIDER=ollama`

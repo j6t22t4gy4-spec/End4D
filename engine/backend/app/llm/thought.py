@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import List
 
+from app.core.settings import get_llm_agent_sample_size
 from app.llm.embeddings import embed_texts
 from app.llm.chat_runtime import generate_reasoning_texts
 from app.llm.prompt_engineering import build_thought_prompt
@@ -21,10 +22,26 @@ def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     if t_int <= 0 or t_int % THOUGHT_UPDATE_INTERVAL != 0:
         return cells
 
-    prompts = [build_thought_prompt(c) for c in cells]
+    selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
+    selected_cells = [cells[idx] for idx in selected]
+    prompts = [build_thought_prompt(c) for c in selected_cells]
     texts = generate_reasoning_texts(prompts, task="thought")
     vecs = embed_texts(texts, 256)
-    out: List[Cell] = []
-    for i, c in enumerate(cells):
-        out.append(c.copy(thought_vec=vecs[i].copy()))
+    out: List[Cell] = [c.copy() for c in cells]
+    for k, idx in enumerate(selected):
+        out[idx] = out[idx].copy(thought_vec=vecs[k].copy())
     return out
+
+
+def _selected_indices(cells: List[Cell], t_int: int, limit: int) -> List[int]:
+    if len(cells) <= limit:
+        return list(range(len(cells)))
+    ranked = sorted(
+        range(len(cells)),
+        key=lambda idx: (
+            -len(cells[idx].short_memory) - len(cells[idx].long_memory),
+            -float(cells[idx].energy),
+            f"{t_int}:{cells[idx].cell_id}",
+        ),
+    )
+    return ranked[:limit]

@@ -30,11 +30,11 @@
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
 | policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
-| Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + 운영 전 단계 | 높음 | 필드 매핑 품질, 국가별 registry, 운영 검증이 더 필요 |
+| Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + manifest sync + 운영 전 단계 | 높음 | 실제 대용량 pack 설치·품질 검증은 더 필요 |
 | 챗봇 UI / 대화 엔진 | 전무 | 중 | 중요하지만 현재는 코어 시뮬레이션 설명력보다 후순위 |
 | 사용자 입력 → Thought/Worldview 업데이트 파이프라인 | 전무 | 중 | 데이터 플라이휠 핵심이지만 내부 엔진 플라이휠 이후가 더 적절 |
 | 사용자 데이터 수집·동의·익명화 체계 | 전무 | 중 | 제품화에는 필수지만 지금은 엔진 코어보다 후순위 |
-| 멀티 에이전트 자연어 토론 | 부분 구현 | 중 | 집단 상태가 먼저 안정화되어야 함 |
+| 멀티 에이전트 자연어 토론 | 엔진 루프 부분 구현 | 중 | 직접 대화/집단 협상은 들어갔고 UI·대규모 비용 튜닝이 남음 |
 
 ---
 
@@ -96,14 +96,14 @@
 
 ### 2.6 멀티 에이전트 대화 / 집단 상호작용
 
-현재 세포는 벡터와 규칙으로 상호작용하지만, 자연어 대화 집단이 형성되는 구조는 없다. “시장참여자 vs 규제자 vs 시민” 같은 그룹 대화가 가능해야 의사결정 지원 제품으로 설득력이 커진다.
+현재 세포는 벡터와 규칙 상호작용에 더해, 주기적인 직접 대화(`agent_dialogue`)와 역할 집단 협상(`group_deliberation`)을 수행할 수 있다. 다음 단계는 이 결과를 UI와 장기 비교 리포트에 더 명확히 노출하는 것이다.
 
 필수 산출물:
-- role group conversation
+- role group conversation: 엔진 루프 1차 구현
 - persona sample panel
-- group stance summary
+- group stance summary: API 1차 구현
 - conversation → event injection
-- group-level memory/worldview update
+- group-level memory/worldview update: memory/action_state 1차 구현
 
 ---
 
@@ -164,7 +164,8 @@
 
 ### 5.2 그 다음 완성할 것
 
-- [ ] Nemotron-KR 포함 국가별 dataset registry가 운영 가능한 구조가 된다
+- [x] Nemotron-KR 포함 국가별 dataset registry가 운영 가능한 구조가 된다
+- [ ] 실제 대용량 데이터 pack 설치/검증과 국가별 품질 리포트가 가능하다
 - [ ] sector/policy pack을 데이터 레이어로 추가할 수 있다
 - [ ] report/export payload가 전문가 워크플로우에 맞게 정리된다
 

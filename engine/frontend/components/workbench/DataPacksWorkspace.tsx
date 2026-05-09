@@ -5,9 +5,17 @@ import type { LocalRuntimeStatus } from "@/lib/api";
 
 type DataPacksWorkspaceProps = {
   runtime: LocalRuntimeStatus | null;
+  syncing: boolean;
+  syncError: string | null;
+  onSync: () => void;
 };
 
-export function DataPacksWorkspace({ runtime }: DataPacksWorkspaceProps) {
+export function DataPacksWorkspace({
+  runtime,
+  syncing,
+  syncError,
+  onSync,
+}: DataPacksWorkspaceProps) {
   return (
     <div className="workspace-grid">
       <AppPanel
@@ -15,6 +23,28 @@ export function DataPacksWorkspace({ runtime }: DataPacksWorkspaceProps) {
         subtitle="Cloud-delivered persona packs cached on this machine"
         bodyClassName="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
       >
+        <div className="xl:col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-slate-900">Manifest Sync</p>
+            <p className="mt-1 truncate text-xs text-slate-500">
+              {runtime?.remote_manifest_url || "Configured from local runtime environment"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncing}
+            className="shrink-0 rounded-[8px] border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {syncing ? "Syncing" : "Sync"}
+          </button>
+        </div>
+        {syncError ? (
+          <p className="xl:col-span-2 rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {syncError}
+          </p>
+        ) : null}
+
         <div className="grid gap-3 md:grid-cols-2">
           {runtime?.packs.length ? (
             runtime.packs.map((pack) => (

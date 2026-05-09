@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
 
+from app.core.settings import get_snapshot_max_in_memory
 from app.models.cell import Cell
 from app.models.world import Snapshot
 
@@ -23,10 +24,18 @@ class SnapshotStore:
         if self._on_change is not None:
             self._on_change()
 
+    def _trim(self) -> None:
+        limit = get_snapshot_max_in_memory()
+        if len(self._snapshots) <= limit:
+            return
+        keep = set(sorted(self._snapshots.keys())[-limit:])
+        self._snapshots = {t: snap for t, snap in self._snapshots.items() if t in keep}
+
     def save(self, t: float, cells: List[Cell]) -> Snapshot:
         """t 시점 스냅샷 저장."""
         snap = Snapshot(world_id=self.world_id, t=t, cells=list(cells))
         self._snapshots[t] = snap
+        self._trim()
         self._notify()
         return snap
 
@@ -62,3 +71,4 @@ class SnapshotStore:
     def load_snapshots(self, snapshots: List[Snapshot]) -> None:
         """Load persisted snapshots into memory."""
         self._snapshots = {float(snap.t): snap for snap in snapshots}
+        self._trim()

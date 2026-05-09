@@ -8,6 +8,8 @@ PROMPT_VERSIONS = {
     "worldview": "worldview-v1",
     "action": "action-v1",
     "policy": "policy-v1",
+    "dialogue": "dialogue-v1",
+    "group_deliberation": "group-deliberation-v1",
 }
 
 

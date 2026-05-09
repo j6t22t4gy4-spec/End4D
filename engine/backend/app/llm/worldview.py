@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import List
 
+from app.core.settings import get_llm_agent_sample_size
 from app.llm.embeddings import embed_texts
 from app.llm.chat_runtime import generate_reasoning_texts
 from app.llm.prompt_engineering import build_worldview_prompt
@@ -23,7 +24,20 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
 
     texts: List[str] = []
     indices: List[int] = []
+    limit = get_llm_agent_sample_size()
+    ranked_indices = sorted(
+        range(len(cells)),
+        key=lambda idx: (
+            -len(cells[idx].long_memory),
+            -len(cells[idx].memory),
+            -float(cells[idx].energy),
+            cells[idx].cell_id,
+        ),
+    )
+    selected_indices = set(ranked_indices[:limit])
     for i, c in enumerate(cells):
+        if i not in selected_indices:
+            continue
         qualifies = (
             float(current_t) >= WORLDVIEW_T_THRESHOLD
             or len(c.long_memory) >= 8

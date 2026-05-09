@@ -47,3 +47,41 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"
     assert data["packs"][0]["installed"] is True
+
+
+def test_runtime_data_pack_sync_merges_remote_manifest(tmp_path, monkeypatch):
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    remote_dir = tmp_path / "remote"
+    remote_dir.mkdir()
+    (packs_dir / "us_persona.jsonl").write_text("", encoding="utf-8")
+    remote_manifest = {
+        "schema_version": "data-packs/v1",
+        "packs": [
+            {
+                "pack_id": "persona-us-core",
+                "kind": "persona",
+                "country": "US",
+                "version": "2026.05",
+                "relative_path": "us_persona.jsonl",
+                "license": "CC BY 4.0",
+                "dataset_id": "example/us-personas",
+            }
+        ],
+    }
+    remote_path = remote_dir / "packs.remote.json"
+    remote_path.write_text(json.dumps(remote_manifest, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(packs_dir / "packs.json"))
+
+    response = client.post("/runtime/data-packs/sync", json={"remote_url": str(remote_path)})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["synced"] is True
+    assert data["pack_count"] >= 2
+
+    status = client.get("/runtime/local-status").json()
+    us_pack = next(pack for pack in status["packs"] if pack["pack_id"] == "persona-us-core")
+    assert us_pack["installed"] is True
+    assert us_pack["dataset_id"] == "example/us-personas"

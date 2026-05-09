@@ -6,6 +6,7 @@ import {
   getApiBase,
   getLocalRuntimeStatus,
   listSessions,
+  syncDataPacks,
   type LocalRuntimeStatus,
   type SessionSummary,
 } from "@/lib/api";
@@ -31,6 +32,18 @@ export default function HomeWithCanvas() {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<WorkbenchView>("overview");
   const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+  const [dataPackSyncing, setDataPackSyncing] = useState(false);
+  const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
+
+  const refreshRuntime = () =>
+    getLocalRuntimeStatus()
+      .then((status) => {
+        setRuntime(status);
+        setRuntimeError(null);
+      })
+      .catch((error: Error) => {
+        setRuntimeError(error.message);
+      });
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +127,19 @@ export default function HomeWithCanvas() {
             ) : null}
 
             {activeView === "data-packs" ? (
-              <DataPacksWorkspace runtime={runtime} />
+              <DataPacksWorkspace
+                runtime={runtime}
+                syncing={dataPackSyncing}
+                syncError={dataPackSyncError}
+                onSync={() => {
+                  setDataPackSyncing(true);
+                  setDataPackSyncError(null);
+                  syncDataPacks()
+                    .then(() => refreshRuntime())
+                    .catch((error: Error) => setDataPackSyncError(error.message))
+                    .finally(() => setDataPackSyncing(false));
+                }}
+              />
             ) : null}
 
             {activeView === "snapshots" ? (

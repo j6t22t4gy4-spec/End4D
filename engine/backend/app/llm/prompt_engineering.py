@@ -61,3 +61,34 @@ def build_policy_prompt(cell: Cell, event_type: str, payload: dict) -> str:
         f"role={role}; persona={cell.persona_text[:220]}; "
         f"event_type={event_type}; payload={payload}; worldview={worldview[:320]}"
     )
+
+
+def build_dialogue_prompt(a: Cell, b: Cell, *, current_t: float) -> str:
+    role_a = (a.role_label or a.role_key or "agent").strip() or "agent"
+    role_b = (b.role_label or b.role_key or "agent").strip() or "agent"
+    return (
+        f"prompt_version={get_prompt_version('dialogue')}; t={float(current_t):.1f}; "
+        f"agent_a={{role:{role_a}, energy:{a.energy:.2f}, action:{dict(a.action_state)}, "
+        f"memory:{build_memory_reflection(a)[:260]}}}; "
+        f"agent_b={{role:{role_b}, energy:{b.energy:.2f}, action:{dict(b.action_state)}, "
+        f"memory:{build_memory_reflection(b)[:260]}}}"
+    )
+
+
+def build_group_deliberation_prompt(role: str, cells: list[Cell], *, current_t: float) -> str:
+    if not cells:
+        return f"prompt_version={get_prompt_version('group_deliberation')}; empty_group={role}"
+    avg_energy = sum(float(c.energy) for c in cells) / len(cells)
+    avg_coop = sum(float(c.action_state.get("cooperation_bias", 0.5)) for c in cells) / len(cells)
+    avg_policy = sum(float(c.action_state.get("policy_sensitivity", 0.5)) for c in cells) / len(cells)
+    memories = " | ".join(
+        build_memory_reflection(c)[:180]
+        for c in cells[:5]
+        if build_memory_reflection(c).strip()
+    ) or "none"
+    return (
+        f"prompt_version={get_prompt_version('group_deliberation')}; t={float(current_t):.1f}; "
+        f"role={role}; sample_size={len(cells)}; avg_energy={avg_energy:.2f}; "
+        f"avg_cooperation={avg_coop:.3f}; avg_policy_sensitivity={avg_policy:.3f}; "
+        f"sample_memories={memories[:800]}"
+    )

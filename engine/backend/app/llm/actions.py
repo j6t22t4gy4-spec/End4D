@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
+from app.core.settings import get_llm_agent_sample_size
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.llm.chat_runtime import generate_reasoning_texts
 from app.llm.prompt_engineering import build_action_prompt
@@ -17,10 +18,12 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
     if t_int < 0 or t_int % ACTION_REFRESH_INTERVAL != 0:
         return cells
 
-    prompts = [build_action_prompt(cell) for cell in cells]
+    selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
+    selected_cells = [cells[idx] for idx in selected]
+    prompts = [build_action_prompt(cell) for cell in selected_cells]
     generated = generate_reasoning_texts(prompts, task="action")
-    out: List[Cell] = []
-    for cell, text in zip(cells, generated):
+    out: List[Cell] = [cell.copy() for cell in cells]
+    for idx, cell, text in zip(selected, selected_cells, generated):
         action_state = _parse_action_state(text, cell)
         entry = memory_entry(
             t=float(current_t),
@@ -40,8 +43,27 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
             payload=dict(action_state),
         )
         updated = append_memory(cell.copy(action_state=action_state), entry, behavior=behavior, promote=False)
-        out.append(updated)
+        out[idx] = updated
+    selected_set = set(selected)
+    for idx, cell in enumerate(out):
+        if idx in selected_set:
+            continue
+        if not cell.action_state:
+            out[idx] = cell.copy(action_state=_heuristic_action_state(cell))
     return out
+
+
+def _selected_indices(cells: List[Cell], t_int: int, limit: int) -> List[int]:
+    if len(cells) <= limit:
+        return list(range(len(cells)))
+    ranked = sorted(
+        range(len(cells)),
+        key=lambda idx: (
+            -float(cells[idx].energy),
+            f"{t_int}:{cells[idx].cell_id}",
+        ),
+    )
+    return ranked[:limit]
 
 
 def _parse_action_state(text: str, cell: Cell) -> Dict[str, float | str]:

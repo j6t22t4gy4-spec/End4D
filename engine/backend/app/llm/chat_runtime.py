@@ -10,6 +10,7 @@ from app.core.settings import (
     get_llm_api_key,
     get_llm_base_url,
     get_llm_chat_enabled,
+    get_llm_max_prompts_per_task,
     get_llm_model,
     get_llm_provider,
     get_llm_temperature,
@@ -25,11 +26,16 @@ def generate_reasoning_texts(prompts: Iterable[str], *, task: str) -> List[str]:
         return items
 
     provider = get_llm_provider()
+    max_prompts = get_llm_max_prompts_per_task()
+    active_items = items[:max_prompts]
+    skipped_items = items[max_prompts:]
     try:
         if provider in ("openai", "openai-compatible"):
-            return _openai_chat_batch(items, task=task)
+            generated = _openai_chat_batch(active_items, task=task)
+            return generated + skipped_items
         if provider == "ollama":
-            return _ollama_chat_batch(items, task=task)
+            generated = _ollama_chat_batch(active_items, task=task)
+            return generated + skipped_items
     except Exception:
         return items
     return items
@@ -54,6 +60,18 @@ def _system_prompt(task: str) -> str:
             "You interpret a policy event for one social agent. "
             "Return compact JSON only with keys: memory_summary, emotion_index, emotion_delta, "
             "cooperation_shift, policy_sensitivity_shift, importance."
+        )
+    if task == "dialogue":
+        return (
+            "You simulate a compact agent-to-agent dialogue outcome. "
+            "Return compact JSON only with keys: summary_a, summary_b, alignment_delta, "
+            "tension_delta, cooperation_delta, importance."
+        )
+    if task == "group_deliberation":
+        return (
+            "You summarize a group negotiation among social roles in a long-horizon simulation. "
+            "Return compact JSON only with keys: stance_summary, cohesion_delta, tension_delta, "
+            "coalition_signal, importance."
         )
     if task == "worldview":
         return (

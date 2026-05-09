@@ -91,7 +91,9 @@ export type RuntimePack = {
   installed: boolean;
   license: string;
   source_url: string;
+  dataset_id: string;
   updated_at: string;
+  description: string;
 };
 
 export type RuntimeLlmStatus = {
@@ -106,6 +108,7 @@ export type LocalRuntimeStatus = {
   state_dir: string;
   data_cache_dir: string;
   manifest_path: string;
+  remote_manifest_url: string;
   llm: RuntimeLlmStatus;
   installed_pack_count: number;
   available_countries: string[];
@@ -216,6 +219,22 @@ export async function getAgentSummary(
 export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
   const res = await fetch(`${API_BASE}/runtime/local-status`);
   if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
+  return res.json();
+}
+
+export async function syncDataPacks(remoteUrl = ""): Promise<{
+  schema_version: string;
+  source: string;
+  synced: boolean;
+  pack_count: number;
+  installed_pack_count: number;
+}> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ remote_url: remoteUrl }),
+  });
+  if (!res.ok) throw new Error(`syncDataPacks: ${res.status}`);
   return res.json();
 }
 

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Optional
 from app.core.agent_interactions import apply_agent_interactions
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
+from app.core.settings import get_snapshot_interval
 from app.core.rules import (
     apply_growth,
     apply_division,
@@ -18,6 +19,8 @@ from app.core.rules import (
     apply_mutation,
 )
 from app.llm.actions import update_action_states_if_due
+from app.llm.dialogue import apply_agent_dialogues_if_due
+from app.llm.group_deliberation import apply_group_deliberation_if_due
 from app.llm.thought import update_thoughts_if_due
 from app.llm.worldview import update_worldviews_if_due
 
@@ -44,10 +47,14 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = update_thoughts_if_due(cells, current_t)
     cells = update_worldviews_if_due(cells, current_t)
     cells = update_action_states_if_due(cells, current_t)
+    cells = apply_agent_dialogues_if_due(cells, next_t)
+    cells = apply_group_deliberation_if_due(cells, next_t)
     cells = [c.copy(t=next_t) for c in cells]
 
     store = state.get("snapshot_store")
-    if store is not None:
+    snapshot_interval = get_snapshot_interval()
+    should_save_snapshot = int(next_t) == int(float(state.get("t_max", next_t))) or int(next_t) % snapshot_interval == 0
+    if store is not None and should_save_snapshot:
         store.save(next_t, cells)
 
     out: dict = {

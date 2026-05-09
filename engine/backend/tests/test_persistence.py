@@ -1,4 +1,6 @@
 """Disk persistence and reload tests."""
+import json
+
 import numpy as np
 
 from app.core.store import WorldStore
@@ -60,6 +62,10 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
             )
         ],
     )
+    raw = json.loads((tmp_path / f"{wid}.json").read_text(encoding="utf-8"))
+    assert raw["schema_version"] == "organic4d-file-envelope/v1"
+    assert raw["payload_schema_version"] == "world-entry/v2"
+    assert raw["integrity"]["algorithm"] == "sha256"
 
     reloaded = WorldStore()
     loaded_entry = reloaded.get(wid)

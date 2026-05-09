@@ -58,3 +58,23 @@ def test_generate_reasoning_texts_uses_ollama(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     out = generate_reasoning_texts(["prompt b"], task="worldview")
     assert out == ["ollama worldview text"]
+
+
+def test_generate_reasoning_texts_caps_batch(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "1")
+    monkeypatch.setenv("ORGANIC4D_LLM_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("ORGANIC4D_LLM_BASE_URL", "http://localhost:8001/v1")
+    monkeypatch.setenv("ORGANIC4D_LLM_MAX_PROMPTS_PER_TASK", "1")
+
+    calls = []
+
+    def fake_urlopen(request, timeout=0):
+        calls.append(request.data)
+        return _FakeResponse(
+            {"choices": [{"message": {"content": "generated once"}}]}
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    out = generate_reasoning_texts(["prompt a", "prompt b"], task="dialogue")
+    assert out == ["generated once", "prompt b"]
+    assert len(calls) == 1

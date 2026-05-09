@@ -79,6 +79,74 @@ def get_llm_temperature() -> float:
         return 0.2
 
 
+def get_llm_max_prompts_per_task() -> int:
+    """Hard cap for one LLM task batch to keep long runs predictable."""
+    raw = os.getenv("ORGANIC4D_LLM_MAX_PROMPTS_PER_TASK", "64").strip()
+    try:
+        return max(1, min(2048, int(raw)))
+    except ValueError:
+        return 64
+
+
+def get_llm_agent_sample_size() -> int:
+    """Max agents selected for expensive LLM cognition in one simulation tick."""
+    raw = os.getenv("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "256").strip()
+    try:
+        return max(1, min(10000, int(raw)))
+    except ValueError:
+        return 256
+
+
+def get_dialogue_interval() -> int:
+    raw = os.getenv("ORGANIC4D_DIALOGUE_INTERVAL", "25").strip()
+    try:
+        return max(1, min(10000, int(raw)))
+    except ValueError:
+        return 25
+
+
+def get_dialogue_max_pairs() -> int:
+    raw = os.getenv("ORGANIC4D_DIALOGUE_MAX_PAIRS", "64").strip()
+    try:
+        return max(1, min(5000, int(raw)))
+    except ValueError:
+        return 64
+
+
+def get_group_deliberation_interval() -> int:
+    raw = os.getenv("ORGANIC4D_GROUP_DELIBERATION_INTERVAL", "50").strip()
+    try:
+        return max(1, min(10000, int(raw)))
+    except ValueError:
+        return 50
+
+
+def get_group_deliberation_max_groups() -> int:
+    raw = os.getenv("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS", "12").strip()
+    try:
+        return max(1, min(256, int(raw)))
+    except ValueError:
+        return 12
+
+
+def get_snapshot_interval() -> int:
+    """Persist every N ticks. Default 1 preserves current reproducibility behavior."""
+    raw = os.getenv("ORGANIC4D_SNAPSHOT_INTERVAL", "1").strip()
+    try:
+        return max(1, min(100000, int(raw)))
+    except ValueError:
+        return 1
+
+
+def get_snapshot_max_in_memory() -> int:
+    """Cap retained snapshots per world to protect long local runs."""
+    raw = os.getenv("ORGANIC4D_SNAPSHOT_MAX_IN_MEMORY", "1000").strip()
+    try:
+        return max(2, min(100000, int(raw)))
+    except ValueError:
+        return 1000
+
+
 def get_persistence_backend() -> Literal["memory", "disk", "postgres", "redis"]:
     """저장소 백엔드. 기본은 disk, postgres/redis는 후속."""
     v = os.getenv("ORGANIC4D_PERSISTENCE_BACKEND", "disk").strip().lower()
@@ -111,6 +179,11 @@ def get_data_cache_dir() -> Path:
     if raw:
         return Path(raw).expanduser()
     return Path(__file__).resolve().parents[2] / "data" / "packs"
+
+
+def get_data_pack_remote_manifest_url() -> str:
+    """Cloud manifest URL or local file path for data-pack sync."""
+    return os.getenv("ORGANIC4D_DATA_PACK_REMOTE_MANIFEST_URL", "").strip()
 
 
 def get_runtime_profile() -> str:
