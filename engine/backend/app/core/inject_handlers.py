@@ -8,6 +8,7 @@ from typing import Dict, List
 
 import numpy as np
 
+from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.models.cell import Cell
 
 
@@ -23,7 +24,27 @@ def apply_inject_to_cells(
 
     if event_type == "append_memory":
         text = str(payload.get("text", "injected event"))
-        return [c.copy(memory=list(c.memory) + [text]) for c in cells]
+        out: List[Cell] = []
+        for c in cells:
+            entry = memory_entry(
+                t=float(c.t),
+                kind="injected_memory",
+                summary=text,
+                importance=0.68,
+                source="god_view.inject",
+                payload=dict(payload),
+                tags=["inject"],
+            )
+            behavior = behavior_event(
+                t=float(c.t),
+                event_type="append_memory",
+                source="god_view.inject",
+                summary=text,
+                quality_score=0.68,
+                payload=dict(payload),
+            )
+            out.append(append_memory(c, entry, behavior=behavior, promote=False))
+        return out
 
     if event_type == "emotion_spike":
         idx = int(payload.get("index", 2))

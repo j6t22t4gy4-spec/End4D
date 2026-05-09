@@ -12,7 +12,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **cell.py** | **세포(에이전트) 모델**. 4D 좌표, 에너지, **역할**(`role_key`, `role_label`), 선택적 `persona_*` seed, 유전자, 메모리, 3계층 벡터. `position_4d()`, `copy()` 등. |
+| **cell.py** | **세포(에이전트) 모델**. 4D 좌표, 에너지, **역할**(`role_key`, `role_label`), 선택적 `persona_*` seed, 유전자, 레거시 `memory` + 구조화된 `short_memory`/`long_memory`/`behavior_log`, 3계층 벡터. |
 | **world.py** | **세계·스냅샷 모델**. World(4D 세계), Snapshot(t 시점 스냅샷), NutrientEvent(영양분 주입 이벤트) 정의. World → Snapshot → Cell 계층 구조. |
 | **__init__.py** | models 패키지 진입점. Cell, World, Snapshot, NutrientEvent export. |
 
@@ -24,7 +24,11 @@
 | **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought cosine≥0.7+Worldview), `apply_mutation`(유전자 변이; 감정은 `emotion.py`). |
 | **spatial_index.py** | **인접 검색 최적화**. `SpatialHashGrid` — Emotion 이웃 밀집도와 융합 후보 탐색을 uniform grid로 pruning해 전수 비교를 줄임. |
 | **agent_interactions.py** | **에이전트 간 내부 상호작용 메모리**. 가까운 role/persona 이웃을 주기적으로 관찰해 `social_observation` memory를 남기고 Thought/Worldview 갱신의 데이터 플라이휠 입력으로 사용. |
+| **belief_dynamics.py** | **belief update 규칙**. interaction quality와 정렬/갈등 신호를 바탕으로 thought/worldview를 더 장기적인 방향으로 이동시키고 belief shift를 계산. |
+| **interaction_quality.py** | **상호작용 품질 평가기**. thought/worldview 유사도, 에너지 안정성, role 다양성으로 quality score와 cluster signal을 계산. |
+| **memory_store.py** | **구조화 메모리 관리기**. short vs long memory, behavior log, importance 기반 승격, 레거시 `memory` 문자열 뷰 동기화. |
 | **memory_reflection.py** | **메모리 반성 요약기**. social observation, alignment, recurring role을 압축 요약해 Thought/Worldview 프롬프트 품질을 높임. |
+| **config_versions.py** | **시뮬레이션 설정 버전 관리**. world 생성 파라미터 + 엔진 옵션을 구조화하고 stable hash `config_version`을 계산. |
 | **persona_dataset.py** | **국가별 페르소나 데이터셋 어댑터**. JSONL/JSON/CSV 샘플 또는 선택적 Hugging Face streaming dataset을 `PersonaSeed`로 변환해 Genesis 초기 세포의 역할·메모리·페르소나 필드에 주입. |
 | **serialization.py** | **직렬화 유틸**. Cell/World/Snapshot를 JSON 저장 가능한 dict로 변환하고 복원. |
 | **persistence.py** | **파일 영속화 브리지**. `DiskWorldPersistence`가 world/snapshot/memory를 world 단위 JSON 파일로 저장·로드. |
@@ -43,8 +47,9 @@
 | 파일 | 역할 |
 |------|------|
 | **embeddings.py** | **텍스트 임베딩**. `embed_texts`(sentence-transformers `all-MiniLM-L6-v2` → 차원 절단/L2 정규화). 실패 또는 `ORGANIC4D_EMBED_BACKEND=stub` 시 결정적 스텁. |
-| **thought.py** | **Thought 256D (Phase 6.4)**. `update_thoughts_if_due` — 약 20t마다 역할·에너지·감정·최근 memory/social observation을 임베딩해 `thought_vec` 갱신. |
-| **worldview.py** | **Worldview 384D (Phase 6.5)**. `update_worldviews_if_due` — t≥200 또는 메모리≥100인 세포만 40t 간격으로 경험 텍스트 임베딩. |
+| **prompt_engineering.py** | **프롬프트 전용 모듈**. Thought/Worldview 프롬프트를 구조화 메모리와 reflection 기준으로 조립. |
+| **thought.py** | **Thought 256D (Phase 6.4)**. `update_thoughts_if_due` — 약 20t마다 `prompt_engineering.py`의 전략 프롬프트를 임베딩해 `thought_vec` 갱신. |
+| **worldview.py** | **Worldview 384D (Phase 6.5)**. `update_worldviews_if_due` — long-term memory/반성 요약이 충분한 세포만 40t 간격으로 worldview를 갱신. |
 | **__init__.py** | llm 패키지 진입점. |
 
 ### 1.4 그래프 (app/graph/)
@@ -60,10 +65,10 @@
 | 파일 | 역할 |
 |------|------|
 | **main.py** | **FastAPI 앱 뼈대**. `/health`, 라우터 모음. **CORS** — `get_cors_origins()` + `ORGANIC4D_CORS_ORIGINS`. |
-| **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타), GET /worlds/{id}/personas (persona seed preview·attribution). |
+| **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타 + `simulation_config`/`config_version`), GET /worlds/{id}/personas (persona seed preview·attribution). |
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
-| **api/agents.py** | **에이전트 그룹 관측 API**. GET /worlds/{id}/agents/summary — 최신/지정 t의 role/persona 그룹별 에너지·감정·국가·memory 집계. 챗봇이 아니라 엔진 내부 상태 확인용. |
+| **api/agents.py** | **에이전트 그룹 관측 API**. GET /worlds/{id}/agents/summary + `/agents/stance-summary` — role/persona 그룹별 에너지·감정·interaction quality·stance/cohesion 집계. |
 | **api/state.py** | **상태 export/restore API**. GET /worlds/{id}/state, POST /worlds/{id}/restore — 중간 snapshot 복원·fork what-if 실행. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **api/inject.py** | **God View 주입 (Phase 7.1, 7.3)**. POST /worlds/{id}/inject — 스냅샷 수정, `clear_after`, 재실행. |

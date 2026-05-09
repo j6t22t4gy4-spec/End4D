@@ -31,6 +31,8 @@
 - 대용량 HF 데이터셋은 `engine/backend/scripts/sample_personas.py`로 작은 JSONL 샘플을 먼저 만들 수 있다.
 - 생성된 world의 seed는 `GET /worlds/{world_id}/personas`에서 확인한다.
 - world/snapshot/memory는 기본 `disk` backend로 JSON 영속화되며, `GET /worlds/{world_id}/state`, `POST /worlds/{world_id}/restore`로 what-if 복원/fork가 가능하다.
+- 메모리는 레거시 문자열 외에 `short_memory`, `long_memory`, `behavior_log`로 구조화되며, Thought/Worldview는 전용 prompt engineering 모듈을 통해 이를 반영한다.
+- 에이전트 집단 상태는 `GET /worlds/{world_id}/agents/summary`, `GET /worlds/{world_id}/agents/stance-summary`에서 cohesion/tension/stance까지 확인할 수 있다.
 - CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
 
 ## 라이선스

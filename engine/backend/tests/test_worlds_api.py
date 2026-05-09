@@ -30,6 +30,7 @@ def test_create_world_from_prompt():
     assert data["persona_country"]
     assert "persona_source" in data
     assert "persona_count" in data
+    assert data["config_version"]
 
 
 def test_world_persona_preview():

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import List
 
+from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.models.cell import Cell
 
 MEMORY_APPEND_INTERVAL = 25
@@ -28,5 +29,22 @@ def append_step_memory(cells: List[Cell], current_t: float) -> List[Cell]:
     out: List[Cell] = []
     for c in cells:
         line = f"t={t_int} energy={c.energy:.1f}"
-        out.append(c.copy(memory=trim_memory(list(c.memory) + [line])))
+        entry = memory_entry(
+            t=float(t_int),
+            kind="energy_checkpoint",
+            summary=line,
+            importance=0.34,
+            source="engine.memory_step",
+            payload={"energy": float(c.energy)},
+            tags=["energy", "checkpoint"],
+        )
+        behavior = behavior_event(
+            t=float(t_int),
+            event_type="memory_checkpoint",
+            source="engine.memory_step",
+            summary=line,
+            quality_score=0.34,
+            payload={"energy": float(c.energy)},
+        )
+        out.append(append_memory(c, entry, behavior=behavior, promote=False))
     return out

@@ -65,3 +65,11 @@ def test_agent_summary_groups_latest_snapshot_by_role():
     assert data["cell_count"] >= 4
     assert any(group["role_key"] == "citizen" for group in data["groups"])
     assert all("dominant_emotion" in group for group in data["groups"])
+    assert all("avg_interaction_quality" in group for group in data["groups"])
+
+    stance_response = client.get(f"/worlds/{wid}/agents/stance-summary")
+    assert stance_response.status_code == 200
+    stance_data = stance_response.json()
+    assert stance_data["world_id"] == wid
+    assert stance_data["groups"]
+    assert all("stance" in group for group in stance_data["groups"])

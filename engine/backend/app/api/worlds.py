@@ -48,6 +48,7 @@ class CreateWorldResponse(BaseModel):
     persona_country: str
     persona_source: str
     persona_count: int
+    config_version: str
 
 
 class WorldResponse(BaseModel):
@@ -64,6 +65,9 @@ class WorldResponse(BaseModel):
     persona_country: str = ""
     persona_source: str = ""
     persona_count: int = 0
+    config_version: str = ""
+    simulation_config: Dict[str, Any] = Field(default_factory=dict)
+    comparison_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 class PersonaPreviewItem(BaseModel):
@@ -126,6 +130,7 @@ def create_world(req: CreateWorldRequest):
         persona_source=persona_source,
         persona_catalog=persona_catalog,
     )
+    entry = world_store.get(world_id)
     return CreateWorldResponse(
         world_id=world_id,
         t_max=plan.t_max,
@@ -138,6 +143,7 @@ def create_world(req: CreateWorldRequest):
         persona_country=plan.persona_country,
         persona_source=persona_source,
         persona_count=len(persona_catalog),
+        config_version=str((entry or {}).get("config_version") or ""),
     )
 
 
@@ -161,6 +167,9 @@ def get_world(world_id: str):
         persona_country=str(entry.get("persona_country") or ""),
         persona_source=str(entry.get("persona_source") or ""),
         persona_count=len(entry.get("persona_catalog") or []),
+        config_version=str(entry.get("config_version") or ""),
+        simulation_config=dict(entry.get("simulation_config") or {}),
+        comparison_meta=dict(entry.get("comparison_meta") or {}),
     )
 
 

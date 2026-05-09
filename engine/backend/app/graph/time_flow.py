@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from langgraph.graph import StateGraph, START, END
 
 from app.models.cell import Cell
+from app.core.memory_store import seed_memory_from_text
 from app.core.snapshot import SnapshotStore
 from app.graph.nodes import step_loop_node
 
@@ -34,8 +35,7 @@ def _create_initial_cells(
         rk = str(persona.get("role_key") or roles[i % len(roles)])
         label = str(persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
-        cells.append(
-            Cell(
+        cell = Cell(
                 x=float(i * 2),
                 y=0.0,
                 z=0.0,
@@ -51,9 +51,10 @@ def _create_initial_cells(
                 persona_text=persona_text,
                 persona_country=str(persona.get("country") or ""),
                 persona_attrs=dict(persona.get("attrs") or {}),
-                memory=[persona_text] if persona_text else [],
             )
-        )
+        if persona_text:
+            cell = seed_memory_from_text(cell, persona_text)
+        cells.append(cell)
     return cells
 
 

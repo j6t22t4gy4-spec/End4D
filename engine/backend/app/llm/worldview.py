@@ -7,22 +7,14 @@ from __future__ import annotations
 
 from typing import List
 
-from app.core.memory_reflection import build_worldview_reflection
 from app.llm.embeddings import embed_texts
+from app.llm.prompt_engineering import build_worldview_prompt
 from app.models.cell import Cell
 
 WORLDVIEW_MEMORY_THRESHOLD = 100
 WORLDVIEW_T_THRESHOLD = 200.0
 # 조건 충족 후에도 매 스텝 호출하지 않도록 간격
 WORLDVIEW_REFRESH_INTERVAL = 40
-
-
-def _worldview_text(cell: Cell) -> str:
-    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
-    reflection = build_worldview_reflection(cell)
-    return f"role={role}; persona={cell.persona_text[:240]}; {reflection}"
-
-
 def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
     if t_int <= 0 or t_int % WORLDVIEW_REFRESH_INTERVAL != 0:
@@ -31,9 +23,13 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     texts: List[str] = []
     indices: List[int] = []
     for i, c in enumerate(cells):
-        qualifies = float(current_t) >= WORLDVIEW_T_THRESHOLD or len(c.memory) >= WORLDVIEW_MEMORY_THRESHOLD
+        qualifies = (
+            float(current_t) >= WORLDVIEW_T_THRESHOLD
+            or len(c.long_memory) >= 8
+            or len(c.memory) >= WORLDVIEW_MEMORY_THRESHOLD
+        )
         if qualifies:
-            texts.append(_worldview_text(c))
+            texts.append(build_worldview_prompt(c))
             indices.append(i)
 
     if not texts:

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Dict, Optional
 import uuid
 
+from app.core.config_versions import build_simulation_config, simulation_config_version
 from app.core.persistence import DiskWorldPersistence
 from app.core.settings import get_persistence_backend, get_state_dir
 from app.core.snapshot import SnapshotStore
@@ -71,6 +72,9 @@ class WorldStore:
         persona_country: str = "",
         persona_source: str = "",
         persona_catalog: Optional[list] = None,
+        simulation_config: Optional[dict] = None,
+        config_version: str = "",
+        comparison_meta: Optional[dict] = None,
     ) -> str:
         """월드 생성. world_id 반환."""
         wid = world_id or str(uuid.uuid4())
@@ -84,6 +88,19 @@ class WorldStore:
             t_step_unit=t_step_unit,
             nutrient_per_step=float(nutrient_per_step),
         )
+        config = simulation_config or build_simulation_config(
+            t_max=float(t_max),
+            initial_cell_count=int(initial_cell_count),
+            role_catalog=list(role_catalog) if role_catalog else ["agent"],
+            t_step_semantic=t_step_semantic,
+            t_step_unit=t_step_unit,
+            nutrient_per_step=float(nutrient_per_step),
+            persona_country=persona_country,
+            persona_source=persona_source,
+            engine_params={},
+            comparison_meta=dict(comparison_meta or {}),
+        )
+        version = config_version or simulation_config_version(config)
         self._worlds[wid] = {
             "world": world,
             "snapshot_store": store,
@@ -95,6 +112,9 @@ class WorldStore:
             "persona_country": persona_country,
             "persona_source": persona_source,
             "persona_catalog": list(persona_catalog or []),
+            "simulation_config": dict(config),
+            "config_version": version,
+            "comparison_meta": dict(comparison_meta or {}),
         }
         self._persist(wid)
         return wid
@@ -176,6 +196,14 @@ class WorldStore:
             persona_country=str(source.get("persona_country") or ""),
             persona_source=str(source.get("persona_source") or ""),
             persona_catalog=list(source.get("persona_catalog") or []),
+            simulation_config=dict(source.get("simulation_config") or {}),
+            config_version=str(source.get("config_version") or ""),
+            comparison_meta={
+                "parent_world_id": source_world_id,
+                "restored_from_t": float(snapshot_t),
+                "mode": "fork",
+                "baseline_config_version": str(source.get("config_version") or ""),
+            },
         )
         new_entry = self.get(new_world_id)
         if new_entry is None:

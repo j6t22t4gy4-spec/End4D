@@ -36,6 +36,9 @@ def _cell_to_dict(c: Cell) -> dict:
         "persona_text": c.persona_text,
         "persona_country": c.persona_country,
         "persona_attrs": c.persona_attrs,
+        "short_memory": [dict(item) for item in c.short_memory],
+        "long_memory": [dict(item) for item in c.long_memory],
+        "behavior_log": [dict(item) for item in c.behavior_log],
     }
 
 
@@ -57,6 +60,9 @@ class CellResponse(BaseModel):
     persona_text: str = ""
     persona_country: str = ""
     persona_attrs: Dict[str, Any] = Field(default_factory=dict)
+    short_memory: List[Dict[str, Any]] = Field(default_factory=list)
+    long_memory: List[Dict[str, Any]] = Field(default_factory=list)
+    behavior_log: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class SnapshotResponse(BaseModel):

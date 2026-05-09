@@ -33,6 +33,9 @@ class StateSnapshotResponse(BaseModel):
     role_catalog: List[str] = Field(default_factory=list)
     persona_country: str = ""
     persona_source: str = ""
+    config_version: str = ""
+    simulation_config: Dict[str, Any] = Field(default_factory=dict)
+    comparison_meta: Dict[str, Any] = Field(default_factory=dict)
     cell_count: int
     cells: List[Dict[str, Any]]
 
@@ -51,6 +54,8 @@ class RestoreResponse(BaseModel):
     final_t: float
     cell_count: int
     snapshots_cleared: int = 0
+    config_version: str = ""
+    comparison_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 @router.get("/{world_id}/state", response_model=StateSnapshotResponse)
@@ -83,6 +88,9 @@ def export_state(
         role_catalog=list(entry.get("role_catalog") or []),
         persona_country=str(entry.get("persona_country") or ""),
         persona_source=str(entry.get("persona_source") or ""),
+        config_version=str(entry.get("config_version") or ""),
+        simulation_config=dict(entry.get("simulation_config") or {}),
+        comparison_meta=dict(entry.get("comparison_meta") or {}),
         cell_count=len(snap.cells),
         cells=[cell_to_dict(cell) for cell in snap.cells],
     )
@@ -142,6 +150,8 @@ def restore_state(world_id: str, body: RestoreRequest):
             final_t=final_t,
             cell_count=cell_count,
             snapshots_cleared=0,
+            config_version=str(fork_entry.get("config_version") or ""),
+            comparison_meta=dict(fork_entry.get("comparison_meta") or {}),
         )
 
     cleared = store.clear_after(restored_t)
@@ -174,4 +184,6 @@ def restore_state(world_id: str, body: RestoreRequest):
         final_t=final_t,
         cell_count=cell_count,
         snapshots_cleared=cleared,
+        config_version=str(entry.get("config_version") or ""),
+        comparison_meta=dict(entry.get("comparison_meta") or {}),
     )

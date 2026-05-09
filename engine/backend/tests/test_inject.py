@@ -106,6 +106,9 @@ def test_state_export_and_restore_fork():
     export_data = export_res.json()
     assert export_data["t"] == 2.0
     assert export_data["cell_count"] >= 1
+    assert export_data["config_version"]
+    assert "simulation_config" in export_data
+    assert "behavior_log" in export_data["cells"][0]
 
     fork_res = client.post(
         f"/worlds/{wid}/restore",
@@ -116,8 +119,13 @@ def test_state_export_and_restore_fork():
     assert fork_data["source_world_id"] == wid
     assert fork_data["world_id"] != wid
     assert fork_data["final_t"] == 4.0
+    assert fork_data["config_version"]
+    assert fork_data["comparison_meta"]["parent_world_id"] == wid
 
     fork_entry = world_store.get(fork_data["world_id"])
     assert fork_entry is not None
     assert fork_entry["snapshot_store"].get(2.0) is not None
     assert fork_entry["snapshot_store"].get(4.0) is not None
+    world_res = client.get(f"/worlds/{fork_data['world_id']}")
+    assert world_res.status_code == 200
+    assert world_res.json()["comparison_meta"]["parent_world_id"] == wid

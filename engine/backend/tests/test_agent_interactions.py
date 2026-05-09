@@ -32,4 +32,6 @@ def test_agent_interactions_write_nearby_social_memory_only_on_interval():
     assert any("social_observation" in line for line in updated[0].memory)
     assert any("regulator" in line for line in updated[0].memory)
     assert any("alignment=" in line for line in updated[0].memory)
+    assert updated[0].behavior_log[-1]["event_type"] == "social_observation"
+    assert updated[0].short_memory
     assert updated[2].memory == []

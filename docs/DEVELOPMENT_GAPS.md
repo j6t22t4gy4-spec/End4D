@@ -14,7 +14,8 @@
 | 사용자 데이터 수집·동의·익명화 체계 | 전무 | 최상 | 법적 리스크와 데이터 품질 리스크가 동시에 존재 |
 | Nemotron-Personas-Korea 실제 운영 연동 | seed adapter + Phase 9 계획 수준 | 높음 | HF streaming/sample script는 있으나 실데이터 연결 검증, 필드 매핑 품질, 운영 설정 검증이 부족 |
 | 페르소나 기반 초기 세계 자동 생성 | 부분 구현 | 중 | Prompt Genesis는 있으나 persona 분포가 t_max, role mix, nutrient scale 등에 충분히 반영되지 않음 |
-| 멀티 에이전트 대화 / 집단 상호작용 | 미비 | 중 | 현재는 규칙 기반 시뮬레이션 중심이며 페르소나 간 자연어 대화 구조가 약함 |
+| 멀티 에이전트 대화 / 집단 상호작용 | 부분 구현 | 중 | interaction quality, stance summary, structured memory는 생겼지만 집단 대화·정책 토론 레이어는 아직 없음 |
+| 메모리 중요도/장기 신념 학습 | 부분 구현 | 중 | short/long memory, importance, reflection, belief update는 생겼지만 아직 heuristic 중심이며 학습형/정책형 모델은 아님 |
 
 ---
 
@@ -92,14 +93,16 @@
 | 순서 | 작업 | 이유 |
 |------|------|------|
 | 1 | 내부 에이전트 상호작용 memory | 챗 UI 없이도 엔진의 본질인 agent↔agent 변화 루프가 생김 |
-| 2 | Thought 입력에 최근 memory/social observation 반영 | 관찰 데이터가 중기 전략 벡터에 실제 반영됨 |
-| 3 | role/persona 그룹 관측 API | 엔진 내부 상태와 집단 형성을 제품/분석 레이어에서 확인 가능 |
-| 4 | persona-aware Genesis | 단순 seed를 넘어 세계 생성 자체를 dataset 기반화 |
-| 5 | Nemotron 실제 샘플 검증 + field mapping | persona seed의 품질을 현실적으로 확인 |
-| 6 | ChatPanel + `POST /worlds/{id}/chat` | 엔진 내부 루프 위에 사용자 상호작용을 얹음 |
-| 7 | 사용자 발화 → memory/event 변환 | 대화가 시뮬레이션 상태를 바꾸는 연결 |
-| 8 | consent/anonymization 기본 모델 | 사용자 데이터 플라이휠 전에 법적 리스크 차단 |
-| 9 | group conversation | 멀티 에이전트 제품 가치를 강화 |
+| 2 | short/long memory + importance 구조 | 장기 Worldview가 단순 최근 로그가 아니라 중요 기억에 기대게 만듦 |
+| 3 | interaction quality + structured behavior log | 진짜 cluster/이념 형성을 판정하고 나중 분석·ML에 재사용 가능 |
+| 4 | Prompt Engineering 모듈화 | Thought/Worldview 프롬프트 복잡도 증가에 대비 |
+| 5 | simulation config version 관리 | 실험 재현성과 what-if 비교 기반 확보 |
+| 6 | persona-aware Genesis | 단순 seed를 넘어 세계 생성 자체를 dataset 기반화 |
+| 7 | Nemotron 실제 샘플 검증 + field mapping | persona seed의 품질을 현실적으로 확인 |
+| 8 | ChatPanel + `POST /worlds/{id}/chat` | 엔진 내부 루프 위에 사용자 상호작용을 얹음 |
+| 9 | 사용자 발화 → memory/event 변환 | 대화가 시뮬레이션 상태를 바꾸는 연결 |
+| 10 | consent/anonymization 기본 모델 | 사용자 데이터 플라이휠 전에 법적 리스크 차단 |
+| 11 | group conversation | 멀티 에이전트 제품 가치를 강화 |
 
 ---
 

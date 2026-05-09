@@ -30,6 +30,8 @@ class AgentGroupSummary(BaseModel):
     avg_emotion_magnitude: float
     countries: Dict[str, int] = Field(default_factory=dict)
     recent_memory_count: int = 0
+    long_memory_count: int = 0
+    avg_interaction_quality: float = 0.0
 
 
 class AgentSummaryResponse(BaseModel):
@@ -40,10 +42,44 @@ class AgentSummaryResponse(BaseModel):
     groups: List[AgentGroupSummary]
 
 
+class AgentStanceGroup(BaseModel):
+    group_id: str
+    role_label: str
+    stance: str
+    cohesion_score: float
+    tension_score: float
+    avg_interaction_quality: float
+    long_memory_count: int
+    summary: str
+
+
+class AgentStanceSummaryResponse(BaseModel):
+    world_id: str
+    t: float
+    overall_signal: str
+    groups: List[AgentStanceGroup]
+
+
 def _role_group_id(cell: Cell) -> str:
     role_key = (cell.role_key or "agent").strip() or "agent"
     role_label = (cell.role_label or role_key).strip() or role_key
     return f"{role_key}:{role_label}"
+
+
+def _resolve_snapshot(entry: dict, t: Optional[float]):
+    store = entry["snapshot_store"]
+    if store is None:
+        raise HTTPException(status_code=404, detail="Snapshot store not found")
+    if t is None:
+        available_t = store.list_t()
+        if not available_t:
+            raise HTTPException(status_code=404, detail="No snapshot available")
+        snap = store.get(available_t[-1])
+    else:
+        snap = store.get(t) or store.get_nearest(t)
+    if snap is None:
+        raise HTTPException(status_code=404, detail="No snapshot available")
+    return snap
 
 
 @router.get("/{world_id}/agents/summary", response_model=AgentSummaryResponse)
@@ -57,18 +93,7 @@ def get_agent_summary(
         raise HTTPException(status_code=404, detail="World not found")
 
     store = entry["snapshot_store"]
-    if store is None:
-        raise HTTPException(status_code=404, detail="Snapshot store not found")
-
-    if t is None:
-        available_t = store.list_t()
-        if not available_t:
-            raise HTTPException(status_code=404, detail="No snapshot available")
-        snap = store.get(available_t[-1])
-    else:
-        snap = store.get(t) or store.get_nearest(t)
-    if snap is None:
-        raise HTTPException(status_code=404, detail="No snapshot available")
+    snap = _resolve_snapshot(entry, t)
 
     buckets: dict[str, dict] = {}
     for cell in snap.cells:
@@ -84,6 +109,8 @@ def get_agent_summary(
                 "countries": {},
                 "emotion_sum": np.zeros(len(EMOTION_LABELS), dtype=float),
                 "memory_count": 0,
+                "long_memory_count": 0,
+                "interaction_quality_sum": 0.0,
             },
         )
         bucket["cells"].append(cell)
@@ -91,6 +118,13 @@ def get_agent_summary(
         bucket["countries"][country] = bucket["countries"].get(country, 0) + 1
         bucket["emotion_sum"] += np.abs(cell.emotion_vec[: len(EMOTION_LABELS)])
         bucket["memory_count"] += len(cell.memory[-5:])
+        bucket["long_memory_count"] += len(cell.long_memory)
+        qualities = [
+            float(item.get("quality_score", 0.0))
+            for item in cell.behavior_log[-12:]
+            if item.get("event_type") == "social_observation"
+        ]
+        bucket["interaction_quality_sum"] += sum(qualities) / len(qualities) if qualities else 0.0
 
     groups: List[AgentGroupSummary] = []
     for group_id, bucket in buckets.items():
@@ -117,6 +151,10 @@ def get_agent_summary(
                 avg_emotion_magnitude=float(np.linalg.norm(emotion_avg)),
                 countries=dict(sorted(bucket["countries"].items())),
                 recent_memory_count=int(bucket["memory_count"]),
+                long_memory_count=int(bucket["long_memory_count"]),
+                avg_interaction_quality=(
+                    float(bucket["interaction_quality_sum"]) / count if count else 0.0
+                ),
             )
         )
 
@@ -126,5 +164,83 @@ def get_agent_summary(
         t=float(snap.t),
         group_count=len(groups),
         cell_count=len(snap.cells),
+        groups=groups,
+    )
+
+
+@router.get("/{world_id}/agents/stance-summary", response_model=AgentStanceSummaryResponse)
+def get_agent_stance_summary(
+    world_id: str,
+    t: Optional[float] = Query(None, description="시점 t. 미지정 시 최신 스냅샷 사용"),
+):
+    """Summarize emerging stance and cohesion per role group."""
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    snap = _resolve_snapshot(entry, t)
+
+    grouped: dict[str, list[Cell]] = {}
+    for cell in snap.cells:
+        grouped.setdefault(_role_group_id(cell), []).append(cell)
+
+    groups: List[AgentStanceGroup] = []
+    for group_id, cells in grouped.items():
+        role_label = (cells[0].role_label or cells[0].role_key or "agent").strip() or "agent"
+        qualities = [
+            float(item.get("quality_score", 0.0))
+            for cell in cells
+            for item in cell.behavior_log[-16:]
+            if item.get("event_type") == "social_observation"
+        ]
+        polarities = [
+            str(item.get("payload", {}).get("belief_polarity") or "")
+            for cell in cells
+            for item in cell.behavior_log[-16:]
+            if item.get("event_type") == "social_observation"
+        ]
+        cluster_signals = [
+            str(item.get("payload", {}).get("cluster_signal") or "")
+            for cell in cells
+            for item in cell.behavior_log[-16:]
+            if item.get("event_type") == "social_observation"
+        ]
+        cohesion_score = float(np.mean(qualities)) if qualities else 0.0
+        tension_score = float(sum(1 for p in polarities if p == "counter_alignment")) / max(len(polarities), 1)
+        long_memory_count = sum(len(cell.long_memory) for cell in cells)
+        if cohesion_score >= 0.72 and tension_score < 0.2:
+            stance = "cohesive"
+        elif tension_score >= 0.35:
+            stance = "contested"
+        elif "emergent_cluster" in cluster_signals or cohesion_score >= 0.5:
+            stance = "emergent"
+        else:
+            stance = "diffuse"
+        summary = (
+            f"role={role_label} stance={stance} cohesion={cohesion_score:.2f} "
+            f"tension={tension_score:.2f} long_memory={long_memory_count}"
+        )
+        groups.append(
+            AgentStanceGroup(
+                group_id=group_id,
+                role_label=role_label,
+                stance=stance,
+                cohesion_score=cohesion_score,
+                tension_score=tension_score,
+                avg_interaction_quality=cohesion_score,
+                long_memory_count=long_memory_count,
+                summary=summary,
+            )
+        )
+
+    groups.sort(key=lambda g: (-g.cohesion_score, g.role_label))
+    overall_signal = "diffuse"
+    if groups and sum(1 for g in groups if g.stance == "cohesive") >= 1:
+        overall_signal = "clustered"
+    if groups and any(g.stance == "contested" for g in groups):
+        overall_signal = "contested"
+    return AgentStanceSummaryResponse(
+        world_id=world_id,
+        t=float(snap.t),
+        overall_signal=overall_signal,
         groups=groups,
     )

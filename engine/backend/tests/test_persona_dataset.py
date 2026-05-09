@@ -75,3 +75,5 @@ def test_initial_cells_use_persona_catalog():
     assert cells[0].persona_id == "p1"
     assert cells[0].persona_country == "KR"
     assert cells[0].memory == ["서울의 제조업 기술자"]
+    assert len(cells[0].long_memory) == 1
+    assert cells[0].behavior_log[0]["event_type"] == "persona_seed"

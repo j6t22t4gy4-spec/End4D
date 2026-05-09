@@ -42,5 +42,8 @@ class DiskWorldPersistence:
             "persona_country": str(payload.get("persona_country") or ""),
             "persona_source": str(payload.get("persona_source") or ""),
             "persona_catalog": list(payload.get("persona_catalog") or []),
+            "simulation_config": dict(payload.get("simulation_config") or {}),
+            "config_version": str(payload.get("config_version") or ""),
+            "comparison_meta": dict(payload.get("comparison_meta") or {}),
             "snapshots": [snapshot_from_dict(item) for item in payload.get("snapshots") or []],
         }

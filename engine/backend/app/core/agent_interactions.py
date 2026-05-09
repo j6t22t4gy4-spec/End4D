@@ -10,8 +10,10 @@ from typing import List
 
 import numpy as np
 
+from app.core.belief_dynamics import apply_belief_update
 from app.core.coordinates import cosine_similarity, distance_4d
-from app.core.memory_step import trim_memory
+from app.core.interaction_quality import evaluate_interaction_quality
+from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.spatial_index import SpatialHashGrid
 from app.models.cell import Cell
 
@@ -86,6 +88,7 @@ def apply_agent_interactions(
 
         roles = ", ".join(f"{role}:{count}" for role, count in sorted(role_counts.items()))
         avg_energy = energy_sum / len(neighbors)
+        quality = evaluate_interaction_quality(cell, neighbors)
         if aligned and conflicted:
             alignment = "mixed"
         elif aligned:
@@ -96,11 +99,10 @@ def apply_agent_interactions(
             alignment = "neutral"
         line = (
             f"t={t_int} social_observation neighbors={len(neighbors)} "
-            f"roles=[{roles}] avg_neighbor_energy={avg_energy:.1f} alignment={alignment}"
+            f"roles=[{roles}] avg_neighbor_energy={avg_energy:.1f} alignment={alignment} "
+            f"cluster_signal={quality['cluster_signal']} quality={quality['quality_score']:.2f}"
         )
-        memory = list(cell.memory) + [line]
         source_neighbor = aligned[0] if aligned else neighbors[0]
-        memory.append(f"t={t_int} borrowed_signal={_salient_memory(source_neighbor)[:180]}")
 
         thought_vec = cell.thought_vec
         worldview_vec = cell.worldview_vec
@@ -113,11 +115,86 @@ def apply_agent_interactions(
             conflict_target = np.mean([n.thought_vec for n in conflicted], axis=0)
             thought_vec = _blend_unit(cell.thought_vec, -conflict_target, 0.10)
 
-        out.append(
-            cell.copy(
-                memory=trim_memory(memory),
-                thought_vec=thought_vec,
-                worldview_vec=worldview_vec,
-            )
+        belief = apply_belief_update(
+            cell.copy(thought_vec=thought_vec, worldview_vec=worldview_vec),
+            neighbors=neighbors,
+            quality=quality,
+            alignment=alignment,
         )
+        thought_vec = belief["thought_vec"]
+        worldview_vec = belief["worldview_vec"]
+
+        updated = cell.copy(
+            thought_vec=thought_vec,
+            worldview_vec=worldview_vec,
+        )
+        observation_entry = memory_entry(
+            t=float(t_int),
+            kind="social_observation",
+            summary=line,
+            importance=float(quality["quality_score"]),
+            source="engine.agent_interactions",
+            payload={
+                "alignment": alignment,
+                "roles": roles,
+                "avg_neighbor_energy": avg_energy,
+                "cluster_signal": quality["cluster_signal"],
+                "quality_score": quality["quality_score"],
+                "belief_shift": belief["belief_shift"],
+                "belief_polarity": belief["belief_polarity"],
+            },
+            tags=["interaction", "social"],
+        )
+        behavior = behavior_event(
+            t=float(t_int),
+            event_type="social_observation",
+            source="engine.agent_interactions",
+            summary=line,
+            quality_score=float(quality["quality_score"]),
+            payload={
+                "neighbor_ids": [n.cell_id for n in neighbors],
+                "alignment": alignment,
+                "cluster_signal": quality["cluster_signal"],
+                "thought_similarity": quality["thought_similarity"],
+                "worldview_similarity": quality["worldview_similarity"],
+                "belief_shift": belief["belief_shift"],
+                "belief_polarity": belief["belief_polarity"],
+            },
+        )
+        updated = append_memory(
+            updated,
+            observation_entry,
+            behavior=behavior,
+            promote=float(quality["quality_score"]) >= 0.72,
+        )
+        borrowed_summary = f"t={t_int} borrowed_signal={_salient_memory(source_neighbor)[:180]}"
+        borrowed_entry = memory_entry(
+            t=float(t_int),
+            kind="borrowed_signal",
+            summary=borrowed_summary,
+            importance=max(0.35, float(quality["quality_score"]) * 0.85),
+            source="engine.agent_interactions",
+            payload={"from_cell_id": source_neighbor.cell_id},
+            tags=["interaction", "signal"],
+        )
+        updated = append_memory(updated, borrowed_entry, promote=False)
+        belief_entry = memory_entry(
+            t=float(t_int),
+            kind="belief_update",
+            summary=f"t={t_int} {belief['belief_summary']}",
+            importance=max(0.42, min(0.95, float(quality["quality_score"]) * 0.9)),
+            source="engine.belief_dynamics",
+            payload={
+                "belief_shift": belief["belief_shift"],
+                "belief_polarity": belief["belief_polarity"],
+                "cluster_signal": quality["cluster_signal"],
+            },
+            tags=["belief", "worldview"],
+        )
+        updated = append_memory(
+            updated,
+            belief_entry,
+            promote=float(belief["belief_shift"]) >= 0.18 or float(quality["quality_score"]) >= 0.76,
+        )
+        out.append(updated)
     return out

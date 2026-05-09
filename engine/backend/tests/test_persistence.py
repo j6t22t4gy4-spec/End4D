@@ -33,6 +33,28 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
                 thought_vec=np.zeros(256),
                 worldview_vec=np.zeros(384),
                 memory=["t=3 social_observation neighbors=1 alignment=ally"],
+                short_memory=[
+                    {
+                        "t": 3.0,
+                        "kind": "social_observation",
+                        "summary": "t=3 social_observation neighbors=1 alignment=ally",
+                        "importance": 0.7,
+                        "source": "test",
+                        "payload": {},
+                        "tags": ["interaction"],
+                    }
+                ],
+                behavior_log=[
+                    {
+                        "schema_version": "behavior-log/v1",
+                        "t": 3.0,
+                        "event_type": "social_observation",
+                        "source": "test",
+                        "summary": "t=3 social_observation neighbors=1 alignment=ally",
+                        "quality_score": 0.7,
+                        "payload": {},
+                    }
+                ],
                 role_key="citizen",
                 role_label="citizen",
             )
@@ -46,3 +68,6 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap is not None
     assert loaded_snap.cells[0].cell_id == "persisted-cell"
     assert loaded_snap.cells[0].memory[-1].endswith("alignment=ally")
+    assert loaded_snap.cells[0].short_memory[0]["kind"] == "social_observation"
+    assert loaded_snap.cells[0].behavior_log[0]["schema_version"] == "behavior-log/v1"
+    assert loaded_entry["config_version"]

@@ -22,6 +22,9 @@ def test_graph_run_preserves_vector_shapes_and_advances_t():
         assert c.thought_vec.shape == (256,)
         assert c.worldview_vec.shape == (384,)
         assert isinstance(c.memory, list)
+        assert isinstance(c.short_memory, list)
+        assert isinstance(c.long_memory, list)
+        assert isinstance(c.behavior_log, list)
 
 
 def test_thought_refresh_at_interval_changes_vector():

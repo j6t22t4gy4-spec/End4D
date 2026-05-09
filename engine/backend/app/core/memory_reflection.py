@@ -16,6 +16,10 @@ def _sample_memory(memory: List[str], limit: int) -> List[str]:
     return sampled[-limit:]
 
 
+def _memory_entries(cell: Cell) -> List[dict]:
+    return [dict(item) for item in cell.long_memory] + [dict(item) for item in cell.short_memory]
+
+
 def _extract_role_counts(memory: Iterable[str]) -> Counter[str]:
     counts: Counter[str] = Counter()
     for line in memory:
@@ -36,8 +40,9 @@ def _extract_role_counts(memory: Iterable[str]) -> Counter[str]:
 
 def build_memory_reflection(cell: Cell) -> str:
     """Summarize long-horizon interaction signals into a compact belief string."""
+    entries = _memory_entries(cell)
     memory = list(cell.memory)
-    if not memory:
+    if not memory and not entries:
         return "no memory yet"
 
     social_lines = [line for line in memory if "social_observation" in line]
@@ -55,27 +60,34 @@ def build_memory_reflection(cell: Cell) -> str:
             alignment_counter[tag] += 1
     dominant_alignment = alignment_counter.most_common(1)[0][0] if alignment_counter else "unknown"
 
+    high_importance = sum(1 for item in entries if float(item.get("importance", 0.0)) >= 0.72)
     recent = " | ".join(_sample_memory(memory, 4))
     return (
         f"memory_size={len(memory)}; social_events={len(social_lines)}; "
         f"borrowed_signals={len(borrowed_lines)}; dominant_alignment={dominant_alignment}; "
-        f"recurring_roles={recurring_roles}; recent={recent[:320]}"
+        f"high_importance={high_importance}; recurring_roles={recurring_roles}; recent={recent[:320]}"
     )
 
 
 def build_worldview_reflection(cell: Cell) -> str:
     """Longer-horizon belief summary for worldview refreshes."""
     memory = list(cell.memory)
-    if not memory:
+    if not memory and not cell.long_memory and not cell.short_memory:
         return "nascent worldview"
     sampled = _sample_memory(memory, 12)
     role_counts = _extract_role_counts(sampled)
     focus_roles = ", ".join(
         f"{role}:{count}" for role, count in role_counts.most_common(4)
     ) or "none"
+    long_bias = ", ".join(
+        str(item.get("summary") or "")[:100]
+        for item in cell.long_memory[-3:]
+        if str(item.get("summary") or "").strip()
+    ) or "none"
     return (
         f"role={cell.role_label or cell.role_key or 'agent'}; "
         f"focus_roles={focus_roles}; "
+        f"long_term_bias={long_bias}; "
         f"reflection={build_memory_reflection(cell)}; "
         f"long_horizon={' ; '.join(sampled)[:720]}"
     )

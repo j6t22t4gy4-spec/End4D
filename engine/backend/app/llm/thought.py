@@ -9,40 +9,18 @@ from __future__ import annotations
 
 from typing import List
 
-import numpy as np
-
-from app.core.emotion import EMOTION_LABELS
-from app.core.memory_reflection import build_memory_reflection
 from app.llm.embeddings import embed_texts
+from app.llm.prompt_engineering import build_thought_prompt
 from app.models.cell import Cell
 
 # ARCHITECTURE_CHECKLIST 4.3: 10~50 t
 THOUGHT_UPDATE_INTERVAL = 20
-
-
-def _thought_prompt(cell: Cell) -> str:
-    ev = cell.emotion_vec
-    dom = int(np.argmax(np.abs(ev))) if ev.size else 0
-    label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
-    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
-    recent_memory = "; ".join(cell.memory[-5:]) if cell.memory else "none"
-    reflection = build_memory_reflection(cell)
-    return (
-        f"strategy for role={role}: energy {cell.energy:.2f}, "
-        f"dominant affect {label}, neighbors implied by emotion layer, "
-        f"gene_norm {float(np.linalg.norm(cell.gene_vec)):.3f}, "
-        f"reflection={reflection[:320]}, "
-        f"recent_memory={recent_memory[:480]}, "
-        f"persona={cell.persona_text[:240]}"
-    )
-
-
 def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
     if t_int <= 0 or t_int % THOUGHT_UPDATE_INTERVAL != 0:
         return cells
 
-    texts = [_thought_prompt(c) for c in cells]
+    texts = [build_thought_prompt(c) for c in cells]
     vecs = embed_texts(texts, 256)
     out: List[Cell] = []
     for i, c in enumerate(cells):

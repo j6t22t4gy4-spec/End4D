@@ -13,6 +13,7 @@ import numpy as np
 
 from app.models.cell import Cell
 from app.core.coordinates import distance_4d, cosine_similarity
+from app.core.memory_store import merge_memory_fields
 from app.core.spatial_index import SpatialHashGrid
 
 
@@ -158,6 +159,7 @@ def apply_fusion(
             c2 = cells[best_j]
             used.add(c1.cell_id)
             used.add(c2.cell_id)
+            merged_memory = merge_memory_fields(c1, c2)
 
             merged = c1.copy(
                 cell_id=str(uuid.uuid4()),
@@ -169,7 +171,10 @@ def apply_fusion(
                 emotion_vec=_mutate_vector((c1.emotion_vec + c2.emotion_vec) / 2),
                 thought_vec=_mutate_vector((c1.thought_vec + c2.thought_vec) / 2),
                 worldview_vec=_mutate_vector((c1.worldview_vec + c2.worldview_vec) / 2),
-                memory=c1.memory + c2.memory,
+                memory=merged_memory["memory"],
+                short_memory=merged_memory["short_memory"],
+                long_memory=merged_memory["long_memory"],
+                behavior_log=merged_memory["behavior_log"],
             )
             result.append(merged)
         else:
