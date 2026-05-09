@@ -12,6 +12,13 @@ MEMORY_APPEND_INTERVAL = 25
 MEMORY_MAX_ENTRIES = 120
 
 
+def trim_memory(memory: List[str]) -> List[str]:
+    """Keep per-cell memory bounded so long simulations stay stable."""
+    if len(memory) <= MEMORY_MAX_ENTRIES:
+        return memory
+    return memory[-MEMORY_MAX_ENTRIES:]
+
+
 def append_step_memory(cells: List[Cell], current_t: float) -> List[Cell]:
     """주기적으로 짧은 경험 로그를 메모리에 추가 (융합 등은 rules에서 이미 병합)."""
     t_int = int(current_t)
@@ -21,8 +28,5 @@ def append_step_memory(cells: List[Cell], current_t: float) -> List[Cell]:
     out: List[Cell] = []
     for c in cells:
         line = f"t={t_int} energy={c.energy:.1f}"
-        mem = list(c.memory) + [line]
-        if len(mem) > MEMORY_MAX_ENTRIES:
-            mem = mem[-MEMORY_MAX_ENTRIES:]
-        out.append(c.copy(memory=mem))
+        out.append(c.copy(memory=trim_memory(list(c.memory) + [line])))
     return out

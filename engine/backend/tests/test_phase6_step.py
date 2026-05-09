@@ -3,6 +3,7 @@ import numpy as np
 
 from app.core.snapshot import SnapshotStore
 from app.graph.time_flow import create_time_flow_graph
+from app.models.cell import Cell
 
 
 def test_graph_run_preserves_vector_shapes_and_advances_t():
@@ -38,3 +39,42 @@ def test_thought_refresh_at_interval_changes_vector():
     snap21 = store.get(21.0)
     assert snap0 is not None and snap21 is not None
     assert not np.allclose(snap0.cells[0].thought_vec, snap21.cells[0].thought_vec)
+
+
+def test_graph_writes_agent_social_memory_before_thought_refresh():
+    """Internal agent observations become memory before the next Thought cycle."""
+    store = SnapshotStore()
+    graph = create_time_flow_graph()
+    initial_cells = [
+        Cell(
+            cell_id=f"agent-{i}",
+            x=float(i),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=50.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.zeros(256),
+            worldview_vec=np.zeros(384),
+            role_key=role,
+            role_label=role,
+        )
+        for i, role in enumerate(["citizen", "regulator", "producer"])
+    ]
+    graph.invoke(
+        {
+            "initial_cells": initial_cells,
+            "t_max": 21,
+            "snapshot_store": store,
+        }
+    )
+    snap20 = store.get(20.0)
+    snap21 = store.get(21.0)
+    assert snap20 is not None and snap21 is not None
+    assert any(
+        "social_observation" in line
+        for cell in snap20.cells
+        for line in cell.memory
+    )
+    assert not np.allclose(snap20.cells[0].thought_vec, snap21.cells[0].thought_vec)

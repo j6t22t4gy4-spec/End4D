@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.core.store import world_store
 from app.models.cell import Cell
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/worlds", tags=["snapshots"])

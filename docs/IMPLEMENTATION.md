@@ -245,6 +245,18 @@ export ORGANIC4D_PERSONA_DATASET_DIR=$PWD/data/personas
 
 `GET /worlds/{world_id}/personas`로 world에 연결된 persona seed와 source/attribution 메타데이터를 확인할 수 있다.
 
+### 3.5b 성능 벤치마크
+
+```bash
+cd engine/backend
+ORGANIC4D_EMBED_BACKEND=stub python scripts/benchmark_simulation.py --cells 100 1000 --steps 20
+```
+
+초기 목표:
+- `100 cells x 20 steps`: 로컬 개발 머신에서 인터랙티브하게 실행 가능해야 함.
+- `1K cells x 20 steps`: `SpatialHashGrid` 최적화 이후 회귀 여부를 확인하는 기준.
+- benchmark 결과는 하드웨어 영향을 받으므로 절대값보다 같은 머신의 이전 commit 대비 회귀를 우선 확인한다.
+
 ### 3.6a 프론트 404 (God View가 안 열릴 때)
 
 - 증상: 브라우저에서 Next 기본 **「404 This page could not be found」**, 특히 `.next`가 깨졌거나 **EMFILE (too many open files)** 로 감시가 실패한 뒤.

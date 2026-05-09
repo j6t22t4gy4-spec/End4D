@@ -24,6 +24,8 @@ Phase 6: 3계층 감정·생각 생성 (Emotion, Thought, Worldview)
 Phase 7: God View 주입 + 시나리오 리포트
     ↓
 Phase 8: 최적화·배포
+    ↓
+Phase 10A: 엔진/에이전트 데이터 플라이휠 기초
 ```
 
 ---
@@ -226,4 +228,34 @@ Phase 8: 최적화·배포
 
 ---
 
-*문서 버전: v0.3 — Phase 9 Persona dataset seed 반영*
+## Phase 10A (엔진/에이전트 데이터 플라이휠 기초)
+
+> 현재 우선순위: 챗봇 UI·익명화보다 먼저 시스템 본질을 강화한다. 즉, 에이전트가 서로를 관찰하고, 그 관찰이 memory → Thought → Worldview로 이어지는 내부 플라이휠을 만든 뒤 사용자 상호작용을 얹는다.
+
+| 순서 | 작업 | 산출물 |
+|------|------|--------|
+| 10A.1 | 에이전트 간 근접 관찰 memory | `agent_interactions.py`, `social_observation` memory |
+| 10A.2 | Thought 입력에 최근 memory 반영 | `thought.py` prompt에 recent memory 포함 |
+| 10A.3 | role/persona 그룹 관측 API | `GET /worlds/{id}/agents/summary` |
+| 10A.4 | 내부 플라이휠 테스트 | `test_agent_interactions.py`, `test_agents_api.py`, Phase 6 loop test |
+| 10A.5 | 다음 단계: persona-aware Genesis 강화 | persona 분포가 초기 위치·energy·role mix에 반영 |
+| 10A.6 | 다음 단계: group-level stance summary | role group의 갈등·합의·리스크 요약 |
+
+---
+
+## Phase 10B (대화 엔진·사용자 데이터 플라이휠)
+
+> 상세 결손은 `DEVELOPMENT_GAPS.md`를 우선 참조.
+
+| 순서 | 작업 | 산출물 |
+|------|------|--------|
+| 10B.1 | ChatPanel UI | God View 내부 자연어 대화 인터페이스 |
+| 10B.2 | 대화 API | `POST /worlds/{id}/chat`, t/role/persona context |
+| 10B.3 | 사용자 입력 → memory/event 변환 | user utterance normalization, target scope, inject event |
+| 10B.4 | Thought/Worldview 업데이트 트리거 | 대화 후 선택 집단의 중기/장기 벡터 갱신 |
+| 10B.5 | 동의·익명화·보존 정책 | consent flags, PII redaction, provenance |
+| 10B.6 | 멀티 에이전트 그룹 대화 | role group conversation, group stance summary |
+
+---
+
+*문서 버전: v0.5 — Phase 10A 엔진/에이전트 우선순위 반영*

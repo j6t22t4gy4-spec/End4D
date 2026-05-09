@@ -23,6 +23,7 @@
 | **coordinates.py** | **4D 좌표·거리 함수**. `distance_4d()` — (x,y,z)와 t에 가중치 적용한 거리 계산. `cosine_similarity()` — 융합 조건 등에 사용. |
 | **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought cosine≥0.7+Worldview), `apply_mutation`(유전자 변이; 감정은 `emotion.py`). |
 | **spatial_index.py** | **인접 검색 최적화**. `SpatialHashGrid` — Emotion 이웃 밀집도와 융합 후보 탐색을 uniform grid로 pruning해 전수 비교를 줄임. |
+| **agent_interactions.py** | **에이전트 간 내부 상호작용 메모리**. 가까운 role/persona 이웃을 주기적으로 관찰해 `social_observation` memory를 남기고 Thought/Worldview 갱신의 데이터 플라이휠 입력으로 사용. |
 | **persona_dataset.py** | **국가별 페르소나 데이터셋 어댑터**. JSONL/JSON/CSV 샘플 또는 선택적 Hugging Face streaming dataset을 `PersonaSeed`로 변환해 Genesis 초기 세포의 역할·메모리·페르소나 필드에 주입. |
 | **settings.py** | **엔진 환경 분기**. `get_llm_chat_enabled`, `get_persistence_backend`, `get_database_url`, **`get_cors_origins`** (Phase 8). |
 | **inject_handlers.py** | **주입 이벤트 적용**. `apply_inject_to_cells` — nutrient_burst / append_memory / emotion_spike / noop. |
@@ -39,7 +40,7 @@
 | 파일 | 역할 |
 |------|------|
 | **embeddings.py** | **텍스트 임베딩**. `embed_texts`(sentence-transformers `all-MiniLM-L6-v2` → 차원 절단/L2 정규화). 실패 또는 `ORGANIC4D_EMBED_BACKEND=stub` 시 결정적 스텁. |
-| **thought.py** | **Thought 256D (Phase 6.4)**. `update_thoughts_if_due` — 약 20t마다 세포 상태 텍스트를 임베딩해 `thought_vec` 갱신. |
+| **thought.py** | **Thought 256D (Phase 6.4)**. `update_thoughts_if_due` — 약 20t마다 역할·에너지·감정·최근 memory/social observation을 임베딩해 `thought_vec` 갱신. |
 | **worldview.py** | **Worldview 384D (Phase 6.5)**. `update_worldviews_if_due` — t≥200 또는 메모리≥100인 세포만 40t 간격으로 경험 텍스트 임베딩. |
 | **__init__.py** | llm 패키지 진입점. |
 
@@ -48,7 +49,7 @@
 | 파일 | 역할 |
 |------|------|
 | **time_flow.py** | **LangGraph 시간 흐름**. `create_time_flow_graph()` — init→step_loop. `create_resume_time_flow_graph()` — 주입 후 t→t_max만 step_loop (Phase 7.3). |
-| **nodes.py** | **t 스텝 루프 노드**. `step_loop_node` — 5대 규칙 후 `append_step_memory` → `update_emotions` → `update_thoughts_if_due` → `update_worldviews_if_due`, t 증가, 스냅샷 저장. |
+| **nodes.py** | **t 스텝 루프 노드**. `step_loop_node` — 5대 규칙 후 `append_step_memory` → `apply_agent_interactions` → `update_emotions` → `update_thoughts_if_due` → `update_worldviews_if_due`, t 증가, 스냅샷 저장. |
 | **__init__.py** | graph 패키지 진입점. `create_time_flow_graph` export. |
 
 ### 1.5 API (app/)
@@ -59,6 +60,7 @@
 | **api/worlds.py** | **월드 REST API**. POST /worlds `{prompt}` → Genesis·저장, GET /worlds/{id} (genesis·역할 메타), GET /worlds/{id}/personas (persona seed preview·attribution). |
 | **api/run.py** | **시뮬 실행 API**. POST /worlds/{id}/run — 동기 실행, SnapshotStore에 저장. |
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
+| **api/agents.py** | **에이전트 그룹 관측 API**. GET /worlds/{id}/agents/summary — 최신/지정 t의 role/persona 그룹별 에너지·감정·국가·memory 집계. 챗봇이 아니라 엔진 내부 상태 확인용. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **api/inject.py** | **God View 주입 (Phase 7.1, 7.3)**. POST /worlds/{id}/inject — 스냅샷 수정, `clear_after`, 재실행. |
 | **api/timeline.py** | **시나리오 집계 (Phase 7.4)**. GET /worlds/{id}/timeline — t별 cell_count, total_energy. GET /worlds/{id}/timeline/summary — cell/energy delta와 outcome 요약. |
@@ -79,6 +81,8 @@
 | **test_rules.py** | **5대 규칙 단위 테스트**. 성장(에너지 증가), 분열(1→2, 변이), 사멸(제거+영양분 분배), 융합(거리+유사도), 돌연변이 검증. |
 | **test_emotion.py** | **Emotion 규칙 테스트**. 차원, 에너지·밀집도 효과, `update_emotions` 블렌딩. |
 | **test_phase6_step.py** | **Phase 6 통합**. LangGraph 실행 시 벡터 shape·Thought 간격 갱신. |
+| **test_agent_interactions.py** | **에이전트 내부 상호작용 테스트**. 가까운 이웃만 `social_observation` memory를 남기는지 검증. |
+| **test_agents_api.py** | **에이전트 그룹 API 테스트**. `/agents/summary`가 최신 snapshot을 role group으로 집계하는지 검증. |
 | **test_inject.py** | **Phase 7**. 주입 404·영양 주입 후 재계산·timeline API. |
 | **test_world_genesis.py** | **Genesis 스텁**. 휴리스틱 `propose_world_from_prompt`. |
 | **test_persona_dataset.py** | **국가별 페르소나 seed**. JSONL adapter, 국가 추론, 초기 세포 persona 주입 검증. |
@@ -110,6 +114,8 @@
 | **TimeSlider/TimeSlider.tsx** | **t 슬라이더**. range input, 스냅샷 t 탐색. |
 | **InjectPanel/InjectPanel.tsx** | **주입 UI (Phase 7.2)**. t·event_type·payload JSON → `injectEvent`. |
 | **ScenarioTimeline/ScenarioTimeline.tsx** | **Recharts 타임라인 (Phase 7.4)**. `getTimeline` → 세포 수·에너지 합. |
+| **PersonaPreview/PersonaPreview.tsx** | **페르소나 seed preview**. `getWorldPersonas` → source/license/attribution과 샘플 persona 표시. |
+| **ScenarioSummary/ScenarioSummary.tsx** | **시나리오 요약 카드**. `getTimelineSummary` → outcome, cell delta, energy summary 표시. |
 
 ### 2.3 훅 (hooks/)
 
@@ -121,7 +127,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline/timeline summary/persona preview + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
+| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline/timeline summary/persona preview/agent summary + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
 
 ### 2.5 설정
 
@@ -170,4 +176,4 @@ GodView → lib/api.ts (getSnapshotAtT, cellsToInstanceBuffers)
 
 ---
 
-*문서 버전: v0.6 — Phase 0~5 + Playwright E2E 기준*
+*문서 버전: v0.7 — 엔진/에이전트 데이터 플라이휠 기초 반영*

@@ -81,6 +81,27 @@ export type PersonaPreviewResponse = {
   items: PersonaPreviewItem[];
 };
 
+export type AgentGroupSummary = {
+  group_id: string;
+  role_key: string;
+  role_label: string;
+  cell_count: number;
+  total_energy: number;
+  avg_energy: number;
+  dominant_emotion: string;
+  avg_emotion_magnitude: number;
+  countries: Record<string, number>;
+  recent_memory_count: number;
+};
+
+export type AgentSummaryResponse = {
+  world_id: string;
+  t: number;
+  group_count: number;
+  cell_count: number;
+  groups: AgentGroupSummary[];
+};
+
 export type CreateWorldResult = {
   world_id: string;
   t_max: number;
@@ -120,6 +141,20 @@ export async function getWorldPersonas(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/personas?${q}`
   );
   if (!res.ok) throw new Error(`getWorldPersonas: ${res.status}`);
+  return res.json();
+}
+
+export async function getAgentSummary(
+  worldId: string,
+  t?: number
+): Promise<AgentSummaryResponse> {
+  const q = new URLSearchParams();
+  if (typeof t === "number") q.set("t", String(t));
+  const suffix = q.toString() ? `?${q}` : "";
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/summary${suffix}`
+  );
+  if (!res.ok) throw new Error(`getAgentSummary: ${res.status}`);
   return res.json();
 }
 

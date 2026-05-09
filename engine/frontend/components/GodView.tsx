@@ -9,7 +9,9 @@ import { R3fErrorBoundary } from "@/components/R3fErrorBoundary";
 import Scene3DCanvas from "@/components/Scene3D/Scene3DCanvas";
 import { TimeSlider } from "@/components/TimeSlider/TimeSlider";
 import { InjectPanel } from "@/components/InjectPanel/InjectPanel";
+import { PersonaPreview } from "@/components/PersonaPreview";
 import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline";
+import { ScenarioSummary } from "@/components/ScenarioSummary";
 import {
   createWorld,
   getApiBase,
@@ -46,6 +48,7 @@ export default function GodView() {
   /** 클라이언트 마운트 후에만 Canvas 로드 → 폼·버튼 먼저 페인트 (E2E·SSR 안정) */
   const [mount3d, setMount3d] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
+  const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
   useEffect(() => {
     setMount3d(true);
   }, []);
@@ -95,6 +98,7 @@ export default function GodView() {
       setColors(new Float32Array(0));
       setScales(new Float32Array(0));
       setVisualStats(null);
+      setPersonaRefreshKey((k) => k + 1);
       bumpChartRefresh();
     } catch (e) {
       setCreateError((e as Error).message);
@@ -256,6 +260,11 @@ export default function GodView() {
         )}
       </section>
 
+      <PersonaPreview
+        worldId={worldId}
+        refreshKey={personaRefreshKey}
+      />
+
       <section className="rounded-lg border border-slate-800 bg-slate-900/50 p-4 space-y-3">
         <h2 className="text-sm font-medium text-slate-300">2. 시뮬 실행</h2>
         <div className="flex flex-wrap gap-2">
@@ -317,6 +326,11 @@ export default function GodView() {
       />
 
       <ScenarioTimeline
+        worldId={worldId}
+        refreshKey={chartRefreshKey}
+      />
+
+      <ScenarioSummary
         worldId={worldId}
         refreshKey={chartRefreshKey}
       />

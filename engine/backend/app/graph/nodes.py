@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from app.core.agent_interactions import apply_agent_interactions
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
 from app.core.rules import (
@@ -37,6 +38,7 @@ def step_loop_node(state: "SimulationState") -> dict:
 
     next_t = current_t + 1
     cells = append_step_memory(cells, next_t)
+    cells = apply_agent_interactions(cells, next_t)
     cells = update_emotions(cells, current_t)
     cells = update_thoughts_if_due(cells, current_t)
     cells = update_worldviews_if_due(cells, current_t)

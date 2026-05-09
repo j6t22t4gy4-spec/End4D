@@ -75,6 +75,7 @@
 | 5.2 | 매 t: 성장/분열/사멸/융합/돌연변이 + Emotion | 규칙 누락 | CONCEPT §7 |
 | 5.3 | 매 10~50 t: Thought, 매 200 t+ (또는 메모리 100+): Worldview | 주기 혼동 | CONCEPT §7 |
 | 5.4 | God View 주입: `(t_inject, event_type, payload)` 도달 시 적용 | 주입 무시·즉시 반영 | ARCHITECTURE §3.2 |
+| 5.5 | 사용자 대화 이전에도 에이전트 간 관찰이 memory → Thought/Worldview로 흐르는 내부 플라이휠이 있어야 한다 | 챗 UI가 없으면 엔진이 학습/변화하지 않음 | IMPLEMENTATION_SEQUENCE Phase 10A |
 
 ---
 
@@ -110,7 +111,20 @@
 
 ---
 
-## 9. 구현 시점별 핵심 체크
+## 9. 대화 엔진 & 데이터 플라이휠
+
+| # | 체크 항목 | 위반 징후 | 참조 |
+|---|-----------|-----------|------|
+| 9.1 | God View에는 자연어 대화 인터페이스가 있어야 한다 | 시뮬 실행/주입만 가능하고 세계와 대화할 수 없음 | DEVELOPMENT_GAPS §2.1 |
+| 9.2 | 사용자 발화는 target scope(world/role/persona/cell)와 t context를 가져야 한다 | 모든 입력이 전역 이벤트로만 처리됨 | DEVELOPMENT_GAPS §2.2 |
+| 9.3 | 사용자 입력은 memory/event로 변환되고 Thought/Worldview 갱신 경로를 가져야 한다 | 대화가 시뮬레이션 상태에 반영되지 않음 | DEVELOPMENT_GAPS §2.2 |
+| 9.4 | 사용자 데이터는 동의·익명화·보존 정책을 통과해야 한다 | 원문 대화가 목적·동의 없이 저장됨 | DEVELOPMENT_GAPS §2.3 |
+| 9.5 | 멀티 에이전트 대화는 role/persona group 단위로 요약 가능해야 한다 | 개별 응답만 있고 집단 입장·갈등 구조가 없음 | DEVELOPMENT_GAPS §2.6 |
+| 9.6 | 사용자 입력 플라이휠은 엔진 내부 플라이휠 위에 얹는다 | 챗봇만 있고 에이전트 자체의 상호작용·상태 전이가 약함 | IMPLEMENTATION_SEQUENCE Phase 10A |
+
+---
+
+## 10. 구현 시점별 핵심 체크
 
 | Phase | 반드시 확인할 본질 |
 |-------|---------------------|
@@ -122,7 +136,10 @@
 | 6 | 4.x 전부(3계층 본질), 3.4(융합 Thought 70%) |
 | 7 | 6.1(inject API), 5.4(God View 주입) |
 | 8 | 1.x(엔진 분리 유지), 7.2(Instancing 유지) |
+| 9 | 2.8(persona dataset), 8.4(attribution) |
+| 10A | 5.5(내부 플라이휠), 4.7(역할 맥락), 6.x(API 관측 계약) |
+| 10B | 9.x(대화 엔진·사용자 데이터 플라이휠) |
 
 ---
 
-*문서 버전: v0.1 — 지난 세션 논의 기반 아키텍처 본질 체크리스트*
+*문서 버전: v0.3 — 엔진/에이전트 내부 플라이휠 우선순위 추가*
