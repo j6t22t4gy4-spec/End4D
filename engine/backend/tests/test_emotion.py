@@ -7,6 +7,7 @@ from app.core.emotion import (
     count_neighbors,
     update_emotions,
 )
+from app.core.spatial_index import count_neighbors_by_cell
 from app.models.cell import Cell
 
 
@@ -48,6 +49,18 @@ def test_count_neighbors():
     c = _cell(40.0, x=50, y=0, z=0)
     n = count_neighbors([a, b, c], a)
     assert n == 1
+
+
+def test_spatial_index_neighbor_counts_match_naive():
+    cells = [
+        _cell(40.0, x=0, y=0, z=0),
+        _cell(40.0, x=0.5, y=0, z=0),
+        _cell(40.0, x=2.5, y=0, z=0),
+        _cell(40.0, x=50, y=0, z=0),
+    ]
+    counts = count_neighbors_by_cell(cells, radius=3.0)
+    for cell in cells:
+        assert counts[cell.cell_id] == count_neighbors(cells, cell, radius=3.0)
 
 
 def test_update_emotions_blends():

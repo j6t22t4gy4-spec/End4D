@@ -9,6 +9,7 @@ from typing import List
 
 import numpy as np
 
+from app.core.spatial_index import count_neighbors_by_cell, spatial_distance_sq
 from app.models.cell import Cell
 
 # 순서는 API/프론트와 동기화 (docs/CODE_REFERENCE.md)
@@ -34,10 +35,7 @@ BLEND_ALPHA = 0.38
 
 
 def _spatial_distance_sq(c1: Cell, c2: Cell) -> float:
-    dx = c1.x - c2.x
-    dy = c1.y - c2.y
-    dz = c1.z - c2.z
-    return dx * dx + dy * dy + dz * dz
+    return spatial_distance_sq(c1, c2)
 
 
 def count_neighbors(cells: List[Cell], cell: Cell, radius: float = NEIGHBOR_RADIUS) -> int:
@@ -83,9 +81,10 @@ def update_emotions(cells: List[Cell], current_t: float) -> List[Cell]:
     if not cells:
         return cells
 
+    neighbor_counts = count_neighbors_by_cell(cells, radius=NEIGHBOR_RADIUS)
     out: List[Cell] = []
     for cell in cells:
-        nc = count_neighbors(cells, cell)
+        nc = neighbor_counts.get(cell.cell_id, 0)
         proposal = compute_emotion_proposal(cell, nc)
         blended = (1.0 - BLEND_ALPHA) * cell.emotion_vec.astype(
             np.float32

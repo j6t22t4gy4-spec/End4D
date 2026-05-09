@@ -5,7 +5,7 @@ IMPLEMENTATION §0: GET /worlds/{id}/snapshots?t=
 """
 from __future__ import annotations
 
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -32,6 +32,10 @@ def _cell_to_dict(c: Cell) -> dict:
         "worldview_vec": c.worldview_vec.tolist(),
         "role_key": c.role_key,
         "role_label": c.role_label,
+        "persona_id": c.persona_id,
+        "persona_text": c.persona_text,
+        "persona_country": c.persona_country,
+        "persona_attrs": c.persona_attrs,
     }
 
 
@@ -49,6 +53,10 @@ class CellResponse(BaseModel):
     worldview_vec: List[float]
     role_key: str = "agent"
     role_label: str = ""
+    persona_id: str = ""
+    persona_text: str = ""
+    persona_country: str = ""
+    persona_attrs: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SnapshotResponse(BaseModel):

@@ -7,11 +7,13 @@ Emotion 갱신은 core/emotion.py (매 t), Thought/Worldview는 llm/ + graph/nod
 from __future__ import annotations
 
 from typing import List
+import uuid
 
 import numpy as np
 
 from app.models.cell import Cell
 from app.core.coordinates import distance_4d, cosine_similarity
+from app.core.spatial_index import SpatialHashGrid
 
 
 # 기본 상수
@@ -58,6 +60,7 @@ def apply_division(
         offset = 0.5
 
         child1 = cell.copy(
+            cell_id=str(uuid.uuid4()),
             energy=half_energy,
             x=cell.x - offset,
             gene_vec=_mutate_vector(cell.gene_vec),
@@ -66,6 +69,7 @@ def apply_division(
             worldview_vec=_mutate_vector(cell.worldview_vec),
         )
         child2 = cell.copy(
+            cell_id=str(uuid.uuid4()),
             energy=half_energy,
             x=cell.x + offset,
             gene_vec=_mutate_vector(cell.gene_vec),
@@ -116,6 +120,8 @@ def apply_fusion(
 
     used: set[str] = set()
     result: List[Cell] = []
+    index_by_id = {cell.cell_id: idx for idx, cell in enumerate(cells)}
+    spatial_index = SpatialHashGrid(cells, cell_size=distance_threshold)
 
     for i, c1 in enumerate(cells):
         if c1.cell_id in used:
@@ -124,7 +130,8 @@ def apply_fusion(
         best_j = -1
         best_sim = -1.0
 
-        for j, c2 in enumerate(cells):
+        for c2 in spatial_index.candidate_cells(c1, distance_threshold):
+            j = index_by_id.get(c2.cell_id, -1)
             if i >= j or c2.cell_id in used:
                 continue
 
@@ -146,6 +153,7 @@ def apply_fusion(
             used.add(c2.cell_id)
 
             merged = c1.copy(
+                cell_id=str(uuid.uuid4()),
                 x=(c1.x + c2.x) / 2,
                 y=(c1.y + c2.y) / 2,
                 z=(c1.z + c2.z) / 2,

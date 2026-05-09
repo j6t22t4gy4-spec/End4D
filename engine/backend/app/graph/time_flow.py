@@ -18,18 +18,22 @@ def _create_initial_cells(
     count: int = 5,
     t: float = 0.0,
     role_catalog: Optional[List[str]] = None,
+    persona_catalog: Optional[List[dict]] = None,
 ) -> List[Cell]:
-    """초기 세포 생성. 역할 카탈로그를 순환 부여 (CONCEPT §5.1)."""
+    """초기 세포 생성. 페르소나가 있으면 역할·메모리 seed로 사용."""
     import numpy as np
 
     roles = role_catalog if role_catalog else ["agent"]
     if not roles:
         roles = ["agent"]
+    personas = persona_catalog or []
 
     cells = []
     for i in range(count):
-        rk = roles[i % len(roles)]
-        label = rk
+        persona = personas[i % len(personas)] if personas else {}
+        rk = str(persona.get("role_key") or roles[i % len(roles)])
+        label = str(persona.get("role_label") or rk)
+        persona_text = str(persona.get("persona_text") or "")
         cells.append(
             Cell(
                 x=float(i * 2),
@@ -43,6 +47,11 @@ def _create_initial_cells(
                 worldview_vec=np.random.randn(384).astype(np.float32) * 0.1,
                 role_key=rk,
                 role_label=label,
+                persona_id=str(persona.get("persona_id") or ""),
+                persona_text=persona_text,
+                persona_country=str(persona.get("country") or ""),
+                persona_attrs=dict(persona.get("attrs") or {}),
+                memory=[persona_text] if persona_text else [],
             )
         )
     return cells
@@ -60,6 +69,7 @@ def _init_node(state: SimulationState) -> SimulationState:
             count=state.get("initial_cell_count", 5),
             t=0.0,
             role_catalog=state.get("role_catalog"),
+            persona_catalog=state.get("persona_catalog"),
         )
     out: SimulationState = {
         "cells": cells,

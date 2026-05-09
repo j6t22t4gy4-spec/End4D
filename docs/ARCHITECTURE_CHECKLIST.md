@@ -35,6 +35,7 @@
 | 2.5 | 세포에 **역할**(`role_key` 등) 부여, 3계층은 역할 맥락에서 갱신·해석 | 역할 없이 동질 에이전트만 | CONCEPT §2.3, §5, §6 |
 | 2.6 | **세계 생성**은 사용자 파라미터 선택이 아니라 **프롬프트 → Genesis(AI)** | 수치 폼으로 월드 스펙을 사용자가 직접 고름 (제품 UX) | CONCEPT §5.3, §8 |
 | 2.7 | **스텝 t의 달력 의미·영양 스케일**은 Genesis가 정하고 `nutrient_per_step`으로 성장에 반영 | t 의미와 무관하게 항상 동일 영양만 주입 | CONCEPT §5.3 |
+| 2.8 | 초기 에이전트 페르소나는 가능하면 국가별 persona dataset seed를 사용하고, 없을 때만 역할 카탈로그 fallback | LLM이 모든 페르소나를 즉석 생성하거나 특정 국가 데이터셋에 하드코딩 | CONCEPT §2.3, Phase 9 |
 | 2.3 | 4D 거리 함수는 (x,y,z)와 t에 가중치 적용 가능해야 함 | 단순 유클리드만 사용, t 무시 | CONCEPT §10.1, IMPLEMENTATION_SEQUENCE 1.2 |
 | 2.4 | World → Snapshot → Cell 계층 구조 유지 | 평탄화된 단일 테이블/모델 | ARCHITECTURE §2.2 |
 
@@ -104,7 +105,8 @@
 |---|-----------|-----------|------|
 | 8.1 | tech-stack.mdc 기술 스택 준수 | 스택 외 도입 시 문서·룰 미반영 | `.cursor/rules/core/tech-stack.mdc` |
 | 8.2 | IMPLEMENTATION_SEQUENCE Phase 순서·의존성 준수 | Phase 스킵·역전 | IMPLEMENTATION_SEQUENCE |
-| 8.3 | 법적 준수: MiroFish 코드 0줄, MIT만 사용 | 외부 코드 복사, AGPL/GPL 도입 | `.cursor/rules/core/legal-compliance.mdc` |
+| 8.3 | 법적 준수: MiroFish 코드 0줄, MIT 호환 의존성만 사용 | 외부 코드 복사, AGPL/GPL 도입 | `.cursor/rules/core/legal-compliance.mdc` |
+| 8.4 | CC BY 등 attribution 필요한 persona dataset 사용 시 출처·라이선스 표시 | 데이터셋 출처 누락, 상업 제한 데이터셋 혼입 | `.cursor/rules/core/legal-compliance.mdc` |
 
 ---
 

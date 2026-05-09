@@ -28,6 +28,13 @@ def _make_cell(
     )
 
 
+def test_copy_preserves_cell_id_for_state_updates():
+    cell = _make_cell(energy=10.0)
+    out = cell.copy(energy=11.0)
+    assert out.cell_id == cell.cell_id
+    assert out.energy == 11.0
+
+
 class TestGrowth:
     """성장: 영양분 흡수 → 에너지 증가."""
 
@@ -59,6 +66,9 @@ class TestDivision:
         assert out[0].energy == 75.0
         assert out[1].energy == 75.0
         assert out[0].x != out[1].x
+        assert out[0].cell_id != cell.cell_id
+        assert out[1].cell_id != cell.cell_id
+        assert out[0].cell_id != out[1].cell_id
 
     def test_gene_vec_mutated(self):
         np.random.seed(42)
@@ -119,6 +129,21 @@ class TestFusion:
         c2.worldview_vec = c1.worldview_vec.copy()
         out = apply_fusion([c1, c2], distance_threshold=2.0)
         assert len(out) == 2
+
+    def test_fusion_uses_nearby_candidates_across_grid_buckets(self):
+        vec = np.ones(256, dtype=np.float32)
+        worldview = np.ones(384, dtype=np.float32)
+        far = _make_cell(x=100, y=0, z=0)
+        c1 = _make_cell(x=1.9, y=0, z=0)
+        c2 = _make_cell(x=2.1, y=0, z=0)
+        c1.thought_vec = vec.copy()
+        c2.thought_vec = vec.copy()
+        c1.worldview_vec = worldview.copy()
+        c2.worldview_vec = worldview.copy()
+
+        out = apply_fusion([far, c1, c2], distance_threshold=2.0)
+        assert len(out) == 2
+        assert any(c.energy == c1.energy + c2.energy for c in out)
 
 
 class TestMutation:

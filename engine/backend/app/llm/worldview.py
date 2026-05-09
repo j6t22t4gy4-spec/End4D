@@ -20,8 +20,8 @@ def _worldview_text(cell: Cell) -> str:
     role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
     if cell.memory:
         tail = "; ".join(cell.memory[-40:])
-        return f"role={role}; accumulated experience: {tail}"
-    return f"role={role}; nascent worldview; no structured memory yet"
+        return f"role={role}; persona={cell.persona_text[:240]}; accumulated experience: {tail}"
+    return f"role={role}; persona={cell.persona_text[:240]}; nascent worldview"
 
 
 def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:

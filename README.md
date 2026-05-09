@@ -22,6 +22,13 @@
 - **프로덕션 이미지**: `docker compose -f docker-compose.prod.yml up --build`  
   프론트 빌드 시 `NEXT_PUBLIC_API_URL`을 브라우저에서 접근 가능한 API URL로 지정 (예: `http://localhost:8000`).
 
+## Persona Dataset Seed
+
+- 국가별 페르소나 데이터셋을 초기 에이전트 seed로 사용할 수 있다.
+- 예: `ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea`
+- 로컬 샘플 파일도 가능: `ORGANIC4D_PERSONA_DATASET_DIR=/path/to/personas` 아래 `kr.jsonl`, `us.csv`, `jp.json` 등.
+- CC BY 등 attribution이 필요한 데이터셋은 출처·라이선스를 표시해야 한다.
+
 ## 라이선스
 
 MIT License

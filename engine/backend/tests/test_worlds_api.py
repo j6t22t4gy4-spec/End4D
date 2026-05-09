@@ -26,3 +26,6 @@ def test_create_world_from_prompt():
     assert "t_step_semantic" in data
     assert "t_step_unit" in data
     assert data["nutrient_per_step"] > 0
+    assert data["persona_country"]
+    assert "persona_source" in data
+    assert "persona_count" in data

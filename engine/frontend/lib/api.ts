@@ -21,6 +21,10 @@ export type CellSnapshot = {
   worldview_vec: number[];
   role_key?: string;
   role_label?: string;
+  persona_id?: string;
+  persona_text?: string;
+  persona_country?: string;
+  persona_attrs?: Record<string, unknown>;
 };
 
 export type SnapshotResponse = {
@@ -44,6 +48,9 @@ export type WorldMeta = {
   t_step_semantic?: string;
   t_step_unit?: string;
   nutrient_per_step?: number;
+  persona_country?: string;
+  persona_source?: string;
+  persona_count?: number;
 };
 
 export type CreateWorldResult = {
@@ -55,6 +62,9 @@ export type CreateWorldResult = {
   t_step_semantic: string;
   t_step_unit: string;
   nutrient_per_step: number;
+  persona_country: string;
+  persona_source: string;
+  persona_count: number;
 };
 
 export async function createWorld(body: { prompt: string }): Promise<CreateWorldResult> {
@@ -159,11 +169,45 @@ export type TimelineResponse = {
   points: TimelinePoint[];
 };
 
+export type TimelineSummaryResponse = {
+  world_id: string;
+  points_count: number;
+  first_t: number;
+  last_t: number;
+  initial_cell_count: number;
+  final_cell_count: number;
+  min_cell_count: number;
+  max_cell_count: number;
+  initial_total_energy: number;
+  final_total_energy: number;
+  peak_total_energy: number;
+  cell_delta: number;
+  energy_delta: number;
+  outcome:
+    | "not_started"
+    | "extinct"
+    | "expanding"
+    | "contracting"
+    | "energy_accumulating"
+    | "energy_depleted"
+    | "stable";
+};
+
 export async function getTimeline(worldId: string): Promise<TimelineResponse> {
   const res = await fetch(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/timeline`
   );
   if (!res.ok) throw new Error(`getTimeline: ${res.status}`);
+  return res.json();
+}
+
+export async function getTimelineSummary(
+  worldId: string
+): Promise<TimelineSummaryResponse> {
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/timeline/summary`
+  );
+  if (!res.ok) throw new Error(`getTimelineSummary: ${res.status}`);
   return res.json();
 }
 

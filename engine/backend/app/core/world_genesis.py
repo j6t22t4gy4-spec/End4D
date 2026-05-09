@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from typing import List
 
+from app.core.persona_dataset import infer_country_from_prompt
+
 
 # 기본 역할 풀 — 시나리오가 구체적이지 않을 때
 _DEFAULT_ROLES = [
@@ -43,6 +45,9 @@ class GenesisPlan:
     t_step_unit: str
     # apply_growth에 쓰는 영양 유입 강도 (시간 스케일에 비례해 스텁에서 가중)
     nutrient_per_step: float
+    # 초기 에이전트 페르소나 데이터셋 선택 힌트
+    persona_country: str
+    persona_source: str
 
 
 def _stable_extra_cells(prompt: str) -> int:
@@ -119,6 +124,8 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
                 break
 
     t_unit, t_semantic, nutrient = _infer_time_step_and_nutrient(text)
+    persona_country = infer_country_from_prompt(text) or "KR"
+    persona_source = f"configured_dataset:{persona_country}"
 
     rationale = (
         f"질의 길이·키워드 기반 스텁 제안입니다. "
@@ -126,6 +133,7 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
         f"스텝당 영양 유입 nutrient_per_step≈{nutrient:.3f}. "
         f"t_max≈{int(t_max)}, 초기 에이전트≈{initial_cell_count}, "
         f"역할 풀: {', '.join(roles[:6])}. "
+        f"페르소나 국가 힌트: {persona_country}. "
         f"LLM 연동 시 동일 필드로 최적화된 세계를 채웁니다."
     )
 
@@ -137,4 +145,6 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
         t_step_semantic=t_semantic,
         t_step_unit=t_unit,
         nutrient_per_step=nutrient,
+        persona_country=persona_country,
+        persona_source=persona_source,
     )

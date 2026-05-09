@@ -12,7 +12,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **cell.py** | **세포(에이전트) 모델**. 4D 좌표, 에너지, **역할**(`role_key`, `role_label`), 유전자, 메모리, 3계층 벡터. `position_4d()`, `copy()` 등. |
+| **cell.py** | **세포(에이전트) 모델**. 4D 좌표, 에너지, **역할**(`role_key`, `role_label`), 선택적 `persona_*` seed, 유전자, 메모리, 3계층 벡터. `position_4d()`, `copy()` 등. |
 | **world.py** | **세계·스냅샷 모델**. World(4D 세계), Snapshot(t 시점 스냅샷), NutrientEvent(영양분 주입 이벤트) 정의. World → Snapshot → Cell 계층 구조. |
 | **__init__.py** | models 패키지 진입점. Cell, World, Snapshot, NutrientEvent export. |
 
@@ -22,12 +22,14 @@
 |------|------|
 | **coordinates.py** | **4D 좌표·거리 함수**. `distance_4d()` — (x,y,z)와 t에 가중치 적용한 거리 계산. `cosine_similarity()` — 융합 조건 등에 사용. |
 | **rules.py** | **5대 규칙 로직**. `apply_growth`(영양분→에너지), `apply_division`(분열+변이), `apply_death`(사멸+영양분 분배), `apply_fusion`(거리+Thought cosine≥0.7+Worldview), `apply_mutation`(유전자 변이; 감정은 `emotion.py`). |
+| **spatial_index.py** | **인접 검색 최적화**. `SpatialHashGrid` — Emotion 이웃 밀집도와 융합 후보 탐색을 uniform grid로 pruning해 전수 비교를 줄임. |
+| **persona_dataset.py** | **국가별 페르소나 데이터셋 어댑터**. JSONL/JSON/CSV 샘플 또는 선택적 Hugging Face streaming dataset을 `PersonaSeed`로 변환해 Genesis 초기 세포의 역할·메모리·페르소나 필드에 주입. |
 | **settings.py** | **엔진 환경 분기**. `get_llm_chat_enabled`, `get_persistence_backend`, `get_database_url`, **`get_cors_origins`** (Phase 8). |
 | **inject_handlers.py** | **주입 이벤트 적용**. `apply_inject_to_cells` — nutrient_burst / append_memory / emotion_spike / noop. |
 | **emotion.py** | **규칙 기반 8D Emotion (Phase 6.1)**. `update_emotions` — 에너지·이웃 밀집도로 갱신, LLM 0. `EMOTION_LABELS` 순서는 프론트 색 매핑과 동일. |
 | **memory_step.py** | **세포 메모리 누적 (Phase 6.7 POC)**. `append_step_memory` — 주기적 경험 문자열 추가(상한 `MEMORY_MAX_ENTRIES`). |
 | **snapshot.py** | **스냅샷 저장소**. `SnapshotStore` — `save`, `get`, `get_nearest`, `list_t`, **`clear_after`**(주입 후 t 이후 삭제). |
-| **store.py** | **월드 저장소**. `WorldStore` — `create`에 genesis_prompt·**role_catalog**·`get_role_catalog()`. |
+| **store.py** | **월드 저장소**. `WorldStore` — `create`에 genesis_prompt·**role_catalog**·persona_catalog·`get_role_catalog()`. |
 | **world_genesis.py** | **프롬프트→세계 제안**. `propose_world_from_prompt`, `GenesisPlan` (후속 LLM 연동). |
 | **ws_manager.py** | **WebSocket 연결 관리**. `ConnectionManager` — world_id별 연결 등록·해제, `send_to_world()` 브로드캐스트. |
 | **__init__.py** | core 패키지 진입점. coordinates, rules, snapshot export. |
@@ -59,7 +61,7 @@
 | **api/snapshots.py** | **스냅샷 조회 API**. GET /worlds/{id}/snapshots?t= — t 시점 스냅샷 또는 available_t 목록. |
 | **api/ws.py** | **WebSocket 스트리밍**. GET /worlds/{id}/ws — 시뮬 실행 시 t, cell_count 스트리밍. |
 | **api/inject.py** | **God View 주입 (Phase 7.1, 7.3)**. POST /worlds/{id}/inject — 스냅샷 수정, `clear_after`, 재실행. |
-| **api/timeline.py** | **시나리오 집계 (Phase 7.4)**. GET /worlds/{id}/timeline — t별 cell_count, total_energy. |
+| **api/timeline.py** | **시나리오 집계 (Phase 7.4)**. GET /worlds/{id}/timeline — t별 cell_count, total_energy. GET /worlds/{id}/timeline/summary — cell/energy delta와 outcome 요약. |
 | **__init__.py** | app 패키지 진입점. |
 
 ### 1.6 스크립트 (scripts/)
@@ -77,6 +79,7 @@
 | **test_phase6_step.py** | **Phase 6 통합**. LangGraph 실행 시 벡터 shape·Thought 간격 갱신. |
 | **test_inject.py** | **Phase 7**. 주입 404·영양 주입 후 재계산·timeline API. |
 | **test_world_genesis.py** | **Genesis 스텁**. 휴리스틱 `propose_world_from_prompt`. |
+| **test_persona_dataset.py** | **국가별 페르소나 seed**. JSONL adapter, 국가 추론, 초기 세포 persona 주입 검증. |
 | **test_worlds_api.py** | **POST /worlds** 프롬프트 계약. |
 | **conftest.py** | pytest 기본 `ORGANIC4D_EMBED_BACKEND=stub` 설정. |
 | **__init__.py** | tests 패키지 진입점. |
@@ -116,7 +119,7 @@
 
 | 파일 | 역할 |
 |------|------|
-| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
+| **api.ts** | **엔진 API 클라이언트**. REST/WS + inject/timeline/timeline summary + **`getMaxVisualCellsLimit`** + `cellsToInstanceBuffers`(대량 시 샘플링, Phase 8). |
 
 ### 2.5 설정
 

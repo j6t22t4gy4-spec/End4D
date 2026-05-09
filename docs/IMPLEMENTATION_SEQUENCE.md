@@ -168,7 +168,7 @@ Phase 8: 최적화·배포
 
 ## Phase 8: 최적화·배포
 
-> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
+> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계, 백엔드 `SpatialHashGrid` 기반 Emotion·Fusion 인접 검색 pruning. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
 
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
@@ -218,9 +218,11 @@ Phase 8: 최적화·배포
 | 순서 | 작업 | 산출물 |
 |------|------|--------|
 | 9.1 | Genesis **실 LLM API** 연동 | `world_genesis` → JSON 스키마 고정, Ollama/OpenAI 등 |
-| 9.2 | 역할별 Emotion 가중·규칙 | `emotion.py` 역할 키 분기 |
-| 9.3 | God View 역할 레이블·필터 시각화 | 색/필터로 역할 구분 |
+| 9.2 | 국가별 persona dataset seed | `persona_dataset.py`, `persona_*` cell fields, `ORGANIC4D_PERSONA_*` 환경 변수 |
+| 9.3 | NVIDIA Nemotron-Personas-Korea 등 국가별 데이터셋 연결 | `ORGANIC4D_PERSONA_HF_DATASET_KR=nvidia/Nemotron-Personas-Korea`, 타 국가 dataset 확장 |
+| 9.4 | 역할별 Emotion 가중·규칙 | `emotion.py` 역할 키/페르소나 속성 분기 |
+| 9.5 | God View 역할·페르소나 레이블/필터 시각화 | 색/필터로 역할·국가·페르소나 구분 |
 
 ---
 
-*문서 버전: v0.2 — Phase 9 Genesis·역할 시각화 후속*
+*문서 버전: v0.3 — Phase 9 Persona dataset seed 반영*

@@ -18,6 +18,7 @@ alwaysApply: true
 2. **저작권 침해 금지**
    - 오픈소스 코드 사용 시 해당 라이선스(조항, attribution) 준수
    - 상업적 사용이 제한된 라이선스(AGPL 등) 도입 금지 — MIT 호환만 허용
+   - CC BY 등 attribution이 필요한 데이터셋 사용 시 출처·라이선스를 문서/제품 표시에 반영
 
 3. **의심될 때**
    - 출처가 불명확한 코드·스니펫 사용 금지
@@ -27,6 +28,7 @@ alwaysApply: true
 
 - **본 프로젝트**: MIT License
 - **의존성 추가 시**: MIT, Apache-2.0, BSD 등 상업적 사용 가능 라이선스만 허용
+- **페르소나 데이터셋**: CC BY 4.0 등 상업적 사용 가능하되 attribution이 필요한 데이터셋은 출처 표시 필수
 - **AGPL-3.0**, GPL (copyleft) 등 소스 공개 강제 라이선스는 사용 금지
 
 ## 체크리스트 (새 코드·의존성 추가 시)
@@ -34,3 +36,4 @@ alwaysApply: true
 - [ ] 외부 코드 직접 복사 없음
 - [ ] 새 패키지 라이선스 확인 (MIT/Apache/BSD 등)
 - [ ] attribution 필요한 경우 LICENSE, NOTICE에 명시
+- [ ] 외부 데이터셋 사용 시 데이터셋명·URL·라이선스·attribution 요구사항 기록

@@ -27,7 +27,8 @@ def _thought_prompt(cell: Cell) -> str:
     return (
         f"strategy for role={role}: energy {cell.energy:.2f}, "
         f"dominant affect {label}, neighbors implied by emotion layer, "
-        f"gene_norm {float(np.linalg.norm(cell.gene_vec)):.3f}"
+        f"gene_norm {float(np.linalg.norm(cell.gene_vec)):.3f}, "
+        f"persona={cell.persona_text[:240]}"
     )
 
 

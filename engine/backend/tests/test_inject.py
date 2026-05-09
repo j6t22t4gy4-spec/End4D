@@ -64,3 +64,29 @@ def test_timeline_lists_points():
     pts = r.json()["points"]
     assert len(pts) >= 2
     assert all("cell_count" in p and "total_energy" in p for p in pts)
+
+
+def test_timeline_summary_classifies_result():
+    wid = world_store.create(t_max=3, initial_cell_count=2)
+    entry = world_store.get(wid)
+    graph = create_time_flow_graph()
+    graph.invoke(
+        {"t_max": 3.0, "initial_cell_count": 2, "snapshot_store": entry["snapshot_store"]},
+        config={"recursion_limit": 12},
+    )
+
+    r = client.get(f"/worlds/{wid}/timeline/summary")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["points_count"] >= 2
+    assert data["first_t"] == 0.0
+    assert data["last_t"] == 3.0
+    assert data["final_cell_count"] >= 0
+    assert data["outcome"] in {
+        "extinct",
+        "expanding",
+        "contracting",
+        "energy_accumulating",
+        "energy_depleted",
+        "stable",
+    }

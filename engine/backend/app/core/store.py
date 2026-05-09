@@ -29,6 +29,9 @@ class WorldStore:
         t_step_semantic: str = "1 스텝 ≈ 1일 (기본)",
         t_step_unit: str = "day",
         nutrient_per_step: float = 1.0,
+        persona_country: str = "",
+        persona_source: str = "",
+        persona_catalog: Optional[list] = None,
     ) -> str:
         """월드 생성. world_id 반환."""
         wid = world_id or str(uuid.uuid4())
@@ -50,6 +53,9 @@ class WorldStore:
             "genesis_prompt": genesis_prompt,
             "genesis_rationale": genesis_rationale,
             "role_catalog": list(role_catalog) if role_catalog else ["agent"],
+            "persona_country": persona_country,
+            "persona_source": persona_source,
+            "persona_catalog": list(persona_catalog or []),
         }
         return wid
 
@@ -90,6 +96,13 @@ class WorldStore:
         if w is None:
             return 1.0
         return float(w.nutrient_per_step)
+
+    def get_persona_catalog(self, world_id: str) -> list:
+        """세계별 초기 페르소나 seed 목록."""
+        entry = self._worlds.get(world_id)
+        if not entry:
+            return []
+        return list(entry.get("persona_catalog") or [])
 
 
 # 전역 싱글톤 (엔진 격리는 world_id로)

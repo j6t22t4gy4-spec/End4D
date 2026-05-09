@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.persona_dataset import load_persona_seeds, personas_to_dicts
 from app.core.store import world_store
 from app.core.world_genesis import propose_world_from_prompt
 
@@ -38,6 +39,9 @@ class CreateWorldResponse(BaseModel):
     t_step_semantic: str
     t_step_unit: str
     nutrient_per_step: float
+    persona_country: str
+    persona_source: str
+    persona_count: int
 
 
 class WorldResponse(BaseModel):
@@ -51,31 +55,55 @@ class WorldResponse(BaseModel):
     t_step_semantic: str = ""
     t_step_unit: str = "day"
     nutrient_per_step: float = 1.0
+    persona_country: str = ""
+    persona_source: str = ""
+    persona_count: int = 0
 
 
 @router.post("", response_model=CreateWorldResponse)
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
     plan = propose_world_from_prompt(req.prompt)
+    personas = load_persona_seeds(
+        country=plan.persona_country,
+        count=plan.initial_cell_count,
+        seed_text=req.prompt,
+    )
+    persona_catalog = personas_to_dicts(personas)
+    role_catalog = plan.role_catalog
+    if personas:
+        persona_roles = []
+        for p in personas:
+            if p.role_label and p.role_label not in persona_roles:
+                persona_roles.append(p.role_label)
+        role_catalog = persona_roles[:8] or role_catalog
+    persona_source = plan.persona_source if persona_catalog else f"not_configured:{plan.persona_country}"
+
     world_id = world_store.create(
         t_max=plan.t_max,
         initial_cell_count=plan.initial_cell_count,
         genesis_prompt=req.prompt,
         genesis_rationale=plan.rationale,
-        role_catalog=plan.role_catalog,
+        role_catalog=role_catalog,
         t_step_semantic=plan.t_step_semantic,
         t_step_unit=plan.t_step_unit,
         nutrient_per_step=plan.nutrient_per_step,
+        persona_country=plan.persona_country,
+        persona_source=persona_source,
+        persona_catalog=persona_catalog,
     )
     return CreateWorldResponse(
         world_id=world_id,
         t_max=plan.t_max,
         initial_cell_count=plan.initial_cell_count,
         rationale=plan.rationale,
-        role_catalog=plan.role_catalog,
+        role_catalog=role_catalog,
         t_step_semantic=plan.t_step_semantic,
         t_step_unit=plan.t_step_unit,
         nutrient_per_step=plan.nutrient_per_step,
+        persona_country=plan.persona_country,
+        persona_source=persona_source,
+        persona_count=len(persona_catalog),
     )
 
 
@@ -96,4 +124,7 @@ def get_world(world_id: str):
         t_step_semantic=world.t_step_semantic,
         t_step_unit=world.t_step_unit,
         nutrient_per_step=world.nutrient_per_step,
+        persona_country=str(entry.get("persona_country") or ""),
+        persona_source=str(entry.get("persona_source") or ""),
+        persona_count=len(entry.get("persona_catalog") or []),
     )

@@ -11,6 +11,8 @@ def test_genesis_returns_plan():
     assert p.t_step_unit
     assert p.t_step_semantic
     assert p.nutrient_per_step > 0
+    assert p.persona_country
+    assert p.persona_source
 
 
 def test_genesis_long_horizon_keyword():
@@ -19,6 +21,7 @@ def test_genesis_long_horizon_keyword():
     assert "규제자" in p.role_catalog or "시장참여자" in p.role_catalog or len(p.role_catalog) >= 3
     assert p.nutrient_per_step >= 50
     assert "년" in p.t_step_semantic or "장기" in p.t_step_semantic
+    assert p.persona_country == "KR"
 
 
 def test_genesis_hourly_smaller_nutrient():

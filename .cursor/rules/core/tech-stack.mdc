@@ -15,12 +15,13 @@ Organic4D 엔진에서 사용하는 기술. 변경 시 이 룰과 docs/IMPLEMENT
 | 오케스트레이션 | LangGraph |
 | API | FastAPI (REST + WebSocket) |
 | 비동기 | asyncio |
+| 데이터셋 로딩 | Hugging Face `datasets` (선택적 streaming) + JSONL/JSON/CSV 어댑터 |
 
 ## 프론트엔드
 
 | 영역 | 기술 |
 |------|------|
-| 프레임워크 | Next.js 16+ (App Router, Turbopack·React 19 안정화) |
+| 프레임워크 | Next.js 15+ (App Router, React 19) |
 | 3D 시각화 | Three.js + React Three Fiber |
 | 상태 관리 | Zustand + TanStack Query (React Query) 병행 |
 | 스타일 | Tailwind CSS |
@@ -70,6 +71,7 @@ Organic4D 엔진에서 사용하는 기술. 변경 시 이 룰과 docs/IMPLEMENT
 | pydantic | 스키마·검증 |
 | numpy | 수치 연산, 벡터 |
 | sentence-transformers | 임베딩 (Thought, Worldview) |
+| datasets | 선택적 Hugging Face persona dataset streaming |
 
 → `pip install -r requirements.txt`로 일괄 설치
 

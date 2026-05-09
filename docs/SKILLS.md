@@ -55,7 +55,7 @@
 | 스킬 | 수준 | 용도 |
 |------|------|------|
 | React (hooks, 상태, 컴포넌트) | 필수 | 전반 |
-| Next.js 16+ (App Router, Turbopack·React 19) | 필수 | 라우팅, API Routes |
+| Next.js 15+ (App Router, React 19) | 필수 | 라우팅, God View |
 | TypeScript | 필수 | 타입 안전성 |
 | Zustand + TanStack Query 병행 | 필수 | 시뮬 상태, t 값 (t 슬라이더 복잡 상태는 TanStack Query로) |
 | Tailwind CSS | 권장 | 스타일링 |

@@ -61,6 +61,7 @@
 | **오케스트레이션** | LangGraph | 시간 흐름 엔진, 4D 세계 상태 머신 |
 | **API** | FastAPI | REST + WebSocket (실시간 시뮬레이션 스트리밍) |
 | **비동기** | asyncio | LLM 호출·메모리 I/O 병렬 처리 |
+| **페르소나 데이터셋** | Hugging Face `datasets`(선택적 streaming), JSONL/JSON/CSV | 국가별 초기 에이전트 페르소나 seed |
 
 **선택 근거**
 - LangGraph: 상태 기반 워크플로우·분기·루프에 적합, t 스텝별 노드 구성 용이
@@ -70,14 +71,14 @@
 
 | 영역 | 기술 | 용도 |
 |------|------|------|
-| **프레임워크** | Next.js 16+ (App Router, Turbopack·React 19 안정화) | SSR, API Routes, Turbopack, 라우팅 |
+| **프레임워크** | Next.js 15+ (App Router, React 19) | SSR, 라우팅, God View 셸 |
 | **3D 시각화** | Three.js + React Three Fiber | 4D → 3D 프로젝션 + 시간 슬라이더 |
 | **상태 관리** | Zustand + TanStack Query (React Query) 병행 | 시뮬레이션 상태, t 값, God View 주입 (t 슬라이더 복잡 상태는 TanStack Query로) |
 | **스타일** | Tailwind CSS | 빠른 UI 개발 |
 | **차트/인사이트** | Recharts 또는 Visx | 시나리오 리포트용 시각화 |
 
 **선택 근거**
-- Next.js 16+: 2025년 말 정식 출시. Turbopack·React 19 안정화.
+- Next.js 15+: 현재 God View 의존성에 맞춘 App Router + React 19 조합.
 - Zustand + TanStack Query 병행: 실무 표준. Zustand만으로는 t 슬라이더·스냅샷 캐시 등 복잡 상태 관리에 한계 → TanStack Query로 서버 상태·캐싱.
 - React Three Fiber: React 컴포넌트 방식으로 Three.js 사용, 수천 세포 렌더링 최적화 가능
 - 시간 슬라이더: t를 드래그하면 해당 시점의 (x,y,z) 스냅샷을 3D로 표시
@@ -120,7 +121,7 @@
 - **Emotion**: `engine/backend/app/core/emotion.py` — 8차원 규칙 기반, 매 t, LLM 0.  
 - **Thought / Worldview**: `llm/thought.py`, `llm/worldview.py` — 세포 상태·메모리에서 만든 짧은 텍스트를 `llm/embeddings.py`로 벡터화 (기본 모델 `all-MiniLM-L6-v2`, 차원 절단). **Ollama 문장 생성**은 아직 미연동; 테스트·CI는 `ORGANIC4D_EMBED_BACKEND=stub`으로 결정적 스텁.  
 - **메모리 POC**: `core/memory_step.py` — 세포 `memory` 리스트에 주기적 문자열 추가 (Redis/Zep은 후속).
-- **역할·Genesis**: 세포 `role_key`/`role_label`, `world_genesis.propose_world_from_prompt` 스텁(키워드·길이 휴리스틱). `POST /worlds`는 `{ "prompt" }`만 받음. Genesis가 **`t` 스텝의 시간 의미**(`t_step_semantic`/`t_step_unit`)와 **`nutrient_per_step`**(성장·에너지 유입)을 함께 제안·저장, `run`/`inject` 시 그래프에 전달. **실 LLM Genesis**는 Phase 9.
+- **역할·Genesis**: 세포 `role_key`/`role_label`, `world_genesis.propose_world_from_prompt` 스텁(키워드·길이 휴리스틱). `POST /worlds`는 `{ "prompt" }`만 받음. Genesis가 **`t` 스텝의 시간 의미**(`t_step_semantic`/`t_step_unit`)와 **`nutrient_per_step`**(성장·에너지 유입)을 함께 제안·저장, `run`/`inject` 시 그래프에 전달. 국가별 persona dataset이 설정되어 있으면 초기 세포의 `persona_*`, 역할, 초기 memory seed로 사용. 한국은 `nvidia/Nemotron-Personas-Korea` 같은 CC BY 4.0 데이터셋을 `ORGANIC4D_PERSONA_HF_DATASET_KR`로 연결 가능. **실 LLM Genesis**는 Phase 9.
 
 ### 2.5 인프라 & 배포
 
@@ -220,6 +221,10 @@ docker compose up -d
 | `ORGANIC4D_DATABASE_URL` | — | PostgreSQL 등 연결 문자열 (미설정 시 인메모리 월드만). |
 | `ORGANIC4D_EMBED_BACKEND` | (자동) | `stub`이면 결정적 임베딩(테스트·CI). |
 | `ORGANIC4D_CORS_ORIGINS` | — | 쉼표로 구분한 추가 출처(기본 localhost:3000 유지). |
+| `ORGANIC4D_PERSONA_DATASET_DIR` | — | 국가별 persona 샘플 파일 디렉터리. 예: `kr.jsonl`, `us.csv`, `jp.json`. |
+| `ORGANIC4D_PERSONA_DATASET_KR` | — | 특정 국가 데이터셋 경로 직접 지정. `US`, `JP` 등 국가 코드별로 확장 가능. |
+| `ORGANIC4D_PERSONA_HF_DATASET_KR` | — | Hugging Face dataset id 직접 지정. 예: `nvidia/Nemotron-Personas-Korea`. |
+| `ORGANIC4D_PERSONA_MAX_SCAN` | `20000` | HF/대용량 데이터셋에서 초기 persona 샘플링 시 최대 스캔 행 수. |
 | `NEXT_PUBLIC_MAX_VISUAL_CELLS` | `8192` | God View InstancedMesh 상한; 초과 시 균등 샘플링(Phase 8). |
 
 ### 3.6a 프론트 404 (God View가 안 열릴 때)

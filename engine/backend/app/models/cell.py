@@ -7,7 +7,7 @@ ARCHITECTURE_CHECKLIST 2.2: emotion_vec, thought_vec, worldview_vec 포함 (3계
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import Any, Dict, List
 import uuid
 
 import numpy as np
@@ -41,6 +41,12 @@ class Cell:
     role_key: str = "agent"
     role_label: str = ""
 
+    # 선택: 외부 페르소나 데이터셋 기반 초기 조건
+    persona_id: str = ""
+    persona_text: str = ""
+    persona_country: str = ""
+    persona_attrs: Dict[str, Any] = field(default_factory=dict)
+
     # 고유 ID (분열·융합 시 추적)
     cell_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
@@ -67,6 +73,11 @@ class Cell:
             "worldview_vec": self.worldview_vec.copy(),
             "role_key": self.role_key,
             "role_label": self.role_label,
+            "persona_id": self.persona_id,
+            "persona_text": self.persona_text,
+            "persona_country": self.persona_country,
+            "persona_attrs": dict(self.persona_attrs),
+            "cell_id": self.cell_id,
         }
         d.update(overrides)
         return Cell(**d)
