@@ -38,7 +38,7 @@ Phase 2: 시간 흐름 엔진 (LangGraph)
     ↓
 Phase 3: API 레이어 (REST + WebSocket)
     ↓
-Phase 4: 프론트 기초 (3D + t 슬라이더)
+Phase 4: 프론트 기초 (2D 지도 + t 슬라이더)
     ↓
 Phase 5: E2E 연결 (시뮬 실행 → 시각화)
     ↓
@@ -80,9 +80,9 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
 | 1.1 | **세포 모델** | `models/cell.py` | — |
-| | `(x,y,z,t)`, `energy`, `gene_vec`, `memory`, `emotion_vec`, `thought_vec`, `worldview_vec` | Pydantic/dataclass | |
-| 1.2 | **4D 좌표·거리 함수** | `core/coordinates.py` | 1.1 |
-| | 거리 함수 `d(p1, p2)`, 가중치 (x,y,z vs t) | | |
+| | `(x,y,t)`, `zone`, `energy`, `gene_vec`, `memory`, `emotion_vec`, `thought_vec`, `worldview_vec` | Pydantic/dataclass | |
+| 1.2 | **2D 좌표·상호작용 함수** | `core/coordinates.py` | 1.1 |
+| | 거리 함수 `d(p1, p2)`, zone friction, 시간 가중치 | | |
 | 1.3 | **세계·스냅샷 모델** | `models/world.py` | 1.1 |
 | | World, Snapshot, 영양분 이벤트 | | |
 | 1.4 | **5대 규칙 로직 (LLM 제외)** | `core/rules.py` | 1.1, 1.2 |
@@ -131,18 +131,18 @@ Phase 14: 네이티브 앱 / 기관 배포
 |------|------|--------|------|
 | 4.1 | **Next.js + Three.js 설정** | `package.json` | Phase 0 |
 | | React Three Fiber, 기본 Canvas | | |
-| 4.2 | **Scene3D 컴포넌트** | `components/Scene3D/` | 4.1 |
-| | 빈 3D 씬, 카메라, 조명 | | |
-| 4.3 | **InstancedMesh + setMatrixAt 패턴** | `Scene3D/CellInstances.tsx` | 4.2 |
-| | `(x,y,z)` 배열 → Sphere InstancedMesh, **반드시** 아래 패턴 적용 (세포 1K 넘으면 미적용 시 병목) | | |
-| 4.3a | **코드 패턴: setMatrixAt** | `setMatrixAt(i, matrix)` | 4.3 |
-| | `tempObject.position.set(x,y,z)` → `tempObject.updateMatrix()` → `instancedMesh.setMatrixAt(i, tempObject.matrix)` | | |
-| 4.3b | **코드 패턴: useFrame + Float32Array** | `useFrame` 내부 | 4.3 |
-| | 스냅샷 `(x,y,z)[]` → Float32Array로 변환 → `setMatrixAt` 루프 → `instanceMatrix.needsUpdate = true` | | |
-| 4.3c | **인스턴스 수 동적 조정** | `instancedMesh.count` | 4.3 |
-| | 세포 수 변경 시 count 재할당 또는 새 InstancedMesh 생성 | | |
-| 4.3d | **setColorAt (Emotion 미리 준비)** | 인스턴스별 색상 attribute | 4.3 |
-| | Phase 6 Emotion 시각화 대비, 색상 슬롯 확보 | | |
+| 4.2 | **SimulationMap 컴포넌트** | `components/SimulationMap/` | 4.1 |
+| | 빈 2D 사회장, zone 레이어, 카메라/팬/줌 | | |
+| 4.3 | **2D 대량 렌더 패턴** | `SimulationMap/AgentLayer.tsx` | 4.2 |
+| | `(x,y)` 배열 → Canvas/WebGL 기반 대량 점 렌더, 세포 1K+ 대응 | | |
+| 4.3a | **zone overlay** | `SimulationMap/ZoneLayer.tsx` | 4.3 |
+| | 구역별 영향력, 정책 반경, 경계 시각화 | | |
+| 4.3b | **typed buffer 업데이트** | 렌더 루프 | 4.3 |
+| | 스냅샷 `(x,y)` / zone 상태를 TypedArray로 관리해 프레임 비용 억제 | | |
+| 4.3c | **표시 개수 동적 조정** | layer capacity | 4.3 |
+| | 세포 수 증가 시 샘플링/LOD 또는 레이어 재할당 | | |
+| 4.3d | **emotion / zone color channel** | 인스턴스별 색상 | 4.3 |
+| | 감정 색상 + 구역 영향 시각화를 함께 표현 | | |
 | 4.4 | **시간 슬라이더** | `components/TimeSlider/` | 4.1 |
 | | range input, t 값 상태 | | |
 | 4.5 | **API 클라이언트** | `lib/api.ts` | Phase 3 |
@@ -159,7 +159,7 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 5.2 | **시뮬 실행 + WebSocket** | `hooks/useSimulation.ts` | 3.4, 4.5 |
 | | run 클릭 → WS 연결 → t 업데이트 | | |
 | 5.3 | **t 슬라이더 → 스냅샷 조회** | 4.4 + 3.5 | |
-| | t 변경 시 GET /snapshots?t= → 3D 업데이트 | | |
+| | t 변경 시 GET /snapshots?t= → 2D 지도 업데이트 | | |
 | 5.4 | **E2E 테스트** | 수동 또는 Playwright | 5.3 |
 | | 생성 → 실행 → t 이동 → 시각화 확인 | | |
 
@@ -203,14 +203,14 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 ## Phase 8: 최적화·배포
 
-> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, `cellsToInstanceBuffers` 균등 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, InstancedMesh frustum culling 임계, 백엔드 `SpatialHashGrid` 기반 Emotion·Death·Fusion 인접 검색 pruning, `benchmark_simulation.py`. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
+> **진행**: 8.1·8.3 반영 — `docker-compose.prod.yml`, 프론트 standalone `Dockerfile`, `Dockerfile.dev`, 백엔드 HEALTHCHECK·non-root(프로덕션), `get_cors_origins`, 시각화 샘플링 + `NEXT_PUBLIC_MAX_VISUAL_CELLS`, 백엔드 `SpatialHashGrid` 기반 Emotion·Death·Fusion 인접 검색 pruning, `benchmark_simulation.py`. **8.2 PostgreSQL / 8.4 델타 저장 / 8.5 Celery** 는 선택·후속.
 
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
 | 8.1 | **Docker 이미지** | backend, frontend Dockerfile | Phase 0 |
 | 8.2 | **SQLite → PostgreSQL (선택)** | 마이그레이션 | Phase 1 |
-| 8.3 | **InstancedMesh 추가 최적화** | 세포 10K+ | 4.3 |
-| | LOD, 시각화 샘플링, setColorAt(에너지 색상) — 4.3 패턴은 Phase 4에서 이미 적용 | | |
+| 8.3 | **2D 대량 렌더 최적화** | 세포 10K+ | 4.3 |
+| | LOD, 시각화 샘플링, zone heatmap batching | | |
 | 8.4 | **델타 저장 (선택)** | ARCHITECTURE 1.2 | 2.3 |
 | 8.5 | **Celery 워커 (선택)** | 장기 시뮬 | 3.3 |
 | 8.6 | **성능 벤치마크** | `scripts/benchmark_simulation.py` | 2.1 |

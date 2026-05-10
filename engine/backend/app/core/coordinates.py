@@ -1,8 +1,4 @@
-"""Organic4D Engine — 4D 좌표·거리 함수 (Phase 1.2).
-
-CONCEPT §10.1: 4D 거리 함수 — (x,y,z)와 t에 가중치 적용 가능
-ARCHITECTURE_CHECKLIST 2.3: (x,y,z)와 t에 가중치 적용 가능해야 함
-"""
+"""Organic4D Engine — 2D social field 좌표·거리 함수 (Phase 1.2)."""
 from __future__ import annotations
 
 from typing import Tuple, Union
@@ -19,17 +15,9 @@ def distance_4d(
     space_weight: float = 1.0,
     time_weight: float = 0.1,
 ) -> float:
-    """4D 거리 계산.
+    """하위 호환성용 거리 함수.
 
-    d = sqrt( space_weight * ((x1-x2)² + (y1-y2)² + (z1-z2)²) + time_weight * (t1-t2)² )
-
-    Args:
-        p1, p2: Cell 또는 (x, y, z, t) 튜플
-        space_weight: 공간 (x,y,z) 가중치
-        time_weight: 시간 t 가중치 (기본 0.1 — t 차이 영향 완화)
-
-    Returns:
-        가중 유클리드 거리
+    이름은 유지하지만 실제 의미는 2D distance + zone penalty + time 이다.
     """
     def to_tuple(p: Union[Cell, Tuple[float, float, float, float]]) -> Tuple[float, float, float, float]:
         if isinstance(p, Cell):
@@ -39,10 +27,22 @@ def distance_4d(
     x1, y1, z1, t1 = to_tuple(p1)
     x2, y2, z2, t2 = to_tuple(p2)
 
-    space_sq = (x1 - x2) ** 2 + (y1 - y2) ** 2 + (z1 - z2) ** 2
+    space_sq = (x1 - x2) ** 2 + (y1 - y2) ** 2
+    if isinstance(p1, Cell) and isinstance(p2, Cell):
+        penalty = zone_penalty(p1, p2)
+        space_sq += penalty * penalty
     time_sq = (t1 - t2) ** 2
 
     return float(np.sqrt(space_weight * space_sq + time_weight * time_sq))
+
+
+def zone_penalty(a: Cell, b: Cell) -> float:
+    """Return an additive zone friction penalty for cross-zone interaction."""
+    zone_a = (a.zone_id or "").strip()
+    zone_b = (b.zone_id or "").strip()
+    if not zone_a or not zone_b or zone_a == zone_b:
+        return 0.0
+    return max(0.35, 1.0 + (float(a.zone_friction) + float(b.zone_friction)) / 2.0)
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:

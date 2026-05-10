@@ -23,6 +23,7 @@ def _create_initial_cells(
 ) -> List[Cell]:
     """초기 세포 생성. 페르소나가 있으면 역할·메모리 seed로 사용."""
     import numpy as np
+    import math
 
     roles = role_catalog if role_catalog else ["agent"]
     if not roles:
@@ -30,14 +31,22 @@ def _create_initial_cells(
     personas = persona_catalog or []
 
     cells = []
+    grid_width = max(1, math.ceil(count ** 0.5))
     for i in range(count):
         persona = personas[i % len(personas)] if personas else {}
         rk = str(persona.get("role_key") or roles[i % len(roles)])
         label = str(persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
+        zone_index = i % max(1, min(4, count))
+        zone_id = str(persona.get("zone_id") or f"zone-{zone_index}")
+        zone_label = str(persona.get("zone_label") or f"Zone {zone_index}")
+        zone_influence = float(persona.get("zone_influence", 1.0 + 0.08 * zone_index))
+        zone_friction = float(persona.get("zone_friction", 0.1 * zone_index))
+        row = i // grid_width
+        col = i % grid_width
         cell = Cell(
-                x=float(i * 2),
-                y=0.0,
+                x=float(col * 2.0),
+                y=float(row * 2.0),
                 z=0.0,
                 t=t,
                 energy=50.0,
@@ -51,6 +60,10 @@ def _create_initial_cells(
                 persona_text=persona_text,
                 persona_country=str(persona.get("country") or ""),
                 persona_attrs=dict(persona.get("attrs") or {}),
+                zone_id=zone_id,
+                zone_label=zone_label,
+                zone_influence=zone_influence,
+                zone_friction=zone_friction,
             )
         if persona_text:
             cell = seed_memory_from_text(cell, persona_text)

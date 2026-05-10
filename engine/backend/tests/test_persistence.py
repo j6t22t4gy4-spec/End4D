@@ -76,4 +76,6 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap.cells[0].memory[-1].endswith("alignment=ally")
     assert loaded_snap.cells[0].short_memory[0]["kind"] == "social_observation"
     assert loaded_snap.cells[0].behavior_log[0]["schema_version"] == "behavior-log/v1"
+    assert loaded_snap.cells[0].zone_id == "zone-0"
+    assert loaded_snap.cells[0].z == 0.0
     assert loaded_entry["config_version"]

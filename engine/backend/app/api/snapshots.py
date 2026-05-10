@@ -23,7 +23,7 @@ def _cell_to_dict(c: Cell) -> dict:
         "cell_id": c.cell_id,
         "x": float(c.x),
         "y": float(c.y),
-        "z": float(c.z),
+        "z": 0.0,
         "t": float(c.t),
         "energy": float(c.energy),
         "gene_vec": c.gene_vec.tolist(),
@@ -36,6 +36,10 @@ def _cell_to_dict(c: Cell) -> dict:
         "persona_text": c.persona_text,
         "persona_country": c.persona_country,
         "persona_attrs": c.persona_attrs,
+        "zone_id": c.zone_id,
+        "zone_label": c.zone_label,
+        "zone_influence": float(c.zone_influence),
+        "zone_friction": float(c.zone_friction),
         "short_memory": [dict(item) for item in c.short_memory],
         "long_memory": [dict(item) for item in c.long_memory],
         "behavior_log": [dict(item) for item in c.behavior_log],
@@ -61,6 +65,10 @@ class CellResponse(BaseModel):
     persona_text: str = ""
     persona_country: str = ""
     persona_attrs: Dict[str, Any] = Field(default_factory=dict)
+    zone_id: str = "zone-0"
+    zone_label: str = "Zone 0"
+    zone_influence: float = 1.0
+    zone_friction: float = 0.0
     short_memory: List[Dict[str, Any]] = Field(default_factory=list)
     long_memory: List[Dict[str, Any]] = Field(default_factory=list)
     behavior_log: List[Dict[str, Any]] = Field(default_factory=list)

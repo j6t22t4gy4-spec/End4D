@@ -1,7 +1,7 @@
 """Organic4D Engine — 세포(에이전트) 모델 (Phase 1.1).
 
-CONCEPT §5·§5.1: 세포 = 역할 + (x,y,z,t), energy, gene_vec, memory, 3계층 벡터
-ARCHITECTURE_CHECKLIST 2.1: 세포 위치는 반드시 (x, y, z, t) 4차원
+CONCEPT §5·§5.1: 세포 = 역할 + (x,y,t) + zone, energy, gene_vec, memory, 3계층 벡터
+ARCHITECTURE_CHECKLIST 2.1: 세포 위치는 2D social field 위에서 zone과 함께 해석
 ARCHITECTURE_CHECKLIST 2.2: emotion_vec, thought_vec, worldview_vec 포함 (3계층)
 """
 from __future__ import annotations
@@ -15,9 +15,9 @@ import numpy as np
 
 @dataclass
 class Cell:
-    """4D 시공간의 유기체 세포."""
+    """2D social field 위에서 움직이는 사회 에이전트."""
 
-    # 4D 좌표 (CONCEPT §5)
+    # 2D 좌표 + 시간 (z는 하위 호환성용 평면 값)
     x: float
     y: float
     z: float
@@ -50,24 +50,32 @@ class Cell:
     persona_text: str = ""
     persona_country: str = ""
     persona_attrs: Dict[str, Any] = field(default_factory=dict)
+    zone_id: str = "zone-0"
+    zone_label: str = "Zone 0"
+    zone_influence: float = 1.0
+    zone_friction: float = 0.0
 
     # 고유 ID (분열·융합 시 추적)
     cell_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def position_4d(self) -> tuple[float, float, float, float]:
-        """4D 좌표 반환."""
-        return (self.x, self.y, self.z, self.t)
+        """하위 호환성용 좌표 반환. z는 평면 0으로 고정한다."""
+        return (self.x, self.y, 0.0, self.t)
+
+    def position_2d(self) -> tuple[float, float]:
+        """2D social field 좌표."""
+        return (self.x, self.y)
 
     def position_3d(self) -> tuple[float, float, float]:
-        """3D 공간 좌표 (시각화용)."""
-        return (self.x, self.y, self.z)
+        """시각화용 평면 좌표."""
+        return (self.x, self.y, 0.0)
 
     def copy(self, **overrides) -> Cell:
         """복사본 생성 (분열 등에 사용)."""
         d = {
             "x": self.x,
             "y": self.y,
-            "z": self.z,
+            "z": 0.0,
             "t": self.t,
             "energy": self.energy,
             "gene_vec": self.gene_vec.copy(),
@@ -85,6 +93,10 @@ class Cell:
             "persona_text": self.persona_text,
             "persona_country": self.persona_country,
             "persona_attrs": dict(self.persona_attrs),
+            "zone_id": self.zone_id,
+            "zone_label": self.zone_label,
+            "zone_influence": self.zone_influence,
+            "zone_friction": self.zone_friction,
             "cell_id": self.cell_id,
         }
         d.update(overrides)

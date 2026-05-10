@@ -20,25 +20,26 @@
 
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
-| 1.1 | 핵심 코어는 엔진이다. 4D 좌표, 5대 규칙, 시간 흐름, 3계층이 전부 엔진 책임 | 제품·UI 로직이 엔진 코어에 섞여 있음 | CONCEPT §0 |
+| 1.1 | 핵심 코어는 엔진이다. 2D 사회장, zone influence, 시간 흐름, 3계층이 전부 엔진 책임 | 제품·UI 로직이 엔진 코어에 섞여 있음 | CONCEPT §0 |
 | 1.2 | 엔진 + God View = 제품으로 바로 사용 가능. 제품 확장은 엔진 API 위에 구축 | God View 없이 엔진만 쓸 수 없는 구조 | CONCEPT §0 |
 | 1.3 | 엔진 격리는 `world_id` 기준. 멀티테넌시·과금은 제품 레이어 | world_id 없이 전역 상태 혼재 | ARCHITECTURE §5 |
 | 1.4 | 현재 최상위 목표는 `국가 단위 장기 사회 시뮬레이션 플랫폼`이다 | 챗 UX·앱 셸이 코어 시뮬레이션 설명력보다 앞섬 | PRODUCT_STRATEGY, DEVELOPMENT_GAPS |
 
 ---
 
-## 2. 4D 시공간 & 세포 모델
+## 2. 2D 사회장 & 세포 모델
 
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
-| 2.1 | 세포 위치는 반드시 `(x, y, z, t)` 4차원 | 3D만 쓰거나 t를 별도 필드로 분리 | CONCEPT §2, §5 |
+| 2.1 | 세포 위치는 기본적으로 `(x, y, t)`이며 `zone` 메타를 가진다 | z축이 코어 모델에 다시 섞이거나 zone 개념이 없음 | CONCEPT §2, §5 |
 | 2.2 | 세포 상태에 `emotion_vec`, `thought_vec`, `worldview_vec` 포함 (3계층) | 단일 `ideology_vec` 등으로 축소 | CONCEPT §5, §6 |
 | 2.5 | 세포에 **역할**(`role_key` 등) 부여, 3계층은 역할 맥락에서 갱신·해석 | 역할 없이 동질 에이전트만 | CONCEPT §2.3, §5, §6 |
 | 2.6 | **세계 생성**은 사용자 파라미터 선택이 아니라 **프롬프트 → Genesis(AI)** | 수치 폼으로 월드 스펙을 사용자가 직접 고름 (제품 UX) | CONCEPT §5.3, §8 |
 | 2.7 | **스텝 t의 달력 의미·영양 스케일**은 Genesis가 정하고 `nutrient_per_step`으로 성장에 반영 | t 의미와 무관하게 항상 동일 영양만 주입 | CONCEPT §5.3 |
 | 2.8 | 초기 에이전트 페르소나는 가능하면 국가별 persona dataset seed를 사용하고, 없을 때만 역할 카탈로그 fallback | LLM이 모든 페르소나를 즉석 생성하거나 특정 국가 데이터셋에 하드코딩 | CONCEPT §2.3, Phase 9 |
-| 2.3 | 4D 거리 함수는 (x,y,z)와 t에 가중치 적용 가능해야 함 | 단순 유클리드만 사용, t 무시 | CONCEPT §10.1, IMPLEMENTATION_SEQUENCE 1.2 |
-| 2.4 | World → Snapshot → Cell 계층 구조 유지 | 평탄화된 단일 테이블/모델 | ARCHITECTURE §2.2 |
+| 2.3 | 상호작용 함수는 `(x,y)` 거리와 `t`, `zone friction`을 함께 반영해야 함 | 단순 2D 유클리드만 사용, 시간·구역 마찰 무시 | CONCEPT §10.1, IMPLEMENTATION_SEQUENCE 1.2 |
+| 2.4 | zone은 단순 라벨이 아니라 정책 영향, 소통 비용, 이동 제약을 바꾸는 엔진 파라미터여야 함 | zone이 화면 태그에만 쓰이고 규칙에는 영향이 없음 | CONCEPT §2, §8 |
+| 2.5 | World → Snapshot → Cell 계층 구조 유지 | 평탄화된 단일 테이블/모델 | ARCHITECTURE §2.2 |
 
 ---
 
@@ -74,7 +75,7 @@
 
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
-| 5.1 | 입력 → 4D세계 → 에이전트 풀 → 시간 흐름 엔진 → God View 순서 유지 | 레이어 스킵·역전 | CONCEPT §7 |
+| 5.1 | 입력 → 2D 사회장 → 에이전트 풀 → 시간 흐름 엔진 → God View 순서 유지 | 레이어 스킵·역전 | CONCEPT §7 |
 | 5.2 | 매 t: 성장/분열/사멸/융합/돌연변이 + Emotion | 규칙 누락 | CONCEPT §7 |
 | 5.3 | 매 10~50 t: Thought, 매 200 t+ (또는 메모리 100+): Worldview | 주기 혼동 | CONCEPT §7 |
 | 5.4 | God View 주입: `(t_inject, event_type, payload)` 도달 시 적용 | 주입 무시·즉시 반영 | ARCHITECTURE §3.2 |
@@ -88,7 +89,7 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 6.1 | 엔진 API: `POST /worlds`, `POST /worlds/{id}/run`, `POST /worlds/{id}/inject`, `GET /snapshots?t=` | 경로·메서드 변경 시 문서 동기화 | IMPLEMENTATION §0 |
-| 6.2 | 시각화용: `(x,y,z)`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`**, 선택적 `persona_*` 제공 | 스냅샷에서 역할·3계층·페르소나 seed 누락 | IMPLEMENTATION §0 |
+| 6.2 | 시각화용: `(x,y)`, `zone`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`**, 선택적 `persona_*` 제공 | 스냅샷에서 역할·3계층·zone·페르소나 seed 누락 | IMPLEMENTATION §0 |
 | 6.3 | WebSocket: t, 세포 수, 스냅샷 델타 실시간 전송 | 폴링만 사용·스트리밍 없음 | IMPLEMENTATION_SEQUENCE 3.4 |
 | 6.4 | `POST /worlds` 본문은 **`{ "prompt": "..." }`** (Genesis). 레거시 수치 폼은 제품 UI에 두지 않음 | API·UI가 초기 개수·t_max를 사용자 선택에 의존 | CONCEPT §5.3 |
 
@@ -98,8 +99,9 @@
 
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
-| 7.1 | 4D → 3D + t 슬라이더. t 변경 시 해당 t 스냅샷으로 3D 갱신 | t 무시·전체 히스토리 한 번에 렌더 | CONCEPT §8 |
-| 7.2 | InstancedMesh + setMatrixAt 패턴 (세포 1K+ 필수) | 개별 Mesh로 렌더 | IMPLEMENTATION_SEQUENCE 4.3 |
+| 7.1 | 2D 사회장 + t 슬라이더. t 변경 시 해당 t 스냅샷으로 지도 갱신 | t 무시·전체 히스토리 한 번에 렌더 | CONCEPT §8 |
+| 7.2 | 대량 2D 렌더 패턴(Canvas/WebGL/TypedArray 등)으로 세포 1K+ 대응 | 개별 DOM/컴포넌트로 렌더 | IMPLEMENTATION_SEQUENCE 4.3 |
+| 7.3 | zone overlay와 정책 영향 반경을 시각화할 수 있어야 한다 | 지도는 보이지만 구역 차등 영향력이 읽히지 않음 | CONCEPT §8 |
 | 7.3 | Emotion 시각화: 색상(빨강=분노, 파랑=안정) + 크기(강도) | 단색·크기 고정 | CONCEPT §6.1, §8 |
 
 ---
@@ -145,11 +147,11 @@
 
 | Phase | 반드시 확인할 본질 |
 |-------|---------------------|
-| 1 | 2.x(세포·4D), 3.x(5대 규칙), 4.1~4.2(Emotion 규칙 기반) |
+| 1 | 2.x(세포·2D 사회장), 3.x(5대 규칙), 4.1~4.2(Emotion 규칙 기반) |
 | 2 | 5.x(시간 흐름), 2.4(저장 구조) |
 | 3 | 6.x(API 계약) |
-| 4 | 7.1~7.2(3D+t 슬라이더, InstancedMesh) |
-| 5 | 5.1(레이어 순서), 7.1(t→스냅샷→3D) |
+| 4 | 7.1~7.3(2D 지도+t 슬라이더, zone overlay) |
+| 5 | 5.1(레이어 순서), 7.1(t→스냅샷→2D 지도) |
 | 6 | 4.x 전부(3계층 본질), 3.4(융합 Thought 70%) |
 | 7 | 6.1(inject API), 5.4(God View 주입) |
 | 8 | 1.x(엔진 분리 유지), 7.2(Instancing 유지) |

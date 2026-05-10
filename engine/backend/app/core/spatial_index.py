@@ -1,8 +1,4 @@
-"""Uniform grid spatial index for local neighbor searches.
-
-The engine uses this for same-timestep 3D neighborhood queries before applying
-the exact 4D distance or emotion radius checks.
-"""
+"""Uniform grid spatial index for local neighbor searches in a 2D field."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -12,11 +8,11 @@ from typing import DefaultDict, Iterable, List, Tuple
 
 from app.models.cell import Cell
 
-GridKey = Tuple[int, int, int]
+GridKey = Tuple[int, int]
 
 
 class SpatialHashGrid:
-    """Small dependency-free 3D grid index for cells in one simulation step."""
+    """Small dependency-free 2D grid index for cells in one simulation step."""
 
     def __init__(self, cells: List[Cell], cell_size: float):
         self.cell_size = max(float(cell_size), 1e-6)
@@ -29,34 +25,29 @@ class SpatialHashGrid:
             self._max_x = max(c.x for c in self.cells)
             self._min_y = min(c.y for c in self.cells)
             self._max_y = max(c.y for c in self.cells)
-            self._min_z = min(c.z for c in self.cells)
-            self._max_z = max(c.z for c in self.cells)
         else:
             self._min_x = self._max_x = 0.0
             self._min_y = self._max_y = 0.0
-            self._min_z = self._max_z = 0.0
 
     def _key(self, cell: Cell) -> GridKey:
         return (
             floor(cell.x / self.cell_size),
             floor(cell.y / self.cell_size),
-            floor(cell.z / self.cell_size),
         )
 
     def candidate_cells(self, cell: Cell, radius: float) -> Iterable[Cell]:
         """Yield cells from buckets that can contain neighbors within radius."""
-        cx, cy, cz = self._key(cell)
+        cx, cy = self._key(cell)
         bucket_radius = max(1, ceil(float(radius) / self.cell_size))
         offsets = range(-bucket_radius, bucket_radius + 1)
-        for dx, dy, dz in product(offsets, offsets, offsets):
-            yield from self._buckets.get((cx + dx, cy + dy, cz + dz), ())
+        for dx, dy in product(offsets, offsets):
+            yield from self._buckets.get((cx + dx, cy + dy), ())
 
     def search_radius_covering_bounds(self, cell: Cell) -> float:
         """Radius large enough to cover all indexed cells from a query cell."""
         dx = max(abs(cell.x - self._min_x), abs(cell.x - self._max_x))
         dy = max(abs(cell.y - self._min_y), abs(cell.y - self._max_y))
-        dz = max(abs(cell.z - self._min_z), abs(cell.z - self._max_z))
-        return (dx * dx + dy * dy + dz * dz) ** 0.5 + self.cell_size
+        return (dx * dx + dy * dy) ** 0.5 + self.cell_size
 
     def nearest_candidates(
         self,
@@ -65,7 +56,7 @@ class SpatialHashGrid:
         k: int,
         initial_radius: float,
     ) -> List[Cell]:
-        """Return enough 3D candidates to contain the k nearest cells."""
+        """Return enough 2D candidates to contain the k nearest cells."""
         if not self.cells or k <= 0:
             return []
 
@@ -89,15 +80,14 @@ class SpatialHashGrid:
 def spatial_distance_sq(c1: Cell, c2: Cell) -> float:
     dx = c1.x - c2.x
     dy = c1.y - c2.y
-    dz = c1.z - c2.z
-    return dx * dx + dy * dy + dz * dz
+    return dx * dx + dy * dy
 
 
 def count_neighbors_by_cell(
     cells: List[Cell],
     radius: float,
 ) -> dict[str, int]:
-    """Count same-step 3D neighbors with grid pruning."""
+    """Count same-step 2D neighbors with grid pruning."""
     if not cells:
         return {}
 

@@ -25,6 +25,10 @@ export type CellSnapshot = {
   persona_text?: string;
   persona_country?: string;
   persona_attrs?: Record<string, unknown>;
+  zone_id?: string;
+  zone_label?: string;
+  zone_influence?: number;
+  zone_friction?: number;
 };
 
 export type SnapshotResponse = {
@@ -472,7 +476,7 @@ export function cellsToInstanceBuffers(
     const o = i * 3;
     positions[o] = c.x;
     positions[o + 1] = c.y;
-    positions[o + 2] = c.z;
+    positions[o + 2] = 0;
     const { rgb, scale } = emotionToColorAndScale(c.emotion_vec);
     colors[o] = rgb[0];
     colors[o + 1] = rgb[1];

@@ -6,7 +6,7 @@
 
 ## 0. 핵심 = 엔진, 제품으로도 사용 가능
 
-**핵심 코어는 엔진.** 4D 시뮬레이션 런타임이 중심이다.  
+**핵심 코어는 엔진.** 시간축을 가진 2D 사회장 시뮬레이션 런타임이 중심이다.
 엔진 + God View를 합치면 **제품 그 자체로 바로 쓸 수 있다** (바로 사용·배포 가능).  
 필요하면 엔진 API만 따로 다른 제품에 임베드할 수도 있다.
 
@@ -16,7 +16,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  [Organic4D 엔진 — 핵심 코어]                                    │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ 4D 좌표     │  │ 5대 규칙    │  │ 시간 흐름 + 3계층 감정·생각   │  │
+│  │ 2D 사회장   │  │ 5대 규칙    │  │ 시간 흐름 + 3계층 감정·생각   │  │
 │  │ 시각화 API  │  │ God View API│  │ 스냅샷·이벤트 API        │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────────┤
@@ -31,7 +31,7 @@
 - `GET /worlds/{id}/state` — 특정/최신 snapshot export
 - `POST /worlds/{id}/restore` — snapshot 시점 복원 또는 fork 후 재실행
 - `GET /worlds/{id}/snapshots?t=` — t 시점 스냅샷 조회
-- 시각화용 (x,y,z, energy, emotion_vec, thought_vec, worldview_vec) 등 프리미티브
+- 시각화용 `(x,y)`, `zone`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec` 등 프리미티브
 
 ---
 
@@ -43,7 +43,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │  [엔진 API / Dev UI]    [Core Engine]                            │
 │  FastAPI + God View  ←→  Python + LangGraph                      │
-│  + Three.js              4D 엔진 + 시간 루프 + 5대 규칙         │
+│  + Map UI                2D 사회장 + 시간 루프 + 5대 규칙        │
 ├─────────────────────────────────────────────────────────────────┤
 │  [Storage]           [Memory]         [LLM]                      │
 │  PostgreSQL/         Zep / Redis       Ollama / OpenAI 등         │
@@ -60,7 +60,7 @@
 | 영역 | 기술 | 용도 |
 |------|------|------|
 | **언어** | Python 3.11+ | 메인 로직, LangGraph, 수치 연산 |
-| **오케스트레이션** | LangGraph | 시간 흐름 엔진, 4D 세계 상태 머신 |
+| **오케스트레이션** | LangGraph | 시간 흐름 엔진, 2D 사회장 상태 머신 |
 | **API** | FastAPI | REST + WebSocket (실시간 시뮬레이션 스트리밍) |
 | **비동기** | asyncio | LLM 호출·메모리 I/O 병렬 처리 |
 | **페르소나 데이터셋** | Hugging Face `datasets`(선택적 streaming), JSONL/JSON/CSV | 국가별 초기 에이전트 페르소나 seed |
@@ -74,7 +74,7 @@
 | 영역 | 기술 | 용도 |
 |------|------|------|
 | **프레임워크** | Next.js 15+ (App Router, React 19) | SSR, 라우팅, God View 셸 |
-| **3D 시각화** | Three.js + React Three Fiber | 4D → 3D 프로젝션 + 시간 슬라이더 |
+| **지도 시각화** | 2D map/canvas layer | 2D 사회장 + 시간 슬라이더 |
 | **상태 관리** | Zustand + TanStack Query (React Query) 병행 | 시뮬레이션 상태, t 값, God View 주입 (t 슬라이더 복잡 상태는 TanStack Query로) |
 | **스타일** | Tailwind CSS | 빠른 UI 개발 |
 | **차트/인사이트** | Recharts 또는 Visx | 시나리오 리포트용 시각화 |
@@ -83,7 +83,7 @@
 - Next.js 15+: 현재 God View 의존성에 맞춘 App Router + React 19 조합.
 - Zustand + TanStack Query 병행: 실무 표준. Zustand만으로는 t 슬라이더·스냅샷 캐시 등 복잡 상태 관리에 한계 → TanStack Query로 서버 상태·캐싱.
 - React Three Fiber: React 컴포넌트 방식으로 Three.js 사용, 수천 세포 렌더링 최적화 가능
-- 시간 슬라이더: t를 드래그하면 해당 시점의 (x,y,z) 스냅샷을 3D로 표시
+- 시간 슬라이더: t를 드래그하면 해당 시점의 `(x,y)` 스냅샷과 zone 상태를 2D로 표시
 
 **엔진 레포 실제 버전 (God View)**: Next.js 15.x, **React 19**, `@react-three/fiber` v9, `@react-three/drei` v10 — R3F v8·drei v9 + React 18 조합은 `ReactCurrentOwner` 류 오류가 날 수 있어 상향 정렬함.
 
@@ -91,7 +91,7 @@
 
 | 영역 | 기술 | 용도 |
 |------|------|------|
-| **세포 상태·월드** | PostgreSQL 또는 SQLite | 에이전트 풀, 4D 세계 스냅샷 (t별) |
+| **세포 상태·월드** | PostgreSQL 또는 SQLite | 에이전트 풀, 2D 사회장 스냅샷 (t별) |
 | **장기 메모리** | Zep 또는 Redis | 세포별 메모리 (이벤트 히스토리) |
 | **벡터 DB** | **pgvector 우선**, Qdrant 옵션 | 유전자·Thought·Worldview 벡터, 유사도 검색 (융합 조건) |
 
@@ -170,7 +170,7 @@ docker compose up -d redis postgres
 4. `http://localhost:3000` 접속 → God View
 
 **God View 수동 E2E (Phase 5)**  
-1. 백엔드·프론트 모두 기동. 2. 「세계 생성」. 3. 「실행 (WebSocket 스트림)」 또는 「실행 (동기)」. 4. 슬라이더로 t 이동 → 3D 세포 위치 갱신.
+1. 백엔드·프론트 모두 기동. 2. 「세계 생성」. 3. 「실행 (WebSocket 스트림)」 또는 「실행 (동기)」. 4. 슬라이더로 t 이동 → 2D 사회장 갱신.
 
 **Playwright (Phase 5.4)** — `engine/frontend` 기준:
 
@@ -213,7 +213,7 @@ macOS에서는 루트의 `Launch_End4D.command`를 더블클릭해도 된다.
 3. 백엔드: LangGraph로 시간 루프 시작
    - 매 t: 성장/분열/사멸/융합/돌연변이 + Emotion. 10~50t: Thought. 200t+: Worldview
    - WebSocket으로 t, 세포 수, 주요 이벤트 스트리밍
-4. 프론트: t 슬라이더 움직임 → 해당 t의 (x,y,z) 스냅샷 요청 → 3D 렌더
+4. 프론트: t 슬라이더 움직임 → 해당 t의 `(x,y)` 스냅샷 요청 → 2D 지도 렌더
 5. 사용자가 t=500에 정책 주입 → 백엔드에서 해당 t에 영양분/이벤트 삽입 → 시뮬레이션 반영
 ```
 
@@ -242,7 +242,7 @@ macOS에서는 루트의 `Launch_End4D.command`를 더블클릭해도 된다.
 | `ORGANIC4D_PERSONA_DATASET_KR` | — | 특정 국가 데이터셋 경로 직접 지정. `US`, `JP` 등 국가 코드별로 확장 가능. |
 | `ORGANIC4D_PERSONA_HF_DATASET_KR` | — | Hugging Face dataset id 직접 지정. 예: `nvidia/Nemotron-Personas-Korea`. |
 | `ORGANIC4D_PERSONA_MAX_SCAN` | `20000` | HF/대용량 데이터셋에서 초기 persona 샘플링 시 최대 스캔 행 수. |
-| `NEXT_PUBLIC_MAX_VISUAL_CELLS` | `8192` | God View InstancedMesh 상한; 초과 시 균등 샘플링(Phase 8). |
+| `NEXT_PUBLIC_MAX_VISUAL_CELLS` | `8192` | God View 시각화 상한; 초과 시 균등 샘플링(Phase 8). |
 
 ### 3.5a Persona Dataset 준비
 
@@ -305,7 +305,7 @@ vitaswarm4D/                  # Organic4D 엔진 레포
 │   ├── backend/              # Python 엔진
 │   │   ├── app/
 │   │   │   ├── api/           # 엔진 API (worlds, cells, run, inject...)
-│   │   │   ├── core/          # 4D 좌표, 시간 흐름, 5대 규칙
+│   │   │   ├── core/          # 2D 사회장, 시간 흐름, 5대 규칙
 │   │   │   ├── graph/         # LangGraph 노드·엣지
 │   │   │   ├── memory/
 │   │   │   ├── llm/
@@ -313,7 +313,7 @@ vitaswarm4D/                  # Organic4D 엔진 레포
 │   │   └── ...
 │   └── frontend/             # God View (엔진 개발·데모용 UI)
 │       ├── components/
-│       │   ├── Scene3D/
+│       │   ├── SimulationMap/
 │       │   ├── TimeSlider/
 │       │   └── GodView/
 │       └── ...
@@ -334,7 +334,7 @@ vitaswarm4D/                  # Organic4D 엔진 레포
 
 - [x] Python + LangGraph (백엔드 오케스트레이션)
 - [x] FastAPI (REST + WebSocket)
-- [x] Next.js + Three.js (프론트·3D)
+- [x] Next.js 기반 프론트 셸
 - [x] Docker (로컬·배포)
 - [ ] Zep vs Redis (장기 메모리 — POC 후 결정)
 - [ ] PostgreSQL vs SQLite (초기에는 SQLite로 빠르게 검증 가능)
@@ -354,11 +354,11 @@ vitaswarm4D/                  # Organic4D 엔진 레포
 
 | 단계 | 내용 | 산출물 |
 |------|------|--------|
-| 1 | 4D 좌표·거리 함수, 세포 스키마 | `engine/coordinates.py`, `models/cell.py` |
+| 1 | 2D 좌표·zone friction 함수, 세포 스키마 | `engine/coordinates.py`, `models/cell.py` |
 | 2 | 5대 규칙 로직 (LLM 제외) | `engine/rules.py` |
 | 3 | LangGraph 시간 루프 | `graph/time_flow.py` |
 | 4 | FastAPI + WebSocket | `api/` |
-| 5 | Three.js 3D + t 슬라이더 | `Scene3D`, `TimeSlider` |
+| 5 | 2D 지도 + t 슬라이더 | `SimulationMap`, `TimeSlider` |
 | 6 | 3계층 감정·생각 (Emotion, Thought, Worldview) | `core/emotion.py`, `llm/thought.py`, `llm/worldview.py` |
 | 7 | God View 주입, 타임라인 | `api/inject.py`, `api/timeline.py`, `InjectPanel`, `ScenarioTimeline` |
 | 8 | Docker·시각화 상한 | `docker-compose.prod.yml`, standalone Dockerfile, 샘플링·CORS |

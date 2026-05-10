@@ -34,6 +34,22 @@ def _action_float(cell: Cell, key: str, default: float) -> float:
     return max(0.0, min(1.0, value))
 
 
+def _merged_zone_value(c1: Cell, c2: Cell) -> tuple[str, str, float, float]:
+    if c1.zone_id == c2.zone_id:
+        return (
+            c1.zone_id,
+            c1.zone_label,
+            (float(c1.zone_influence) + float(c2.zone_influence)) / 2.0,
+            max(float(c1.zone_friction), float(c2.zone_friction)),
+        )
+    return (
+        c1.zone_id,
+        f"{c1.zone_label} / {c2.zone_label}",
+        (float(c1.zone_influence) + float(c2.zone_influence)) / 2.0,
+        max(float(c1.zone_friction), float(c2.zone_friction), 0.25),
+    )
+
+
 def _mutate_vector(vec: np.ndarray, rate: float = MUTATION_RATE) -> np.ndarray:
     """벡터에 작은 랜덤 변이 적용 (돌연변이)."""
     out = vec.copy()
@@ -184,12 +200,13 @@ def apply_fusion(
             used.add(c1.cell_id)
             used.add(c2.cell_id)
             merged_memory = merge_memory_fields(c1, c2)
+            zone_id, zone_label, zone_influence, zone_friction = _merged_zone_value(c1, c2)
 
             merged = c1.copy(
                 cell_id=str(uuid.uuid4()),
                 x=(c1.x + c2.x) / 2,
                 y=(c1.y + c2.y) / 2,
-                z=(c1.z + c2.z) / 2,
+                z=0.0,
                 energy=c1.energy + c2.energy,
                 gene_vec=_mutate_vector((c1.gene_vec + c2.gene_vec) / 2),
                 emotion_vec=_mutate_vector((c1.emotion_vec + c2.emotion_vec) / 2),
@@ -199,6 +216,10 @@ def apply_fusion(
                 short_memory=merged_memory["short_memory"],
                 long_memory=merged_memory["long_memory"],
                 behavior_log=merged_memory["behavior_log"],
+                zone_id=zone_id,
+                zone_label=zone_label,
+                zone_influence=zone_influence,
+                zone_friction=zone_friction,
             )
             result.append(merged)
         else:

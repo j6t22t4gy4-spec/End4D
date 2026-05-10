@@ -27,7 +27,7 @@ def cell_to_dict(cell: Cell) -> Dict[str, Any]:
         "cell_id": cell.cell_id,
         "x": float(cell.x),
         "y": float(cell.y),
-        "z": float(cell.z),
+        "z": 0.0,
         "t": float(cell.t),
         "energy": float(cell.energy),
         "gene_vec": cell.gene_vec.tolist(),
@@ -45,6 +45,10 @@ def cell_to_dict(cell: Cell) -> Dict[str, Any]:
         "persona_text": cell.persona_text,
         "persona_country": cell.persona_country,
         "persona_attrs": dict(cell.persona_attrs),
+        "zone_id": cell.zone_id,
+        "zone_label": cell.zone_label,
+        "zone_influence": float(cell.zone_influence),
+        "zone_friction": float(cell.zone_friction),
     }
 
 
@@ -53,7 +57,7 @@ def cell_from_dict(data: Dict[str, Any]) -> Cell:
         cell_id=str(data.get("cell_id") or ""),
         x=float(data.get("x", 0.0)),
         y=float(data.get("y", 0.0)),
-        z=float(data.get("z", 0.0)),
+        z=0.0,
         t=float(data.get("t", 0.0)),
         energy=float(data.get("energy", 0.0)),
         gene_vec=np.asarray(data.get("gene_vec") or [], dtype=np.float32),
@@ -71,6 +75,10 @@ def cell_from_dict(data: Dict[str, Any]) -> Cell:
         persona_text=str(data.get("persona_text") or ""),
         persona_country=str(data.get("persona_country") or ""),
         persona_attrs=dict(data.get("persona_attrs") or {}),
+        zone_id=str(data.get("zone_id") or "zone-0"),
+        zone_label=str(data.get("zone_label") or "Zone 0"),
+        zone_influence=float(data.get("zone_influence", 1.0)),
+        zone_friction=float(data.get("zone_friction", 0.0)),
     )
 
 
