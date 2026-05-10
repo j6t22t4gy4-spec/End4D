@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 from app.core.memory_store import append_memory, behavior_event, memory_entry
+from app.core.relationship_state import average_relationship_metrics
 from app.core.settings import (
     get_group_deliberation_interval,
     get_group_deliberation_max_groups,
@@ -37,6 +38,10 @@ def apply_group_deliberation_if_due(cells: List[Cell], current_t: float) -> List
 
     for (role, members), text in zip(groups.items(), generated):
         outcome = _parse_group_outcome(text, role)
+        relationship_snapshot = average_relationship_metrics(members)
+        outcome["avg_trust"] = relationship_snapshot["avg_trust"]
+        outcome["avg_relationship_tension"] = relationship_snapshot["avg_tension"]
+        outcome["repeat_peer_density"] = relationship_snapshot["repeat_peer_density"]
         for member in members:
             idx = index_by_id.get(member.cell_id)
             if idx is None:
@@ -82,6 +87,8 @@ def _apply_group_pressure(
     )
     current_action["group_coalition_signal"] = str(outcome["coalition_signal"])
     current_action["last_group_stance"] = str(outcome["stance_summary"])
+    current_action["group_cohesion_score"] = _clip01(float(outcome["cohesion_score"]))
+    current_action["group_tension_score"] = _clip01(float(outcome["relationship_tension"]))
     updated = cell.copy(action_state=current_action)
     if not write_memory:
         return updated
@@ -114,6 +121,8 @@ def _parse_group_outcome(text: str, role: str) -> Dict[str, float | str]:
             "cohesion_delta": 0.05,
             "tension_delta": 0.02,
             "coalition_signal": "weak",
+            "cohesion_score": 0.58,
+            "relationship_tension": 0.22,
             "importance": 0.68,
         }
     return {
@@ -121,6 +130,8 @@ def _parse_group_outcome(text: str, role: str) -> Dict[str, float | str]:
         "cohesion_delta": _signed(payload.get("cohesion_delta"), default=0.04),
         "tension_delta": _signed(payload.get("tension_delta"), default=0.02),
         "coalition_signal": str(payload.get("coalition_signal") or "weak"),
+        "cohesion_score": _clip01(float(payload.get("cohesion_score", 0.58))),
+        "relationship_tension": _clip01(float(payload.get("relationship_tension", 0.22))),
         "importance": _clip01(float(payload.get("importance", 0.68))),
     }
 

@@ -36,6 +36,10 @@ def cell_to_dict(cell: Cell) -> Dict[str, Any]:
         "long_memory": [dict(item) for item in cell.long_memory],
         "behavior_log": [dict(item) for item in cell.behavior_log],
         "action_state": dict(cell.action_state),
+        "relationship_state": {
+            str(peer_id): dict(state)
+            for peer_id, state in cell.relationship_state.items()
+        },
         "emotion_vec": cell.emotion_vec.tolist(),
         "thought_vec": cell.thought_vec.tolist(),
         "worldview_vec": cell.worldview_vec.tolist(),
@@ -66,6 +70,10 @@ def cell_from_dict(data: Dict[str, Any]) -> Cell:
         long_memory=[dict(item) for item in data.get("long_memory") or []],
         behavior_log=[dict(item) for item in data.get("behavior_log") or []],
         action_state=dict(data.get("action_state") or {}),
+        relationship_state={
+            str(peer_id): dict(state)
+            for peer_id, state in (data.get("relationship_state") or {}).items()
+        },
         emotion_vec=np.asarray(data.get("emotion_vec") or [], dtype=np.float32),
         thought_vec=np.asarray(data.get("thought_vec") or [], dtype=np.float32),
         worldview_vec=np.asarray(data.get("worldview_vec") or [], dtype=np.float32),

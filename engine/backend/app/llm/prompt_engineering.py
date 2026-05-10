@@ -5,6 +5,7 @@ import numpy as np
 
 from app.core.emotion import EMOTION_LABELS
 from app.core.memory_reflection import build_memory_reflection, build_worldview_reflection
+from app.core.relationship_state import average_relationship_metrics, summarize_relationship
 from app.llm.prompt_registry import get_prompt_version
 from app.models.cell import Cell
 
@@ -66,12 +67,14 @@ def build_policy_prompt(cell: Cell, event_type: str, payload: dict) -> str:
 def build_dialogue_prompt(a: Cell, b: Cell, *, current_t: float) -> str:
     role_a = (a.role_label or a.role_key or "agent").strip() or "agent"
     role_b = (b.role_label or b.role_key or "agent").strip() or "agent"
+    relation_a = summarize_relationship(a, b.cell_id)
+    relation_b = summarize_relationship(b, a.cell_id)
     return (
         f"prompt_version={get_prompt_version('dialogue')}; t={float(current_t):.1f}; "
         f"agent_a={{role:{role_a}, energy:{a.energy:.2f}, action:{dict(a.action_state)}, "
-        f"memory:{build_memory_reflection(a)[:260]}}}; "
+        f"memory:{build_memory_reflection(a)[:260]}, relation_to_b:{relation_a}}}; "
         f"agent_b={{role:{role_b}, energy:{b.energy:.2f}, action:{dict(b.action_state)}, "
-        f"memory:{build_memory_reflection(b)[:260]}}}"
+        f"memory:{build_memory_reflection(b)[:260]}, relation_to_a:{relation_b}}}"
     )
 
 
@@ -81,6 +84,7 @@ def build_group_deliberation_prompt(role: str, cells: list[Cell], *, current_t: 
     avg_energy = sum(float(c.energy) for c in cells) / len(cells)
     avg_coop = sum(float(c.action_state.get("cooperation_bias", 0.5)) for c in cells) / len(cells)
     avg_policy = sum(float(c.action_state.get("policy_sensitivity", 0.5)) for c in cells) / len(cells)
+    relationship_metrics = average_relationship_metrics(cells)
     memories = " | ".join(
         build_memory_reflection(c)[:180]
         for c in cells[:5]
@@ -90,5 +94,8 @@ def build_group_deliberation_prompt(role: str, cells: list[Cell], *, current_t: 
         f"prompt_version={get_prompt_version('group_deliberation')}; t={float(current_t):.1f}; "
         f"role={role}; sample_size={len(cells)}; avg_energy={avg_energy:.2f}; "
         f"avg_cooperation={avg_coop:.3f}; avg_policy_sensitivity={avg_policy:.3f}; "
+        f"avg_trust={relationship_metrics['avg_trust']:.3f}; "
+        f"avg_tension={relationship_metrics['avg_tension']:.3f}; "
+        f"repeat_peer_density={relationship_metrics['repeat_peer_density']:.3f}; "
         f"sample_memories={memories[:800]}"
     )

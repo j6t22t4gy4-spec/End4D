@@ -57,6 +57,17 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
                         "payload": {},
                     }
                 ],
+                relationship_state={
+                    "peer-1": {
+                        "peer_id": "peer-1",
+                        "trust": 0.61,
+                        "tension": 0.14,
+                        "alignment": 0.18,
+                        "dialogue_count": 3,
+                        "last_t": 2.0,
+                        "last_summary": "shared local concern",
+                    }
+                },
                 role_key="citizen",
                 role_label="citizen",
             )
@@ -78,6 +89,7 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap.cells[0].memory[-1].endswith("alignment=ally")
     assert loaded_snap.cells[0].short_memory[0]["kind"] == "social_observation"
     assert loaded_snap.cells[0].behavior_log[0]["schema_version"] == "behavior-log/v1"
+    assert loaded_snap.cells[0].relationship_state["peer-1"]["dialogue_count"] == 3
     assert loaded_snap.cells[0].zone_id == "zone-0"
     assert loaded_snap.cells[0].z == 0.0
     assert loaded_entry["config_version"]

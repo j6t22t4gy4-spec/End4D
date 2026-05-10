@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 
 from app.core.coordinates import distance_4d
 from app.core.memory_store import append_memory, behavior_event, memory_entry
+from app.core.relationship_state import relationship_score, update_relationship
 from app.core.settings import get_dialogue_interval, get_dialogue_max_pairs
 from app.core.spatial_index import SpatialHashGrid
 from app.llm.facade import llm_facade
@@ -54,8 +55,15 @@ def _select_dialogue_pairs(cells: List[Cell], *, radius: float, max_pairs: int) 
             continue
         candidates.sort(
             key=lambda other: (
+                -(
+                    relationship_score(cell, other.cell_id)
+                    + relationship_score(other, cell.cell_id)
+                ),
                 distance_4d(cell, other),
-                abs(float(cell.action_state.get("policy_sensitivity", 0.5)) - float(other.action_state.get("policy_sensitivity", 0.5))),
+                abs(
+                    float(cell.action_state.get("policy_sensitivity", 0.5))
+                    - float(other.action_state.get("policy_sensitivity", 0.5))
+                ),
                 other.cell_id,
             )
         )
@@ -82,6 +90,8 @@ def _apply_dialogue_to_cell(
     summary_key = "summary_a" if side == "a" else "summary_b"
     summary = str(outcome.get(summary_key) or outcome.get("summary_a") or "direct dialogue")
     current_action = dict(cell.action_state)
+    trust_delta = max(0.0, float(outcome["cooperation_delta"])) * 0.7 + max(0.0, float(outcome["alignment_delta"])) * 0.35
+    tension_delta = max(0.0, float(outcome["tension_delta"])) + max(0.0, -float(outcome["cooperation_delta"])) * 0.45
     current_action["cooperation_bias"] = _clip01(
         float(current_action.get("cooperation_bias", 0.5)) + float(outcome["cooperation_delta"])
     )
@@ -89,6 +99,7 @@ def _apply_dialogue_to_cell(
         float(current_action.get("risk_tolerance", 0.5)) + float(outcome["tension_delta"]) * 0.15
     )
     current_action["last_dialogue_summary"] = summary
+    current_action["last_dialogue_peer_id"] = peer.cell_id
 
     entry = memory_entry(
         t=float(current_t),
@@ -101,6 +112,7 @@ def _apply_dialogue_to_cell(
             "alignment_delta": outcome["alignment_delta"],
             "tension_delta": outcome["tension_delta"],
             "cooperation_delta": outcome["cooperation_delta"],
+            "trust_delta": trust_delta,
         },
         tags=["llm", "dialogue"],
     )
@@ -112,8 +124,17 @@ def _apply_dialogue_to_cell(
         quality_score=float(outcome["importance"]),
         payload=dict(entry["payload"]),
     )
-    return append_memory(
+    updated = update_relationship(
         cell.copy(action_state=current_action),
+        peer.cell_id,
+        current_t=current_t,
+        trust_delta=trust_delta,
+        tension_delta=tension_delta,
+        alignment_delta=float(outcome["alignment_delta"]),
+        summary=summary,
+    )
+    return append_memory(
+        updated,
         entry,
         behavior=behavior,
         promote=float(outcome["importance"]) >= 0.74,

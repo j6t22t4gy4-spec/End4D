@@ -190,13 +190,23 @@ def get_agent_stance_summary(
             float(item.get("quality_score", 0.0))
             for cell in cells
             for item in cell.behavior_log[-16:]
-            if item.get("event_type") == "social_observation"
+            if item.get("event_type") in {"social_observation", "agent_dialogue", "group_deliberation"}
         ]
         polarities = [
             str(item.get("payload", {}).get("belief_polarity") or "")
             for cell in cells
             for item in cell.behavior_log[-16:]
             if item.get("event_type") == "social_observation"
+        ]
+        dialogue_trust = [
+            float(item.get("trust", 0.0))
+            for cell in cells
+            for item in cell.relationship_state.values()
+        ]
+        dialogue_tension = [
+            float(item.get("tension", 0.0))
+            for cell in cells
+            for item in cell.relationship_state.values()
         ]
         cluster_signals = [
             str(item.get("payload", {}).get("cluster_signal") or "")
@@ -205,7 +215,11 @@ def get_agent_stance_summary(
             if item.get("event_type") == "social_observation"
         ]
         cohesion_score = float(np.mean(qualities)) if qualities else 0.0
+        if dialogue_trust:
+            cohesion_score = min(1.0, cohesion_score * 0.7 + float(np.mean(dialogue_trust)) * 0.3)
         tension_score = float(sum(1 for p in polarities if p == "counter_alignment")) / max(len(polarities), 1)
+        if dialogue_tension:
+            tension_score = min(1.0, tension_score * 0.7 + float(np.mean(dialogue_tension)) * 0.3)
         long_memory_count = sum(len(cell.long_memory) for cell in cells)
         if cohesion_score >= 0.72 and tension_score < 0.2:
             stance = "cohesive"
