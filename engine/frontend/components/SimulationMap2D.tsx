@@ -32,6 +32,16 @@ type ElevationBand = {
   alpha: number;
 };
 
+type ZSemantics = {
+  mode: string;
+  label: string;
+  subtitle: string;
+  rangeLabel: string;
+  contourName: string;
+  fills: string[];
+  strokes: string[];
+};
+
 const SVG_WIDTH = 960;
 const SVG_HEIGHT = 640;
 const PADDING = 56;
@@ -50,14 +60,14 @@ export default function SimulationMap2D({
           <p className="simulation-map__eyebrow">2D Social Field</p>
           <h3 className="simulation-map__title">Zone-aware agent communication surface</h3>
           <p className="simulation-map__subtitle">
-            Social elevation is shown as contour bands over the flat communication plane.
+            {scene.zSemantics.subtitle}
           </p>
         </div>
         <div className="simulation-map__meta">
           <span>{cells.length.toLocaleString()} visible</span>
           <span>{totalCells.toLocaleString()} total</span>
           <span>{scene.zoneBoxes.length} zones</span>
-          <span>z {scene.zRange.min.toFixed(1)}-{scene.zRange.max.toFixed(1)}</span>
+          <span>{scene.zSemantics.rangeLabel} {scene.zRange.min.toFixed(1)}-{scene.zRange.max.toFixed(1)}</span>
           {sampled ? <span>sampled</span> : <span>full</span>}
         </div>
       </div>
@@ -108,8 +118,8 @@ export default function SimulationMap2D({
                 d={band.d}
                 className="simulation-map__contour-band"
                 style={{
-                  fill: contourFill(index, band.alpha),
-                  stroke: contourStroke(index),
+                  fill: contourFill(scene.zSemantics, index, band.alpha),
+                  stroke: contourStroke(scene.zSemantics, index),
                 }}
               >
                 <title>{band.label}</title>
@@ -173,11 +183,17 @@ export default function SimulationMap2D({
           </div>
         ))}
         <div className="simulation-map__legend-item simulation-map__legend-item--elevation">
-          <span className="simulation-map__legend-contour" />
+          <span
+            className="simulation-map__legend-contour"
+            style={{
+              background: contourLegendFill(scene.zSemantics),
+              borderColor: contourStroke(scene.zSemantics, 1),
+            }}
+          />
           <div>
             <strong>{scene.zLabel}</strong>
             <span>
-              contours {scene.zRange.min.toFixed(1)} to {scene.zRange.max.toFixed(1)}
+              {scene.zSemantics.contourName} {scene.zRange.min.toFixed(1)} to {scene.zRange.max.toFixed(1)}
             </span>
           </div>
         </div>
@@ -194,6 +210,7 @@ function buildScene(cells: CellSnapshot[]) {
       elevationBands: [] as ElevationBand[],
       zRange: { min: 0, max: 0 },
       zLabel: "social elevation",
+      zSemantics: zSemanticsForMode("hybrid"),
     };
   }
 
@@ -269,13 +286,16 @@ function buildScene(cells: CellSnapshot[]) {
     minZ,
     maxZ,
   });
+  const zMode = inferZMode(cells);
+  const zSemantics = zSemanticsForMode(zMode);
 
   return {
     nodes,
     zoneBoxes,
     elevationBands,
     zRange: { min: minZ, max: maxZ },
-    zLabel: inferZLabel(cells),
+    zLabel: zSemantics.label,
+    zSemantics,
   };
 }
 
@@ -307,24 +327,13 @@ function zoneStroke(index: number) {
   return palette[index % palette.length]!;
 }
 
-function contourFill(index: number, alpha: number) {
-  const palette = [
-    `rgba(14, 165, 233, ${alpha})`,
-    `rgba(59, 130, 246, ${alpha})`,
-    `rgba(99, 102, 241, ${alpha})`,
-    `rgba(251, 191, 36, ${alpha})`,
-  ];
-  return palette[index % palette.length]!;
+function contourFill(semantics: ZSemantics, index: number, alpha: number) {
+  const color = semantics.fills[index % semantics.fills.length]!;
+  return color.replace("__ALPHA__", alpha.toFixed(3));
 }
 
-function contourStroke(index: number) {
-  const palette = [
-    "rgba(2, 132, 199, 0.34)",
-    "rgba(37, 99, 235, 0.34)",
-    "rgba(79, 70, 229, 0.34)",
-    "rgba(202, 138, 4, 0.34)",
-  ];
-  return palette[index % palette.length]!;
+function contourStroke(semantics: ZSemantics, index: number) {
+  return semantics.strokes[index % semantics.strokes.length]!;
 }
 
 function buildElevationBands({
@@ -387,7 +396,138 @@ function roundedRectPath(x: number, y: number, width: number, height: number, ra
   ].join(" ");
 }
 
-function inferZLabel(cells: CellSnapshot[]) {
-  const mode = cells[0]?.role_key ? "social elevation" : "elevation";
-  return mode;
+function contourLegendFill(semantics: ZSemantics) {
+  const top = semantics.fills[1]?.replace("__ALPHA__", "0.180") ?? "rgba(14, 165, 233, 0.18)";
+  const bottom = semantics.fills[2]?.replace("__ALPHA__", "0.080") ?? "rgba(59, 130, 246, 0.08)";
+  return `linear-gradient(180deg, ${top}, ${bottom}), #ffffff`;
+}
+
+function inferZMode(cells: CellSnapshot[]) {
+  const mode = cells[0]?.action_state?.z_mode;
+  return typeof mode === "string" && mode.trim() ? mode.trim() : "hybrid";
+}
+
+function zSemanticsForMode(mode: string): ZSemantics {
+  switch (mode) {
+    case "wealth":
+      return {
+        mode,
+        label: "wealth elevation",
+        subtitle: "Contour bands track resource concentration and accumulated economic height.",
+        rangeLabel: "wealth z",
+        contourName: "wealth bands",
+        fills: [
+          "rgba(245, 158, 11, __ALPHA__)",
+          "rgba(251, 191, 36, __ALPHA__)",
+          "rgba(249, 115, 22, __ALPHA__)",
+          "rgba(234, 88, 12, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(180, 83, 9, 0.34)",
+          "rgba(202, 138, 4, 0.34)",
+          "rgba(234, 88, 12, 0.34)",
+          "rgba(194, 65, 12, 0.34)",
+        ],
+      };
+    case "influence":
+      return {
+        mode,
+        label: "influence elevation",
+        subtitle: "Contour bands highlight social leverage, coordination reach, and institutional pull.",
+        rangeLabel: "influence z",
+        contourName: "influence bands",
+        fills: [
+          "rgba(99, 102, 241, __ALPHA__)",
+          "rgba(129, 140, 248, __ALPHA__)",
+          "rgba(59, 130, 246, __ALPHA__)",
+          "rgba(79, 70, 229, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(67, 56, 202, 0.34)",
+          "rgba(79, 70, 229, 0.34)",
+          "rgba(37, 99, 235, 0.34)",
+          "rgba(55, 48, 163, 0.34)",
+        ],
+      };
+    case "policy":
+      return {
+        mode,
+        label: "policy sensitivity elevation",
+        subtitle: "Contour bands show which areas are structurally more reactive to policy signals.",
+        rangeLabel: "policy z",
+        contourName: "policy bands",
+        fills: [
+          "rgba(16, 185, 129, __ALPHA__)",
+          "rgba(52, 211, 153, __ALPHA__)",
+          "rgba(13, 148, 136, __ALPHA__)",
+          "rgba(5, 150, 105, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(5, 150, 105, 0.34)",
+          "rgba(4, 120, 87, 0.34)",
+          "rgba(13, 148, 136, 0.34)",
+          "rgba(6, 95, 70, 0.34)",
+        ],
+      };
+    case "memory":
+      return {
+        mode,
+        label: "memory elevation",
+        subtitle: "Contour bands reflect accumulated long-memory and repeated social imprint.",
+        rangeLabel: "memory z",
+        contourName: "memory bands",
+        fills: [
+          "rgba(236, 72, 153, __ALPHA__)",
+          "rgba(244, 114, 182, __ALPHA__)",
+          "rgba(217, 70, 239, __ALPHA__)",
+          "rgba(219, 39, 119, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(190, 24, 93, 0.34)",
+          "rgba(219, 39, 119, 0.34)",
+          "rgba(168, 85, 247, 0.34)",
+          "rgba(157, 23, 77, 0.34)",
+        ],
+      };
+    case "flat":
+      return {
+        mode,
+        label: "flat elevation",
+        subtitle: "Elevation is flattened, so contour overlays collapse toward the communication plane.",
+        rangeLabel: "flat z",
+        contourName: "flat bands",
+        fills: [
+          "rgba(148, 163, 184, __ALPHA__)",
+          "rgba(203, 213, 225, __ALPHA__)",
+          "rgba(148, 163, 184, __ALPHA__)",
+          "rgba(226, 232, 240, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(100, 116, 139, 0.34)",
+          "rgba(148, 163, 184, 0.34)",
+          "rgba(100, 116, 139, 0.34)",
+          "rgba(148, 163, 184, 0.34)",
+        ],
+      };
+    default:
+      return {
+        mode: "hybrid",
+        label: "social elevation",
+        subtitle: "Contour bands blend wealth, influence, memory, and policy sensitivity over the flat communication plane.",
+        rangeLabel: "social z",
+        contourName: "hybrid bands",
+        fills: [
+          "rgba(14, 165, 233, __ALPHA__)",
+          "rgba(59, 130, 246, __ALPHA__)",
+          "rgba(99, 102, 241, __ALPHA__)",
+          "rgba(251, 191, 36, __ALPHA__)",
+        ],
+        strokes: [
+          "rgba(2, 132, 199, 0.34)",
+          "rgba(37, 99, 235, 0.34)",
+          "rgba(79, 70, 229, 0.34)",
+          "rgba(202, 138, 4, 0.34)",
+        ],
+      };
+  }
 }

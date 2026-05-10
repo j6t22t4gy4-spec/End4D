@@ -29,6 +29,7 @@ export type CellSnapshot = {
   zone_label?: string;
   zone_influence?: number;
   zone_friction?: number;
+  action_state?: Record<string, unknown>;
 };
 
 export type SnapshotResponse = {
