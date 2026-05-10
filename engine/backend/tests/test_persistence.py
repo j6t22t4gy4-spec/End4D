@@ -42,7 +42,7 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
                 cell_id="persisted-cell",
                 x=1.0,
                 y=0.0,
-                z=0.0,
+                z=6.5,
                 t=3.0,
                 energy=77.0,
                 gene_vec=np.zeros(32),
@@ -102,12 +102,12 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     loaded_snap = loaded_entry["snapshot_store"].get(3.0)
     assert loaded_snap is not None
     assert loaded_snap.cells[0].cell_id == "persisted-cell"
+    assert loaded_snap.cells[0].z == 6.5
     assert loaded_snap.cells[0].memory[-1].endswith("alignment=ally")
     assert loaded_snap.cells[0].short_memory[0]["kind"] == "social_observation"
     assert loaded_snap.cells[0].behavior_log[0]["schema_version"] == "behavior-log/v1"
     assert loaded_snap.cells[0].relationship_state["peer-1"]["dialogue_count"] == 3
     assert loaded_snap.cells[0].zone_id == "zone-0"
-    assert loaded_snap.cells[0].z == 0.0
     assert loaded_entry["config_version"]
     assert loaded_entry["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
     assert loaded_entry["snapshot_store"].snapshot_index()[0]["digest"]

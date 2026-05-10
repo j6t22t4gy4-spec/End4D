@@ -49,6 +49,26 @@ def test_graph_uses_engine_zone_layout_params():
     assert len(ys) >= 2
 
 
+def test_graph_assigns_social_elevation_from_engine_params():
+    store = SnapshotStore()
+    graph = create_time_flow_graph()
+    out = graph.invoke(
+        {
+            "initial_cell_count": 4,
+            "t_max": 1,
+            "snapshot_store": store,
+            "engine_params": {
+                "z_mode": "wealth",
+                "z_weight": 0.16,
+                "z_scale": 10.0,
+            },
+        }
+    )
+    assert any(float(c.z) > 0.0 for c in out["cells"])
+    assert all(c.action_state["z_mode"] == "wealth" for c in out["cells"])
+    assert all(float(c.action_state["z_weight"]) == 0.16 for c in out["cells"])
+
+
 def test_thought_refresh_at_interval_changes_vector():
     """Thought는 current_t=20인 스텝에서 갱신되므로 t_max>20 필요."""
     store = SnapshotStore()

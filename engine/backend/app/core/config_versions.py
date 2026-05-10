@@ -20,7 +20,7 @@ def build_simulation_config(
     comparison_meta: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     return {
-        "schema_version": "simulation-config/v2",
+        "schema_version": "simulation-config/v3",
         "t_max": float(t_max),
         "initial_cell_count": int(initial_cell_count),
         "role_catalog": list(role_catalog),

@@ -17,7 +17,7 @@ import numpy as np
 class Cell:
     """2D social field 위에서 움직이는 사회 에이전트."""
 
-    # 2D 좌표 + 시간 (z는 하위 호환성용 평면 값)
+    # 2D 좌표 + social elevation + 시간
     x: float
     y: float
     z: float
@@ -60,23 +60,23 @@ class Cell:
     cell_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     def position_4d(self) -> tuple[float, float, float, float]:
-        """하위 호환성용 좌표 반환. z는 평면 0으로 고정한다."""
-        return (self.x, self.y, 0.0, self.t)
+        """4D 좌표 반환. z는 물리 높이가 아니라 social elevation이다."""
+        return (self.x, self.y, self.z, self.t)
 
     def position_2d(self) -> tuple[float, float]:
         """2D social field 좌표."""
         return (self.x, self.y)
 
     def position_3d(self) -> tuple[float, float, float]:
-        """시각화용 평면 좌표."""
-        return (self.x, self.y, 0.0)
+        """시각화/등고선용 2.5D 좌표."""
+        return (self.x, self.y, self.z)
 
     def copy(self, **overrides) -> Cell:
         """복사본 생성 (분열 등에 사용)."""
         d = {
             "x": self.x,
             "y": self.y,
-            "z": 0.0,
+            "z": self.z,
             "t": self.t,
             "energy": self.energy,
             "gene_vec": self.gene_vec.copy(),

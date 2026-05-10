@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.core.inject_handlers import apply_inject_to_cells
 from app.core.policy_events import normalize_policy_payload
+from app.core.social_elevation import refresh_social_elevation
 from app.core.store import world_store
 from app.graph.time_flow import create_resume_time_flow_graph
 from app.models.world import NutrientEvent, World
@@ -77,7 +78,11 @@ def inject_event(world_id: str, body: InjectRequest):
 
     t_inject = float(snap.t)
     cells_in = [c.copy() for c in snap.cells]
-    cells_after = apply_inject_to_cells(cells_in, body.event_type, body.payload)
+    cells_after = refresh_social_elevation(
+        apply_inject_to_cells(cells_in, body.event_type, body.payload),
+        current_t=t_inject,
+        engine_params=world_store.get_engine_params(world_id),
+    )
 
     cleared = store.clear_after(t_inject)
     store.save(t_inject, cells_after)

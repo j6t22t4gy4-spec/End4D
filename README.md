@@ -6,14 +6,15 @@
 
 ## Spatial Model
 
-- 현재 제품 방향의 기본 공간 추상화는 `2D + time`이다.
-- `z` 축은 사회적 설명력 대비 비용이 커서 코어 모델에서 우선순위를 낮춘다.
-- 대신 `zone influence`를 강화한다:
+- 현재 제품 방향의 기본 공간 추상화는 `2D plane + social elevation(z) + time`이다.
+- `z` 축은 full 3D mesh나 camera용 물리 높이가 아니라, 저비용 `heightmap / contour / scalar field` 의미의 **사회적 고도**다.
+- `zone influence`와 함께 다음을 표현할 수 있다:
   - 구역별 정책 영향력
   - 구역 간 소통 마찰
   - 중심지/주변부 차등 효과
   - 지역 타깃 정책 주입
-- 3D 표시는 과도기 UI로 남아 있을 수 있지만, 엔진 설계 기준선은 `2D social field + zone metadata + t`다.
+- 기본 엔진은 여전히 2D 중심으로 계산하고, `z`는 선택적 거리 가중과 분석/시각화 오버레이에만 약하게 반영한다.
+- 현재 기본 `z_mode`는 `hybrid`이며, `wealth`, `influence`, `policy`, `memory`, `flat` 같은 모드를 엔진 파라미터로 바꿀 수 있다.
 
 ## 문서
 
@@ -57,6 +58,7 @@
 - world/snapshot/memory는 기본 `disk` backend로 JSON 영속화되며, `GET /worlds/{world_id}/state`, `POST /worlds/{world_id}/restore`로 what-if 복원/fork가 가능하다.
 - 저장 파일은 `organic4d-file-envelope/v1` envelope와 SHA-256 digest를 포함해 스냅샷/포크 재현성에 필요한 무결성을 검증한다.
 - 메모리는 레거시 문자열 외에 `short_memory`, `long_memory`, `behavior_log`로 구조화되며, Thought/Worldview는 전용 prompt engineering 모듈을 통해 이를 반영한다.
+- 각 에이전트는 `(x, y, z, t)`를 유지하며, `z`는 `social elevation`으로 저장·복원된다.
 - 에이전트 집단 상태는 `GET /worlds/{world_id}/agents/summary`, `GET /worlds/{world_id}/agents/stance-summary`에서 cohesion/tension/stance까지 확인할 수 있다.
 - 로컬 실행 엔진은 설치된 데이터 팩 매니페스트를 읽을 수 있고, `GET /runtime/local-status`에서 현재 런타임 프로필과 로컬 pack 상태를 확인할 수 있다.
 - 클라우드/사내 manifest는 `ORGANIC4D_DATA_PACK_REMOTE_MANIFEST_URL` 또는 `POST /runtime/data-packs/sync`로 로컬 cache manifest에 병합한다.

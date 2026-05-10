@@ -19,13 +19,21 @@ def _cell(*, x: float, y: float, zone_id: str, zone_friction: float = 0.0) -> Ce
         zone_id=zone_id,
         zone_label=zone_id,
         zone_friction=zone_friction,
+        action_state={"z_weight": 0.1},
     )
 
 
-def test_distance_4d_ignores_z_plane_height_for_cells():
+def test_distance_4d_uses_xy_when_social_elevation_is_equal():
     a = _cell(x=0.0, y=0.0, zone_id="zone-a")
     b = _cell(x=3.0, y=4.0, zone_id="zone-a")
     assert distance_4d(a, b, time_weight=0.0) == 5.0
+
+
+def test_distance_4d_can_include_social_elevation_gap():
+    a = _cell(x=0.0, y=0.0, zone_id="zone-a").copy(z=2.0)
+    b = _cell(x=0.0, y=4.0, zone_id="zone-a").copy(z=8.0)
+    assert distance_4d(a, b, z_weight=0.0, time_weight=0.0) == 4.0
+    assert distance_4d(a, b, z_weight=0.5, time_weight=0.0) > 4.0
 
 
 def test_zone_penalty_applies_across_different_zones():

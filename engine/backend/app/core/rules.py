@@ -206,7 +206,7 @@ def apply_fusion(
                 cell_id=str(uuid.uuid4()),
                 x=(c1.x + c2.x) / 2,
                 y=(c1.y + c2.y) / 2,
-                z=0.0,
+                z=(float(c1.z) + float(c2.z)) / 2.0,
                 energy=c1.energy + c2.energy,
                 gene_vec=_mutate_vector((c1.gene_vec + c2.gene_vec) / 2),
                 emotion_vec=_mutate_vector((c1.emotion_vec + c2.emotion_vec) / 2),

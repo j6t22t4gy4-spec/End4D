@@ -138,7 +138,7 @@ def create_world(req: CreateWorldRequest):
         role_catalog = [str(role).strip() for role in god_overrides.get("role_catalog") or [] if str(role).strip()] or role_catalog
     persona_source = persona_source_label(plan.persona_country) if persona_catalog else f"not_configured:{plan.persona_country}"
     simulation_config = {
-        "schema_version": "simulation-config/v2",
+        "schema_version": "simulation-config/v3",
         "t_max": float(plan.t_max),
         "initial_cell_count": int(plan.initial_cell_count),
         "role_catalog": list(role_catalog),
@@ -151,6 +151,9 @@ def create_world(req: CreateWorldRequest):
             **engine_params,
             "control_mode": "god" if god_enabled else "auto",
             "auto_roles_from_personas": auto_roles_from_personas,
+            "z_mode": str(engine_params.get("z_mode", "hybrid")),
+            "z_weight": float(engine_params.get("z_weight", 0.08)),
+            "z_scale": float(engine_params.get("z_scale", 12.0)),
         },
         "comparison_meta": {},
     }

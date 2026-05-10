@@ -14,6 +14,7 @@
 
 1. **엔진 설명력**
    - 장기 시간축에서 belief dynamics가 실제로 누적·분기·군집화되어야 한다.
+   - `(x, y, z, t)`에서 `z = social elevation` 의미가 계산과 저장에 남아야 한다.
 2. **데이터 설명력**
    - 국가별 persona / policy / scenario 데이터가 엔진 상태를 의미 있게 바꿔야 한다.
 3. **재현성과 비교 가능성**
@@ -80,9 +81,9 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 순서 | 작업 | 산출물 | 의존 |
 |------|------|--------|------|
 | 1.1 | **세포 모델** | `models/cell.py` | — |
-| | `(x,y,t)`, `zone`, `energy`, `gene_vec`, `memory`, `emotion_vec`, `thought_vec`, `worldview_vec` | Pydantic/dataclass | |
+| | `(x,y,z,t)`, `zone`, `energy`, `gene_vec`, `memory`, `emotion_vec`, `thought_vec`, `worldview_vec` | Pydantic/dataclass | |
 | 1.2 | **2D 좌표·상호작용 함수** | `core/coordinates.py` | 1.1 |
-| | 거리 함수 `d(p1, p2)`, zone friction, 시간 가중치 | | |
+| | 거리 함수 `d(p1, p2)`, optional social elevation, zone friction, 시간 가중치 | | |
 | 1.3 | **세계·스냅샷 모델** | `models/world.py` | 1.1 |
 | | World, Snapshot, 영양분 이벤트 | | |
 | 1.4 | **5대 규칙 로직 (LLM 제외)** | `core/rules.py` | 1.1, 1.2 |

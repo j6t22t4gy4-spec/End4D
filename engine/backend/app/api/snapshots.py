@@ -23,7 +23,7 @@ def _cell_to_dict(c: Cell) -> dict:
         "cell_id": c.cell_id,
         "x": float(c.x),
         "y": float(c.y),
-        "z": 0.0,
+        "z": float(c.z),
         "t": float(c.t),
         "energy": float(c.energy),
         "gene_vec": c.gene_vec.tolist(),

@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph, START, END
 
 from app.models.cell import Cell
 from app.core.memory_store import seed_memory_from_text
+from app.core.social_elevation import refresh_social_elevation
 from app.core.snapshot import SnapshotStore
 from app.graph.nodes import step_loop_node
 
@@ -86,7 +87,7 @@ def _create_initial_cells(
         if persona_text:
             cell = seed_memory_from_text(cell, persona_text)
         cells.append(cell)
-    return cells
+    return refresh_social_elevation(cells, current_t=t, engine_params=params)
 
 
 # State: TypedDict 대신 dict 사용 (Cell 직렬화 이슈 회피)
@@ -102,6 +103,12 @@ def _init_node(state: SimulationState) -> SimulationState:
             t=0.0,
             role_catalog=state.get("role_catalog"),
             persona_catalog=state.get("persona_catalog"),
+            engine_params=state.get("engine_params"),
+        )
+    else:
+        cells = refresh_social_elevation(
+            [cell.copy() for cell in cells],
+            current_t=0.0,
             engine_params=state.get("engine_params"),
         )
     out: SimulationState = {

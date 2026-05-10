@@ -11,6 +11,7 @@ from app.core.agent_interactions import apply_agent_interactions
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
 from app.core.policy_events import apply_active_policies
+from app.core.social_elevation import refresh_social_elevation
 from app.core.settings import get_snapshot_interval
 from app.core.rules import (
     apply_growth,
@@ -65,6 +66,11 @@ def step_loop_node(state: "SimulationState") -> dict:
         next_t,
         coalition_state=state.get("coalition_state"),
         coalition_history=state.get("coalition_history"),
+    )
+    cells = refresh_social_elevation(
+        cells,
+        current_t=next_t,
+        engine_params=state.get("engine_params"),
     )
     cells = [c.copy(t=next_t) for c in cells]
 
