@@ -114,6 +114,8 @@ def _init_node(state: SimulationState) -> SimulationState:
         out["nutrient_per_step"] = state["nutrient_per_step"]
     if "snapshot_store" in state:
         out["snapshot_store"] = state["snapshot_store"]
+    if "world_events" in state:
+        out["world_events"] = list(state["world_events"])
     if "engine_params" in state:
         out["engine_params"] = dict(state["engine_params"])
     store = state.get("snapshot_store")

@@ -9,6 +9,7 @@ from typing import Dict, List
 import numpy as np
 
 from app.core.memory_store import append_memory, behavior_event, memory_entry
+from app.core.policy_events import normalize_policy_payload
 from app.llm.policy import apply_policy_interpretation
 from app.models.cell import Cell
 
@@ -62,10 +63,11 @@ def apply_inject_to_cells(
         return [c.copy() for c in cells]
 
     if event_type == "policy_shift":
+        policy_payload = normalize_policy_payload(dict(payload))
         return apply_policy_interpretation(
             [c.copy() for c in cells],
             event_type=event_type,
-            payload=dict(payload),
+            payload=policy_payload,
         )
 
     # 알 수 없는 타입: 보수적으로 복사만

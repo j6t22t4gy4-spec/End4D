@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.inject_handlers import apply_inject_to_cells
+from app.core.policy_events import normalize_policy_payload
 from app.core.store import world_store
 from app.graph.time_flow import create_resume_time_flow_graph
 from app.models.world import NutrientEvent, World
@@ -48,8 +49,9 @@ class InjectResponse(BaseModel):
 
 
 def _append_nutrient_event(world: World, t: float, event_type: str, payload: Dict) -> None:
+    stored_payload = normalize_policy_payload(payload) if event_type == "policy_shift" else dict(payload)
     world.nutrients.append(
-        NutrientEvent(t=float(t), event_type=event_type, payload=dict(payload))
+        NutrientEvent(t=float(t), event_type=event_type, payload=stored_payload)
     )
 
 
@@ -106,6 +108,7 @@ def inject_event(world_id: str, body: InjectRequest):
                 "t_max": t_max,
                 "snapshot_store": store,
                 "engine_params": world_store.get_engine_params(world_id),
+                "world_events": list(world.nutrients),
                 "nutrient_per_step": nps,
             },
             config={"recursion_limit": int(max(t_max - t_inject, 0)) + 80},

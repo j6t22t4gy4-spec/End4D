@@ -1,12 +1,33 @@
 """God View 주입·재실행 (Phase 7)."""
+import numpy as np
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.store import world_store
 from app.graph.time_flow import create_time_flow_graph
+from app.models.cell import Cell
 
 
 client = TestClient(app)
+
+
+def _cell(*, cell_id: str, role: str, zone_id: str, x: float = 0.0) -> Cell:
+    return Cell(
+        cell_id=cell_id,
+        x=x,
+        y=0.0,
+        z=0.0,
+        t=0.0,
+        energy=50.0,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.zeros(256),
+        worldview_vec=np.zeros(384),
+        role_key=role,
+        role_label=role,
+        zone_id=zone_id,
+        zone_label=zone_id,
+    )
 
 
 def test_inject_requires_snapshot():
@@ -49,6 +70,47 @@ def test_inject_nutrient_and_forward_recomputes():
 
     energy_after = sum(c.energy for c in store.get(2.0).cells)
     assert energy_after > energy_before
+
+
+def test_policy_shift_persists_across_duration_for_target_role():
+    wid = world_store.create(t_max=6, initial_cell_count=2)
+    entry = world_store.get(wid)
+    store = entry["snapshot_store"]
+    graph = create_time_flow_graph()
+    graph.invoke(
+        {
+            "t_max": 6.0,
+            "initial_cells": [
+                _cell(cell_id="firm-1", role="기업", zone_id="zone-1"),
+                _cell(cell_id="citizen-1", role="시민", zone_id="zone-2", x=1.0),
+            ],
+            "snapshot_store": store,
+        },
+        config={"recursion_limit": 20},
+    )
+
+    r = client.post(
+        f"/worlds/{wid}/inject",
+        json={
+            "t": 2.0,
+            "event_type": "policy_shift",
+            "payload": {
+                "name": "industrial tax credit",
+                "summary": "특정 산업 구역에 세액공제를 제공한다",
+                "intensity": 0.8,
+                "duration_steps": 3,
+                "target_roles": ["기업"],
+                "target_zones": ["zone-1"],
+                "effect_profile": "stimulus",
+            },
+        },
+    )
+    assert r.status_code == 200
+    snap4 = store.get(4.0)
+    assert snap4 is not None
+    by_id = {cell.cell_id: cell for cell in snap4.cells}
+    assert by_id["firm-1"].action_state["active_policy_names"] == ["industrial tax credit"]
+    assert by_id["firm-1"].energy > by_id["citizen-1"].energy
 
 
 def test_timeline_lists_points():

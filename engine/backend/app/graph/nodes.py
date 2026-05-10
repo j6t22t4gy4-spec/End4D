@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Optional
 from app.core.agent_interactions import apply_agent_interactions
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
+from app.core.policy_events import apply_active_policies
 from app.core.settings import get_snapshot_interval
 from app.core.rules import (
     apply_growth,
@@ -33,7 +34,9 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = state["cells"]
     current_t = state["current_t"]
     nutrient_per_step = state.get("nutrient_per_step", 1.0)
+    world_events = state.get("world_events") or []
 
+    cells = apply_active_policies(cells, current_t=current_t, events=world_events)
     cells = apply_growth(cells, nutrient_per_step=nutrient_per_step)
     cells = apply_division(cells, current_t=current_t)
     cells = apply_death(cells)
@@ -65,4 +68,8 @@ def step_loop_node(state: "SimulationState") -> dict:
         out["t_max"] = state["t_max"]
     if "snapshot_store" in state:
         out["snapshot_store"] = state["snapshot_store"]
+    if "world_events" in state:
+        out["world_events"] = list(state["world_events"])
+    if "engine_params" in state:
+        out["engine_params"] = dict(state["engine_params"])
     return out
