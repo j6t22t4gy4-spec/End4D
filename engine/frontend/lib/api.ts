@@ -452,6 +452,26 @@ export type CellsToInstanceBuffersOptions = {
   maxVisualCells?: number;
 };
 
+export type SampledCellsResult = {
+  cells: CellSnapshot[];
+  totalCells: number;
+  sampled: boolean;
+};
+
+export function sampleCellsForVisualization(
+  cells: CellSnapshot[],
+  maxVisualCells?: number
+): SampledCellsResult {
+  const totalCells = cells.length;
+  const maxV = maxVisualCells ?? getMaxVisualCellsLimit();
+  const indices = sampleCellIndices(totalCells, maxV);
+  return {
+    cells: indices.map((index) => cells[index]!),
+    totalCells,
+    sampled: totalCells > indices.length,
+  };
+}
+
 /** 스냅샷 셀 → InstancedMesh용 버퍼 (대량 세포 시 샘플링) */
 export function cellsToInstanceBuffers(
   cells: CellSnapshot[],
@@ -464,15 +484,16 @@ export function cellsToInstanceBuffers(
   totalCells: number;
   sampled: boolean;
 } {
-  const totalCells = cells.length;
-  const maxV = options?.maxVisualCells ?? getMaxVisualCellsLimit();
-  const indices = sampleCellIndices(totalCells, maxV);
-  const n = indices.length;
+  const sampledCells = sampleCellsForVisualization(
+    cells,
+    options?.maxVisualCells
+  );
+  const n = sampledCells.cells.length;
   const positions = new Float32Array(Math.max(n * 3, 3));
   const colors = new Float32Array(Math.max(n * 3, 3));
   const scales = new Float32Array(Math.max(n, 1));
   for (let i = 0; i < n; i++) {
-    const c = cells[indices[i]!];
+    const c = sampledCells.cells[i]!;
     const o = i * 3;
     positions[o] = c.x;
     positions[o + 1] = c.y;
@@ -488,8 +509,8 @@ export function cellsToInstanceBuffers(
     colors,
     scales,
     count: n,
-    totalCells,
-    sampled: totalCells > n,
+    totalCells: sampledCells.totalCells,
+    sampled: sampledCells.sampled,
   };
 }
 

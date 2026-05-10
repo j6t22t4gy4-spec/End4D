@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { R3fErrorBoundary } from "@/components/R3fErrorBoundary";
-import Scene3DCanvas from "@/components/Scene3D/Scene3DCanvas";
+import SimulationMap2D from "@/components/SimulationMap2D";
 import { TimeSlider } from "@/components/TimeSlider/TimeSlider";
 import { InjectPanel } from "@/components/InjectPanel/InjectPanel";
 import { PersonaPreview } from "@/components/PersonaPreview";
@@ -14,9 +13,9 @@ import {
   getWorld,
   listSnapshotTimes,
   getSnapshotAtT,
-  cellsToInstanceBuffers,
-  getMaxVisualCellsLimit,
+  sampleCellsForVisualization,
   type CreateWorldResult,
+  type CellSnapshot,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
@@ -34,26 +33,16 @@ export default function GodView({
   const [availableT, setAvailableT] = useState<number[]>([]);
   const [currentT, setCurrentT] = useState(0);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
-  const [positions, setPositions] = useState<Float32Array>(
-    () => new Float32Array(0)
-  );
-  const [colors, setColors] = useState<Float32Array>(() => new Float32Array(0));
-  const [scales, setScales] = useState<Float32Array>(() => new Float32Array(0));
-  const [cellCount, setCellCount] = useState(0);
+  const [visibleCells, setVisibleCells] = useState<CellSnapshot[]>([]);
   const [visualStats, setVisualStats] = useState<{
     totalCells: number;
     sampled: boolean;
   } | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [mount3d, setMount3d] = useState(false);
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
   const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMount3d(true);
-  }, []);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -96,10 +85,7 @@ export default function GodView({
       setActiveSessionId(out.session_id);
       setAvailableT([]);
       setCurrentT(0);
-      setCellCount(0);
-      setPositions(new Float32Array(0));
-      setColors(new Float32Array(0));
-      setScales(new Float32Array(0));
+      setVisibleCells([]);
       setVisualStats(null);
       setPersonaRefreshKey((k) => k + 1);
       bumpChartRefresh();
@@ -149,10 +135,7 @@ export default function GodView({
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
       if (availableT.length === 0 && worldId) {
-        setCellCount(0);
-        setPositions(new Float32Array(0));
-        setColors(new Float32Array(0));
-        setScales(new Float32Array(0));
+        setVisibleCells([]);
         setVisualStats(null);
       }
       return;
@@ -163,18 +146,10 @@ export default function GodView({
     getSnapshotAtT(worldId, currentT)
       .then((snap) => {
         if (cancelled) return;
-        const {
-          positions: p,
-          colors: c,
-          scales: sc,
-          count,
-          totalCells,
-          sampled,
-        } = cellsToInstanceBuffers(snap.cells);
-        setPositions(p);
-        setColors(c);
-        setScales(sc);
-        setCellCount(count);
+        const { cells, totalCells, sampled } = sampleCellsForVisualization(
+          snap.cells
+        );
+        setVisibleCells(cells);
         setVisualStats({ totalCells, sampled });
       })
       .catch((e) => {
@@ -272,7 +247,7 @@ export default function GodView({
           action={
             visualStats?.sampled ? (
               <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                sampled {cellCount.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
+                sampled {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
               </span>
             ) : undefined
           }
@@ -285,24 +260,11 @@ export default function GodView({
 
           <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
             <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-              {mount3d ? (
-                <R3fErrorBoundary>
-                  <Scene3DCanvas
-                    count={cellCount}
-                    positions={positions}
-                    colors={colors}
-                    scales={scales}
-                    maxInstances={getMaxVisualCellsLimit() + 256}
-                  />
-                </R3fErrorBoundary>
-              ) : (
-                <div
-                  className="flex h-[min(72vh,680px)] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500"
-                  data-testid="scene-placeholder"
-                >
-                  3D scene loading…
-                </div>
-              )}
+              <SimulationMap2D
+                cells={visibleCells}
+                totalCells={visualStats?.totalCells ?? visibleCells.length}
+                sampled={visualStats?.sampled ?? false}
+              />
             </div>
 
             <div className="grid gap-3 content-start">
