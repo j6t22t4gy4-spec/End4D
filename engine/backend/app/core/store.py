@@ -54,7 +54,11 @@ class WorldStore:
         if payload is None:
             return None
         store = self._make_snapshot_store(world_id)
-        store.load_snapshots(payload.pop("snapshots", []))
+        store.load_snapshots(
+            payload.pop("snapshots", []),
+            snapshot_index=payload.pop("snapshot_index", []),
+            archived_t=(payload.pop("snapshot_archive", {}) or {}).get("archived_t", []),
+        )
         entry = {**payload, "snapshot_store": store}
         self._worlds[world_id] = entry
         return entry

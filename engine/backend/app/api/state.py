@@ -36,6 +36,8 @@ class StateSnapshotResponse(BaseModel):
     config_version: str = ""
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
+    snapshot_index: List[Dict[str, Any]] = Field(default_factory=list)
+    snapshot_archive: Dict[str, Any] = Field(default_factory=dict)
     cell_count: int
     cells: List[Dict[str, Any]]
 
@@ -91,6 +93,8 @@ def export_state(
         config_version=str(entry.get("config_version") or ""),
         simulation_config=dict(entry.get("simulation_config") or {}),
         comparison_meta=dict(entry.get("comparison_meta") or {}),
+        snapshot_index=store.snapshot_index(),
+        snapshot_archive=store.archive_summary(),
         cell_count=len(snap.cells),
         cells=[cell_to_dict(cell) for cell in snap.cells],
     )
