@@ -27,6 +27,7 @@
 |------|-----------|----------|------|
 | persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 초기 세계 구조를 충분히 결정하지 못함 |
 | LLM 호출 입구 (Facade / Engine API) | 초기 구현 | 최상 | abstraction은 있지만 엔진 개발자가 `think()`, `decide_actions()`처럼 일관되게 쓰는 공통 입구가 더 필요 |
+| Prompt Template 체계 | 부분 구현 | 높음 | registry와 contract가 생겼지만 평가 루프와 결과물 provenance 저장은 더 필요 |
 | group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 집단 stance/cohesion/tension drift가 아직 약함 |
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
@@ -35,7 +36,7 @@
 | Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + manifest sync + 운영 전 단계 | 높음 | 실제 대용량 pack 설치·품질 검증은 더 필요 |
 | 비용 제어 & 호출 스케줄링 | 초기 구현 | 높음 | 샘플링·간격 제어는 있으나 task priority, adaptive budget, cost accounting이 더 필요 |
 | Storage Layer 추상화 | 부분 구현 | 높음 | file envelope와 integrity는 있으나 snapshot index, archive, partial restore 최적화가 더 필요 |
-| 대규모 에이전트 성능 최적화 | 중간 이하 | 높음 | 샘플링은 있으나 10k+ 실측 벤치와 병렬 처리·lazy update 검증이 더 필요 |
+| 대규모 에이전트 성능 최적화 | 중간 이하 | 높음 | 벤치 하네스는 강화됐지만 10k+ 실측 데이터 축적, 병렬 처리·lazy update 검증이 더 필요 |
 | 챗봇 UI / 대화 엔진 | 전무 | 중 | 중요하지만 현재는 코어 시뮬레이션 설명력보다 후순위 |
 | 사용자 입력 → Thought/Worldview 업데이트 파이프라인 | 전무 | 중 | 데이터 플라이휠 핵심이지만 내부 엔진 플라이휠 이후가 더 적절 |
 | 사용자 데이터 수집·동의·익명화 체계 | 전무 | 중 | 제품화에는 필수지만 지금은 엔진 코어보다 후순위 |

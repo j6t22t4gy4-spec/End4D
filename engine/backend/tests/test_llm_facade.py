@@ -49,6 +49,7 @@ def test_facade_think_calls_runtime(monkeypatch):
     assert captured == {"task": "thought", "prompt_count": 1}
     stats = llm_facade.snapshot_stats()
     assert stats["recent_runs"][-1]["task"] == "thought"
+    assert stats["recent_runs"][-1]["prompt_output_mode"] == "text"
     assert stats["task_totals"]["thought"]["calls"] == 1
 
 

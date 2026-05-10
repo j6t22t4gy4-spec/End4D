@@ -23,7 +23,7 @@ from app.llm.prompt_engineering import (
     build_thought_prompt,
     build_worldview_prompt,
 )
-from app.llm.prompt_registry import get_prompt_version
+from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
 from app.models.cell import Cell
 
 
@@ -159,6 +159,7 @@ class LLMFacade:
             {
                 "task": task,
                 "prompt_version": get_prompt_version(task),
+                "prompt_meta": dict(meta.get("prompt_meta") or get_prompt_meta(task)),
                 "provider": str(meta.get("provider") or get_llm_provider()),
                 "model": str(meta.get("model") or get_llm_model()),
                 "task_budget": int(task_budget),
@@ -265,6 +266,8 @@ class LLMFacade:
                     "provider": str(meta.get("provider") or ""),
                     "model": str(meta.get("model") or ""),
                     "prompt_version": str(meta.get("prompt_version") or ""),
+                    "prompt_output_mode": str((meta.get("prompt_meta") or {}).get("output_mode") or ""),
+                    "prompt_expected_keys": list((meta.get("prompt_meta") or {}).get("expected_keys") or []),
                     "prompt_count_in": prompt_count_in,
                     "prompt_count_sent": prompt_count_sent,
                     "prompt_count_skipped_by_task_budget": skipped,

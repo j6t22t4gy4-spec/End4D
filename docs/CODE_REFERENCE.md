@@ -48,9 +48,12 @@
 | 파일 | 역할 |
 |------|------|
 | **embeddings.py** | **텍스트 임베딩**. `embed_texts`(sentence-transformers `all-MiniLM-L6-v2` → 차원 절단/L2 정규화). 실패 또는 `ORGANIC4D_EMBED_BACKEND=stub` 시 결정적 스텁. |
-| **prompt_engineering.py** | **프롬프트 전용 모듈**. Thought/Worldview 프롬프트를 구조화 메모리와 reflection 기준으로 조립. |
+| **prompt_registry.py** | **프롬프트 계약 레지스트리**. task별 `PromptSpec`, version, output mode, expected keys, system instruction을 표준화. |
+| **prompt_engineering.py** | **프롬프트 전용 모듈**. task contract를 기반으로 Thought/Worldview/Action/Policy/Dialogue/Group prompt를 구조화 메모리와 reflection 기준으로 조립. |
 | **thought.py** | **Thought 256D (Phase 6.4)**. `update_thoughts_if_due` — 약 20t마다 `prompt_engineering.py`의 전략 프롬프트를 임베딩해 `thought_vec` 갱신. |
 | **worldview.py** | **Worldview 384D (Phase 6.5)**. `update_worldviews_if_due` — long-term memory/반성 요약이 충분한 세포만 40t 간격으로 worldview를 갱신. |
+| **chat_runtime.py** | **provider-agnostic LLM runtime**. prompt contract를 system instruction으로 보내고 provider별 batch 호출/폴백 메타를 반환. |
+| **facade.py** | **엔진용 편의 LLM 입구**. `think`, `decide_actions`, `interpret_policy`, `run_dialogues`, `deliberate_groups`, `plan_genesis`와 budget/provenance 추적을 담당. |
 | **__init__.py** | llm 패키지 진입점. |
 
 ### 1.4 그래프 (app/graph/)
@@ -83,7 +86,7 @@
 |------|------|
 | **run_simulation.py** | **커맨드라인 시뮬레이션**. `--t-max`, `--cells`, `--world-id` 옵션. LangGraph invoke → t=0..t_max 실행, 스냅샷 저장, 결과 출력. |
 | **sample_personas.py** | **Hugging Face persona 샘플링**. 대용량 persona dataset을 deterministic JSONL 샘플로 저장해 운영 환경에서 빠르게 사용. |
-| **benchmark_simulation.py** | **엔진 성능 계측**. 세포 수·스텝별 실행 시간과 throughput을 출력해 최적화 회귀를 확인. |
+| **benchmark_simulation.py** | **엔진 성능 계측**. preset/반복 실행/peak memory/JSON report를 포함해 세포 수·스텝별 throughput 회귀를 확인. |
 | **/scripts/launch_local_end4d.py** | **로컬 앱 런처**. 백엔드와 프론트를 한 번에 띄우고 readiness를 기다려 End4D를 앱처럼 실행. |
 | **/Launch_End4D.command** | **macOS 더블클릭 런처**. `launch_local_end4d.py`를 호출해 로컬 런타임을 시작. |
 
@@ -102,6 +105,8 @@
 | **test_persona_dataset.py** | **국가별 페르소나 seed**. JSONL adapter, 국가 추론, 초기 세포 persona 주입 검증. |
 | **test_worlds_api.py** | **POST /worlds** 프롬프트 계약. |
 | **test_runtime_api.py** | **로컬 런타임 상태 API 테스트**. 설치된 data pack manifest가 `/runtime/local-status`에 반영되는지 검증. |
+| **test_prompt_registry.py** | **프롬프트 계약 테스트**. task spec, prompt contract, system instruction이 기대 스키마를 갖는지 검증. |
+| **test_benchmark_simulation.py** | **벤치 하네스 테스트**. preset case 생성과 반복 샘플 집계 로직을 검증. |
 | **conftest.py** | pytest 기본 `ORGANIC4D_EMBED_BACKEND=stub` 설정. |
 | **__init__.py** | tests 패키지 진입점. |
 

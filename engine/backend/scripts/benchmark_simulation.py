@@ -1,69 +1,191 @@
-"""Benchmark Organic4D simulation throughput.
+"""Benchmark Organic4D simulation throughput and memory behavior.
 
-Uses the deterministic embedding stub by default to focus on engine cost.
+Uses the deterministic embedding stub by default to focus on engine cost and
+provide commit-to-commit regression checks on the same machine.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import statistics
 import sys
 import time
+import tracemalloc
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("ORGANIC4D_EMBED_BACKEND", "stub")
+os.environ.setdefault("ORGANIC4D_LLM_CHAT_ENABLED", "0")
 
 from app.core.snapshot import SnapshotStore
 from app.graph.time_flow import create_time_flow_graph
 
 
-def run_once(cells: int, steps: int) -> dict:
-    store = SnapshotStore(world_id=f"bench-{cells}-{steps}")
+PRESETS: dict[str, list[int]] = {
+    "smoke": [100, 1000],
+    "scale": [1000, 5000, 10000],
+    "stress": [10000, 25000, 50000],
+}
+
+
+@dataclass(frozen=True)
+class BenchmarkCase:
+    label: str
+    cells: int
+    steps: int
+    repeat: int
+
+
+@dataclass(frozen=True)
+class BenchmarkSample:
+    label: str
+    cells: int
+    steps: int
+    repeat_index: int
+    final_cells: int
+    snapshots: int
+    elapsed_sec: float
+    steps_per_sec: float
+    cell_steps_per_sec: float
+    peak_memory_mb: float
+
+
+def run_sample(case: BenchmarkCase, repeat_index: int) -> BenchmarkSample:
+    store = SnapshotStore(world_id=f"bench-{case.label}-{case.cells}-{case.steps}-{repeat_index}")
     graph = create_time_flow_graph()
+    tracemalloc.start()
     start = time.perf_counter()
     out = graph.invoke(
         {
-            "initial_cell_count": cells,
-            "t_max": float(steps),
+            "initial_cell_count": case.cells,
+            "t_max": float(case.steps),
             "snapshot_store": store,
         },
-        config={"recursion_limit": steps + 80},
+        config={"recursion_limit": case.steps + 80},
     )
     elapsed = time.perf_counter() - start
+    _current, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
     final_cells = len(out["cells"])
+    return BenchmarkSample(
+        label=case.label,
+        cells=case.cells,
+        steps=case.steps,
+        repeat_index=repeat_index,
+        final_cells=final_cells,
+        snapshots=len(store.list_t()),
+        elapsed_sec=round(elapsed, 6),
+        steps_per_sec=round(case.steps / elapsed, 4) if elapsed > 0 else 0.0,
+        cell_steps_per_sec=round((case.cells * case.steps) / elapsed, 4) if elapsed > 0 else 0.0,
+        peak_memory_mb=round(peak / (1024 * 1024), 4),
+    )
+
+
+def build_cases(*, cells: list[int], steps: int, repeat: int, preset: str | None) -> list[BenchmarkCase]:
+    if preset:
+        cells = list(PRESETS.get(preset, cells))
+    return [
+        BenchmarkCase(
+            label=f"{cells_count}c-{steps}s",
+            cells=int(cells_count),
+            steps=int(steps),
+            repeat=int(repeat),
+        )
+        for cells_count in cells
+    ]
+
+
+def summarize_case(case: BenchmarkCase, samples: list[BenchmarkSample]) -> dict[str, Any]:
+    elapsed = [sample.elapsed_sec for sample in samples]
+    throughput = [sample.cell_steps_per_sec for sample in samples]
+    memory = [sample.peak_memory_mb for sample in samples]
     return {
-        "initial_cells": cells,
-        "steps": steps,
-        "final_cells": final_cells,
-        "elapsed_sec": round(elapsed, 6),
-        "steps_per_sec": round(steps / elapsed, 4) if elapsed > 0 else 0.0,
-        "cell_steps_per_sec": round((cells * steps) / elapsed, 4) if elapsed > 0 else 0.0,
-        "snapshots": len(store.list_t()),
+        "label": case.label,
+        "cells": case.cells,
+        "steps": case.steps,
+        "repeat": case.repeat,
+        "final_cells_last": samples[-1].final_cells if samples else case.cells,
+        "snapshots_last": samples[-1].snapshots if samples else 0,
+        "elapsed_sec_avg": round(statistics.fmean(elapsed), 6) if elapsed else 0.0,
+        "elapsed_sec_min": round(min(elapsed), 6) if elapsed else 0.0,
+        "elapsed_sec_max": round(max(elapsed), 6) if elapsed else 0.0,
+        "cell_steps_per_sec_avg": round(statistics.fmean(throughput), 4) if throughput else 0.0,
+        "cell_steps_per_sec_min": round(min(throughput), 4) if throughput else 0.0,
+        "cell_steps_per_sec_max": round(max(throughput), 4) if throughput else 0.0,
+        "peak_memory_mb_avg": round(statistics.fmean(memory), 4) if memory else 0.0,
+        "peak_memory_mb_max": round(max(memory), 4) if memory else 0.0,
     }
+
+
+def run_benchmarks(cases: list[BenchmarkCase]) -> dict[str, Any]:
+    all_samples: list[BenchmarkSample] = []
+    summaries: list[dict[str, Any]] = []
+    for case in cases:
+        case_samples = [run_sample(case, idx + 1) for idx in range(case.repeat)]
+        all_samples.extend(case_samples)
+        summaries.append(summarize_case(case, case_samples))
+    return {
+        "schema_version": "benchmark-report/v2",
+        "environment": {
+            "embed_backend": os.getenv("ORGANIC4D_EMBED_BACKEND", ""),
+            "llm_chat_enabled": os.getenv("ORGANIC4D_LLM_CHAT_ENABLED", ""),
+            "snapshot_interval": os.getenv("ORGANIC4D_SNAPSHOT_INTERVAL", ""),
+        },
+        "summaries": summaries,
+        "samples": [asdict(sample) for sample in all_samples],
+    }
+
+
+def _render_text_report(report: dict[str, Any]) -> str:
+    lines = []
+    for summary in report["summaries"]:
+        lines.append(
+            " ".join(
+                [
+                    f"label={summary['label']}",
+                    f"cells={summary['cells']}",
+                    f"steps={summary['steps']}",
+                    f"repeat={summary['repeat']}",
+                    f"elapsed_avg={summary['elapsed_sec_avg']}s",
+                    f"cell_steps/s_avg={summary['cell_steps_per_sec_avg']}",
+                    f"peak_mem_max={summary['peak_memory_mb_max']}MB",
+                ]
+            )
+        )
+    return "\n".join(lines)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Benchmark simulation runs")
     parser.add_argument("--cells", type=int, nargs="+", default=[100, 1000])
     parser.add_argument("--steps", type=int, default=20)
-    parser.add_argument("--json", action="store_true", help="Print JSON")
+    parser.add_argument("--repeat", type=int, default=3)
+    parser.add_argument("--preset", choices=sorted(PRESETS.keys()))
+    parser.add_argument("--snapshot-interval", type=int, default=None)
+    parser.add_argument("--json", action="store_true", help="Print JSON report")
+    parser.add_argument("--output", type=str, default="", help="Optional path to write JSON report")
     args = parser.parse_args()
 
-    results = [run_once(c, args.steps) for c in args.cells]
+    if args.snapshot_interval is not None:
+        os.environ["ORGANIC4D_SNAPSHOT_INTERVAL"] = str(max(1, int(args.snapshot_interval)))
+
+    cases = build_cases(cells=list(args.cells), steps=args.steps, repeat=args.repeat, preset=args.preset)
+    report = run_benchmarks(cases)
+
+    if args.output:
+        Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
     if args.json:
-        print(json.dumps(results, ensure_ascii=False, indent=2))
+        print(json.dumps(report, ensure_ascii=False, indent=2))
         return
 
-    for r in results:
-        print(
-            f"cells={r['initial_cells']} steps={r['steps']} "
-            f"elapsed={r['elapsed_sec']}s steps/s={r['steps_per_sec']} "
-            f"final_cells={r['final_cells']}"
-        )
+    print(_render_text_report(report))
 
 
 if __name__ == "__main__":

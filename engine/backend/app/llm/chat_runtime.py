@@ -16,6 +16,7 @@ from app.core.settings import (
     get_llm_temperature,
     get_llm_timeout_s,
 )
+from app.llm.prompt_registry import get_prompt_meta, get_prompt_system_instruction
 
 
 def generate_reasoning_texts(prompts: Iterable[str], *, task: str) -> List[str]:
@@ -32,6 +33,7 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
                 "enabled": get_llm_chat_enabled(),
                 "provider": get_llm_provider(),
                 "model": get_llm_model(),
+                "prompt_meta": get_prompt_meta(task),
                 "prompt_count_in": 0,
                 "prompt_count_sent": 0,
                 "used_fallback": False,
@@ -46,6 +48,7 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
                 "enabled": False,
                 "provider": get_llm_provider(),
                 "model": get_llm_model(),
+                "prompt_meta": get_prompt_meta(task),
                 "prompt_count_in": len(items),
                 "prompt_count_sent": 0,
                 "used_fallback": True,
@@ -62,6 +65,7 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
         "enabled": True,
         "provider": provider,
         "model": get_llm_model(),
+        "prompt_meta": get_prompt_meta(task),
         "prompt_count_in": len(items),
         "prompt_count_sent": len(active_items),
         "used_fallback": bool(skipped_items),
@@ -83,49 +87,6 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
     return {"texts": items, "meta": meta}
 
 
-def _system_prompt(task: str) -> str:
-    if task == "genesis":
-        return (
-            "You design initial conditions for a long-horizon societal simulation. "
-            "Return compact JSON only with keys: "
-            "t_max, initial_cell_count, role_catalog, rationale, "
-            "t_step_semantic, t_step_unit, nutrient_per_step, persona_country, persona_source."
-        )
-    if task == "action":
-        return (
-            "You convert an agent state into an action profile for the next simulation interval. "
-            "Return compact JSON only with keys: strategy_summary, resource_bias, risk_tolerance, "
-            "cooperation_bias, policy_sensitivity, mobility_bias."
-        )
-    if task == "policy":
-        return (
-            "You interpret a policy event for one social agent. "
-            "Return compact JSON only with keys: memory_summary, emotion_index, emotion_delta, "
-            "cooperation_shift, policy_sensitivity_shift, importance."
-        )
-    if task == "dialogue":
-        return (
-            "You simulate a compact agent-to-agent dialogue outcome. "
-            "Return compact JSON only with keys: summary_a, summary_b, alignment_delta, "
-            "tension_delta, cooperation_delta, importance."
-        )
-    if task == "group_deliberation":
-        return (
-            "You summarize a group negotiation among social roles in a long-horizon simulation. "
-            "Return compact JSON only with keys: stance_summary, cohesion_delta, tension_delta, "
-            "coalition_signal, importance."
-        )
-    if task == "worldview":
-        return (
-            "You summarize long-term beliefs, social alignment, and durable priorities. "
-            "Write compact analytical text that captures ideology, trust structure, and expected behavior."
-        )
-    return (
-        "You summarize immediate strategic thinking for a social agent. "
-        "Write compact analytical text about current goals, fears, incentives, and next moves."
-    )
-
-
 def _openai_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     base_url = get_llm_base_url() or "https://api.openai.com/v1"
     api_key = get_llm_api_key()
@@ -138,7 +99,7 @@ def _openai_chat_batch(prompts: List[str], *, task: str) -> List[str]:
             "model": model,
             "temperature": temperature,
             "messages": [
-                {"role": "system", "content": _system_prompt(task)},
+                {"role": "system", "content": get_prompt_system_instruction(task)},
                 {"role": "user", "content": prompt},
             ],
         }
@@ -164,7 +125,7 @@ def _ollama_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     for prompt in prompts:
         body = {
             "model": model,
-            "prompt": f"{_system_prompt(task)}\n\n{prompt}",
+            "prompt": f"{get_prompt_system_instruction(task)}\n\n{prompt}",
             "stream": False,
             "options": {"temperature": temperature},
         }

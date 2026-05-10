@@ -267,7 +267,7 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 순서 | 작업 | 산출물 |
 |------|------|--------|
 | 10B.1 | LLM Facade / Convenient Interface | `llm/facade.py`, `llm_facade.think()`, `decide_actions()`, `interpret_policy()` |
-| 10B.2 | Task별 prompt template 정규화 | `prompt_engineering.py`, `prompt_registry.py` |
+| 10B.2 | Task별 prompt template 정규화 | `prompt_engineering.py`, `prompt_registry.py`, task contract/schema |
 | 10B.3 | LLM budget & cadence 제어 | task batch cap, agent sample size, dialogue/deliberation interval |
 | 10B.4 | Provider / prompt / fallback provenance 저장 | snapshot·world·behavior payload 메타 |
 | 10B.5 | 엔진 모듈의 직접 provider 호출 제거 | thought/action/policy/dialogue/group_deliberation → facade 경유 |
@@ -282,7 +282,7 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 2 | 비용 제어 & 호출 스케줄링 | 장시간 로컬 시뮬레이션 안정성 확보 |
 | 3 | Storage Layer 고도화 | Snapshot/Fork/Versioning 무결성 강화 |
 | 4 | Nemotron Data Pack 운영 검증 | 실제 다국가 데이터 레이어 제품화 |
-| 5 | 10k+ 성능 벤치 | 대규모 사회 시뮬레이션 신뢰성 확보 |
+| 5 | 10k+ 성능 벤치 | 반복 실행·메모리·throughput 회귀까지 비교 가능한 하네스 확보 |
 
 ## Phase 10A (엔진/에이전트 데이터 플라이휠 기초)
 
