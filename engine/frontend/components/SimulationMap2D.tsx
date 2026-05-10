@@ -25,6 +25,13 @@ type ZoneBox = {
   count: number;
 };
 
+type ElevationBand = {
+  key: string;
+  d: string;
+  label: string;
+  alpha: number;
+};
+
 const SVG_WIDTH = 960;
 const SVG_HEIGHT = 640;
 const PADDING = 56;
@@ -42,11 +49,15 @@ export default function SimulationMap2D({
         <div>
           <p className="simulation-map__eyebrow">2D Social Field</p>
           <h3 className="simulation-map__title">Zone-aware agent communication surface</h3>
+          <p className="simulation-map__subtitle">
+            Social elevation is shown as contour bands over the flat communication plane.
+          </p>
         </div>
         <div className="simulation-map__meta">
           <span>{cells.length.toLocaleString()} visible</span>
           <span>{totalCells.toLocaleString()} total</span>
           <span>{scene.zoneBoxes.length} zones</span>
+          <span>z {scene.zRange.min.toFixed(1)}-{scene.zRange.max.toFixed(1)}</span>
           {sampled ? <span>sampled</span> : <span>full</span>}
         </div>
       </div>
@@ -90,6 +101,20 @@ export default function SimulationMap2D({
               rx="28"
               fill="url(#map-grid)"
             />
+
+            {scene.elevationBands.map((band, index) => (
+              <path
+                key={band.key}
+                d={band.d}
+                className="simulation-map__contour-band"
+                style={{
+                  fill: contourFill(index, band.alpha),
+                  stroke: contourStroke(index),
+                }}
+              >
+                <title>{band.label}</title>
+              </path>
+            ))}
 
             {scene.zoneBoxes.map((zone, index) => (
               <g key={zone.zoneId}>
@@ -147,6 +172,15 @@ export default function SimulationMap2D({
             </div>
           </div>
         ))}
+        <div className="simulation-map__legend-item simulation-map__legend-item--elevation">
+          <span className="simulation-map__legend-contour" />
+          <div>
+            <strong>{scene.zLabel}</strong>
+            <span>
+              contours {scene.zRange.min.toFixed(1)} to {scene.zRange.max.toFixed(1)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -154,15 +188,24 @@ export default function SimulationMap2D({
 
 function buildScene(cells: CellSnapshot[]) {
   if (cells.length === 0) {
-    return { nodes: [], zoneBoxes: [] as ZoneBox[] };
+    return {
+      nodes: [],
+      zoneBoxes: [] as ZoneBox[],
+      elevationBands: [] as ElevationBand[],
+      zRange: { min: 0, max: 0 },
+      zLabel: "social elevation",
+    };
   }
 
   const xs = cells.map((cell) => cell.x);
   const ys = cells.map((cell) => cell.y);
+  const zs = cells.map((cell) => cell.z ?? 0);
   const minX = Math.min(...xs);
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
   const spanX = Math.max(1, maxX - minX);
   const spanY = Math.max(1, maxY - minY);
   const innerWidth = SVG_WIDTH - PADDING * 2;
@@ -219,7 +262,21 @@ function buildScene(cells: CellSnapshot[]) {
     }))
     .sort((a, b) => b.count - a.count);
 
-  return { nodes, zoneBoxes };
+  const elevationBands = buildElevationBands({
+    cells,
+    projectX,
+    projectY,
+    minZ,
+    maxZ,
+  });
+
+  return {
+    nodes,
+    zoneBoxes,
+    elevationBands,
+    zRange: { min: minZ, max: maxZ },
+    zLabel: inferZLabel(cells),
+  };
 }
 
 function rgbToCss(rgb: [number, number, number]) {
@@ -248,4 +305,89 @@ function zoneStroke(index: number) {
     "rgba(219, 39, 119, 0.36)",
   ];
   return palette[index % palette.length]!;
+}
+
+function contourFill(index: number, alpha: number) {
+  const palette = [
+    `rgba(14, 165, 233, ${alpha})`,
+    `rgba(59, 130, 246, ${alpha})`,
+    `rgba(99, 102, 241, ${alpha})`,
+    `rgba(251, 191, 36, ${alpha})`,
+  ];
+  return palette[index % palette.length]!;
+}
+
+function contourStroke(index: number) {
+  const palette = [
+    "rgba(2, 132, 199, 0.34)",
+    "rgba(37, 99, 235, 0.34)",
+    "rgba(79, 70, 229, 0.34)",
+    "rgba(202, 138, 4, 0.34)",
+  ];
+  return palette[index % palette.length]!;
+}
+
+function buildElevationBands({
+  cells,
+  projectX,
+  projectY,
+  minZ,
+  maxZ,
+}: {
+  cells: CellSnapshot[];
+  projectX: (x: number) => number;
+  projectY: (y: number) => number;
+  minZ: number;
+  maxZ: number;
+}) {
+  const bandCount = 4;
+  const spanZ = Math.max(0.001, maxZ - minZ);
+  const bands: ElevationBand[] = [];
+
+  for (let index = 0; index < bandCount; index += 1) {
+    const lower = minZ + (spanZ * index) / bandCount;
+    const upper = minZ + (spanZ * (index + 1)) / bandCount;
+    const selected = cells.filter((cell) => {
+      const z = cell.z ?? 0;
+      if (index === bandCount - 1) return z >= lower && z <= upper;
+      return z >= lower && z < upper;
+    });
+    if (selected.length < 2) continue;
+
+    const xs = selected.map((cell) => projectX(cell.x));
+    const ys = selected.map((cell) => projectY(cell.y));
+    const x0 = Math.max(PADDING - 8, Math.min(...xs) - 20);
+    const x1 = Math.min(SVG_WIDTH - PADDING + 8, Math.max(...xs) + 20);
+    const y0 = Math.max(PADDING - 8, Math.min(...ys) - 20);
+    const y1 = Math.min(SVG_HEIGHT - PADDING + 8, Math.max(...ys) + 20);
+    const d = roundedRectPath(x0, y0, Math.max(22, x1 - x0), Math.max(22, y1 - y0), 28);
+    bands.push({
+      key: `band-${index}`,
+      d,
+      label: `elevation ${lower.toFixed(1)}-${upper.toFixed(1)}`,
+      alpha: 0.08 + index * 0.035,
+    });
+  }
+  return bands;
+}
+
+function roundedRectPath(x: number, y: number, width: number, height: number, radius: number) {
+  const r = Math.min(radius, width / 2, height / 2);
+  return [
+    `M ${x + r} ${y}`,
+    `H ${x + width - r}`,
+    `Q ${x + width} ${y} ${x + width} ${y + r}`,
+    `V ${y + height - r}`,
+    `Q ${x + width} ${y + height} ${x + width - r} ${y + height}`,
+    `H ${x + r}`,
+    `Q ${x} ${y + height} ${x} ${y + height - r}`,
+    `V ${y + r}`,
+    `Q ${x} ${y} ${x + r} ${y}`,
+    "Z",
+  ].join(" ");
+}
+
+function inferZLabel(cells: CellSnapshot[]) {
+  const mode = cells[0]?.role_key ? "social elevation" : "elevation";
+  return mode;
 }

@@ -254,6 +254,13 @@ textarea {
   color: #0f172a;
 }
 
+.simulation-map__subtitle {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
 .simulation-map__meta {
   display: flex;
   flex-wrap: wrap;
@@ -303,6 +310,11 @@ textarea {
   letter-spacing: 0.02em;
 }
 
+.simulation-map__contour-band {
+  stroke-width: 1.25;
+  stroke-dasharray: 8 8;
+}
+
 .simulation-map__legend {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -319,12 +331,29 @@ textarea {
   border: 1px solid rgba(148, 163, 184, 0.18);
 }
 
+.simulation-map__legend-item--elevation {
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(99, 102, 241, 0.08)),
+    rgba(248, 250, 252, 0.92);
+}
+
 .simulation-map__legend-swatch {
   width: 14px;
   height: 14px;
   border-radius: 999px;
   flex: 0 0 auto;
   border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.simulation-map__legend-contour {
+  width: 34px;
+  height: 34px;
+  border-radius: 14px;
+  flex: 0 0 auto;
+  background:
+    linear-gradient(180deg, rgba(14, 165, 233, 0.18), rgba(59, 130, 246, 0.08)),
+    #ffffff;
+  border: 1px dashed rgba(37, 99, 235, 0.4);
 }
 
 .simulation-map__legend-item strong,
