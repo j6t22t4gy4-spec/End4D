@@ -33,6 +33,35 @@ class RuntimeLlmResponse(BaseModel):
     base_url: str = ""
 
 
+class RuntimeLlmRunResponse(BaseModel):
+    task: str
+    provider: str = ""
+    model: str = ""
+    prompt_version: str = ""
+    prompt_count_in: int = 0
+    prompt_count_sent: int = 0
+    prompt_count_skipped_by_task_budget: int = 0
+    task_budget: int = 0
+    used_fallback: bool = False
+    fallback_reason: str = ""
+
+
+class RuntimeLlmTotalsResponse(BaseModel):
+    calls: int = 0
+    prompt_count_in: int = 0
+    prompt_count_sent: int = 0
+    prompt_count_skipped_by_task_budget: int = 0
+    fallback_calls: int = 0
+
+
+class RuntimeLlmRuntimeResponse(BaseModel):
+    provider: str = "stub"
+    model: str = "stub"
+    task_budgets: Dict[str, int] = Field(default_factory=dict)
+    recent_runs: List[RuntimeLlmRunResponse] = Field(default_factory=list)
+    task_totals: Dict[str, RuntimeLlmTotalsResponse] = Field(default_factory=dict)
+
+
 class LocalRuntimeStatusResponse(BaseModel):
     runtime_profile: str
     state_dir: str
@@ -40,6 +69,7 @@ class LocalRuntimeStatusResponse(BaseModel):
     manifest_path: str
     remote_manifest_url: str = ""
     llm: RuntimeLlmResponse
+    llm_runtime: RuntimeLlmRuntimeResponse
     installed_pack_count: int
     available_countries: List[str] = Field(default_factory=list)
     packs: List[RuntimePackResponse] = Field(default_factory=list)
@@ -67,6 +97,19 @@ def get_local_runtime_status():
         manifest_path=str(status.get("manifest_path") or ""),
         remote_manifest_url=str(status.get("remote_manifest_url") or ""),
         llm=RuntimeLlmResponse(**dict(status.get("llm") or {})),
+        llm_runtime=RuntimeLlmRuntimeResponse(
+            provider=str((status.get("llm_runtime") or {}).get("provider") or "stub"),
+            model=str((status.get("llm_runtime") or {}).get("model") or "stub"),
+            task_budgets=dict((status.get("llm_runtime") or {}).get("task_budgets") or {}),
+            recent_runs=[
+                RuntimeLlmRunResponse(**item)
+                for item in (status.get("llm_runtime") or {}).get("recent_runs") or []
+            ],
+            task_totals={
+                key: RuntimeLlmTotalsResponse(**value)
+                for key, value in dict((status.get("llm_runtime") or {}).get("task_totals") or {}).items()
+            },
+        ),
         installed_pack_count=int(status.get("installed_pack_count") or 0),
         available_countries=list(status.get("available_countries") or []),
         packs=[RuntimePackResponse(**pack) for pack in status.get("packs") or []],

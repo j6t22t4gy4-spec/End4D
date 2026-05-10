@@ -9,6 +9,16 @@ import os
 from pathlib import Path
 from typing import Literal, Optional
 
+LLM_TASK_NAMES = (
+    "genesis",
+    "thought",
+    "worldview",
+    "action",
+    "policy",
+    "dialogue",
+    "group_deliberation",
+)
+
 
 def get_llm_chat_enabled() -> bool:
     """True면 (후속) Ollama 등 대화형 LLM으로 Thought/Worldview 문장 생성."""
@@ -86,6 +96,22 @@ def get_llm_max_prompts_per_task() -> int:
         return max(1, min(2048, int(raw)))
     except ValueError:
         return 64
+
+
+def get_llm_task_budget(task: str) -> int:
+    """Per-task prompt cap, falling back to the global max."""
+    env_key = f"ORGANIC4D_LLM_BUDGET_{str(task).upper()}"
+    raw = os.getenv(env_key, "").strip()
+    if not raw:
+        return get_llm_max_prompts_per_task()
+    try:
+        return max(1, min(2048, int(raw)))
+    except ValueError:
+        return get_llm_max_prompts_per_task()
+
+
+def get_llm_task_budgets() -> dict[str, int]:
+    return {task: get_llm_task_budget(task) for task in LLM_TASK_NAMES}
 
 
 def get_llm_agent_sample_size() -> int:

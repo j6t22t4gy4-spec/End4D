@@ -1,9 +1,17 @@
 """Convenient, task-oriented LLM entrypoints for the simulation engine."""
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Sequence
+from collections import deque
+from threading import Lock
+from typing import Any, Iterable, Mapping, Sequence
 
-from app.llm.chat_runtime import generate_reasoning_texts
+from app.core.settings import (
+    get_llm_model,
+    get_llm_provider,
+    get_llm_task_budget,
+    get_llm_task_budgets,
+)
+from app.llm.chat_runtime import generate_reasoning_batch
 from app.llm.prompt_engineering import (
     build_action_prompt,
     build_dialogue_prompt,
@@ -22,6 +30,11 @@ class LLMFacade:
     Engine modules should call these task-specific methods instead of stitching
     prompt construction and provider invocation together on their own.
     """
+
+    def __init__(self):
+        self._lock = Lock()
+        self._recent_runs: deque[dict[str, Any]] = deque(maxlen=32)
+        self._task_totals: dict[str, dict[str, int]] = {}
 
     def think(self, cells: Sequence[Cell]) -> list[str]:
         prompts = [build_thought_prompt(cell) for cell in cells]
@@ -80,8 +93,93 @@ class LLMFacade:
         out = self._run_task([prompt], task="genesis")
         return out[0] if out else prompt
 
+    def snapshot_stats(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "provider": get_llm_provider(),
+                "model": get_llm_model(),
+                "task_budgets": get_llm_task_budgets(),
+                "recent_runs": [dict(item) for item in self._recent_runs],
+                "task_totals": {
+                    key: dict(value)
+                    for key, value in self._task_totals.items()
+                },
+            }
+
+    def reset_stats(self) -> None:
+        with self._lock:
+            self._recent_runs.clear()
+            self._task_totals.clear()
+
     def _run_task(self, prompts: Iterable[str], *, task: str) -> list[str]:
-        return generate_reasoning_texts(prompts, task=task)
+        items = [str(prompt) for prompt in prompts]
+        if not items:
+            return []
+        task_budget = get_llm_task_budget(task)
+        active_items = items[:task_budget]
+        skipped_items = items[task_budget:]
+        batch = generate_reasoning_batch(active_items, task=task)
+        texts = list(batch.get("texts") or []) + skipped_items
+        meta = dict(batch.get("meta") or {})
+        meta.update(
+            {
+                "task": task,
+                "prompt_version": get_prompt_version(task),
+                "provider": str(meta.get("provider") or get_llm_provider()),
+                "model": str(meta.get("model") or get_llm_model()),
+                "task_budget": int(task_budget),
+                "prompt_count_in": len(items),
+                "prompt_count_sent": int(meta.get("prompt_count_sent", len(active_items))),
+                "prompt_count_skipped_by_task_budget": len(skipped_items),
+            }
+        )
+        if skipped_items:
+            meta["used_fallback"] = True
+            fallback_reason = str(meta.get("fallback_reason") or "")
+            meta["fallback_reason"] = (
+                f"{fallback_reason}|task_budget_cap"
+                if fallback_reason
+                else "task_budget_cap"
+            )
+        self._record_run(meta)
+        return texts
+
+    def _record_run(self, meta: Mapping[str, Any]) -> None:
+        task = str(meta.get("task") or "unknown")
+        prompt_count_in = int(meta.get("prompt_count_in", 0) or 0)
+        prompt_count_sent = int(meta.get("prompt_count_sent", 0) or 0)
+        skipped = int(meta.get("prompt_count_skipped_by_task_budget", 0) or 0)
+        used_fallback = 1 if bool(meta.get("used_fallback")) else 0
+        with self._lock:
+            totals = self._task_totals.setdefault(
+                task,
+                {
+                    "calls": 0,
+                    "prompt_count_in": 0,
+                    "prompt_count_sent": 0,
+                    "prompt_count_skipped_by_task_budget": 0,
+                    "fallback_calls": 0,
+                },
+            )
+            totals["calls"] += 1
+            totals["prompt_count_in"] += prompt_count_in
+            totals["prompt_count_sent"] += prompt_count_sent
+            totals["prompt_count_skipped_by_task_budget"] += skipped
+            totals["fallback_calls"] += used_fallback
+            self._recent_runs.append(
+                {
+                    "task": task,
+                    "provider": str(meta.get("provider") or ""),
+                    "model": str(meta.get("model") or ""),
+                    "prompt_version": str(meta.get("prompt_version") or ""),
+                    "prompt_count_in": prompt_count_in,
+                    "prompt_count_sent": prompt_count_sent,
+                    "prompt_count_skipped_by_task_budget": skipped,
+                    "task_budget": int(meta.get("task_budget", 0) or 0),
+                    "used_fallback": bool(meta.get("used_fallback")),
+                    "fallback_reason": str(meta.get("fallback_reason") or ""),
+                }
+            )
 
 
 llm_facade = LLMFacade()

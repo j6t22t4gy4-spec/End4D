@@ -17,6 +17,7 @@ from app.core.settings import (
     get_runtime_profile,
     get_state_dir,
 )
+from app.llm.facade import llm_facade
 
 DATA_PACK_MANIFEST = "packs.json"
 DATA_PACK_SCHEMA_VERSION = "data-packs/v1"
@@ -193,6 +194,7 @@ def local_runtime_status() -> Dict[str, Any]:
             "model": get_llm_model(),
             "base_url": str(get_llm_base_url() or ""),
         },
+        "llm_runtime": llm_facade.snapshot_stats(),
         "installed_pack_count": len(installed),
         "available_countries": countries,
         "packs": packs,

@@ -2,13 +2,35 @@
 import json
 
 from fastapi.testclient import TestClient
+import numpy as np
 
+from app.llm.facade import llm_facade
 from app.main import app
+from app.models.cell import Cell
 
 client = TestClient(app)
 
 
+def _cell(role: str = "citizen") -> Cell:
+    return Cell(
+        cell_id=f"{role}-1",
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        t=0.0,
+        energy=50.0,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.zeros(256),
+        worldview_vec=np.zeros(384),
+        role_key=role,
+        role_label=role,
+        persona_text=f"{role} persona",
+    )
+
+
 def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
     packs_dir = tmp_path / "packs"
     packs_dir.mkdir()
     (packs_dir / "kr_pack.jsonl").write_text("", encoding="utf-8")
@@ -43,6 +65,7 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["llm"]["enabled"] is True
     assert data["llm"]["provider"] == "ollama"
     assert data["llm"]["model"] == "llama3.1"
+    assert "task_budgets" in data["llm_runtime"]
     assert data["installed_pack_count"] == 1
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"
@@ -50,6 +73,7 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
 
 
 def test_runtime_data_pack_sync_merges_remote_manifest(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
     packs_dir = tmp_path / "packs"
     packs_dir.mkdir()
     remote_dir = tmp_path / "remote"
@@ -85,3 +109,33 @@ def test_runtime_data_pack_sync_merges_remote_manifest(tmp_path, monkeypatch):
     us_pack = next(pack for pack in status["packs"] if pack["pack_id"] == "persona-us-core")
     assert us_pack["installed"] is True
     assert us_pack["dataset_id"] == "example/us-personas"
+
+
+def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
+    llm_facade.reset_stats()
+
+    def fake_batch(prompts, *, task):
+        prompt_list = list(prompts)
+        return {
+            "texts": ["ok" for _ in prompt_list],
+            "meta": {
+                "task": task,
+                "provider": "stub",
+                "model": "stub",
+                "prompt_count_in": len(prompt_list),
+                "prompt_count_sent": len(prompt_list),
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
+
+    monkeypatch.setattr("app.llm.facade.generate_reasoning_batch", fake_batch)
+    llm_facade.think([_cell("citizen")])
+    llm_facade.decide_actions([_cell("regulator")])
+
+    response = client.get("/runtime/local-status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["llm_runtime"]["task_totals"]["thought"]["calls"] == 1
+    assert data["llm_runtime"]["task_totals"]["action"]["calls"] == 1
+    assert data["llm_runtime"]["recent_runs"][-1]["task"] == "action"

@@ -1,10 +1,10 @@
-"""Provider-agnostic LLM runtime for Thought and Worldview generation."""
+"""Provider-agnostic LLM runtime for engine cognition tasks."""
 from __future__ import annotations
 
 import json
 import urllib.error
 import urllib.request
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 from app.core.settings import (
     get_llm_api_key,
@@ -19,26 +19,68 @@ from app.core.settings import (
 
 
 def generate_reasoning_texts(prompts: Iterable[str], *, task: str) -> List[str]:
+    return generate_reasoning_batch(prompts, task=task)["texts"]
+
+
+def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, Any]:
     items = [str(prompt) for prompt in prompts]
     if not items:
-        return []
+        return {
+            "texts": [],
+            "meta": {
+                "task": task,
+                "enabled": get_llm_chat_enabled(),
+                "provider": get_llm_provider(),
+                "model": get_llm_model(),
+                "prompt_count_in": 0,
+                "prompt_count_sent": 0,
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
     if not get_llm_chat_enabled():
-        return items
+        return {
+            "texts": items,
+            "meta": {
+                "task": task,
+                "enabled": False,
+                "provider": get_llm_provider(),
+                "model": get_llm_model(),
+                "prompt_count_in": len(items),
+                "prompt_count_sent": 0,
+                "used_fallback": True,
+                "fallback_reason": "llm_disabled",
+            },
+        }
 
     provider = get_llm_provider()
     max_prompts = get_llm_max_prompts_per_task()
     active_items = items[:max_prompts]
     skipped_items = items[max_prompts:]
+    meta = {
+        "task": task,
+        "enabled": True,
+        "provider": provider,
+        "model": get_llm_model(),
+        "prompt_count_in": len(items),
+        "prompt_count_sent": len(active_items),
+        "used_fallback": bool(skipped_items),
+        "fallback_reason": "global_prompt_cap" if skipped_items else "",
+    }
     try:
         if provider in ("openai", "openai-compatible"):
             generated = _openai_chat_batch(active_items, task=task)
-            return generated + skipped_items
+            return {"texts": generated + skipped_items, "meta": meta}
         if provider == "ollama":
             generated = _ollama_chat_batch(active_items, task=task)
-            return generated + skipped_items
-    except Exception:
-        return items
-    return items
+            return {"texts": generated + skipped_items, "meta": meta}
+    except Exception as exc:
+        meta["used_fallback"] = True
+        meta["fallback_reason"] = f"provider_error:{type(exc).__name__}"
+        return {"texts": items, "meta": meta}
+    meta["used_fallback"] = True
+    meta["fallback_reason"] = "provider_stub"
+    return {"texts": items, "meta": meta}
 
 
 def _system_prompt(task: str) -> str:
