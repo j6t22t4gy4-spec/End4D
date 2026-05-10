@@ -122,5 +122,5 @@ def test_load_persona_seeds_from_local_pack_manifest(tmp_path, monkeypatch):
     assert personas[0].role_label == "분석가"
     assert persona_source_label("KR") == "local-pack:nemotron-kr-core@2026.05"
     info = persona_source_info("KR")
-    assert info["dataset_id"] == "nemotron-kr-core"
+    assert info["dataset_id"] == "nvidia/Nemotron-Personas-Korea"
     assert info["license"] == "CC BY 4.0"

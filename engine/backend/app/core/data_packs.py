@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -20,7 +22,7 @@ from app.core.settings import (
 from app.llm.facade import llm_facade
 
 DATA_PACK_MANIFEST = "packs.json"
-DATA_PACK_SCHEMA_VERSION = "data-packs/v1"
+DATA_PACK_SCHEMA_VERSION = "data-packs/v2"
 
 KNOWN_DATA_PACKS = [
     {
@@ -58,7 +60,7 @@ def load_data_pack_manifest() -> Dict[str, Any]:
     packs = data.get("packs")
     if not isinstance(packs, list):
         data["packs"] = []
-    data["schema_version"] = str(data.get("schema_version") or DATA_PACK_SCHEMA_VERSION)
+    data["schema_version"] = DATA_PACK_SCHEMA_VERSION
     data["packs"] = _merge_packs(list(KNOWN_DATA_PACKS), [p for p in data["packs"] if isinstance(p, dict)])
     return data
 
@@ -101,6 +103,94 @@ def sync_data_pack_manifest(remote_url: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
+def install_data_pack(
+    *,
+    pack_id: str,
+    source_path: str,
+    version: str = "",
+    dataset_id: str = "",
+    source_url: str = "",
+) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+
+    src = Path(source_path).expanduser()
+    if not src.exists() or not src.is_file():
+        raise ValueError("Install source_path not found")
+
+    base_dir = _manifest_path().parent
+    rel = str(pack.get("relative_path") or "").strip()
+    if not rel:
+        suffix = src.suffix or ".jsonl"
+        rel = f"{pack_id}/{src.stem}{suffix}"
+        pack["relative_path"] = rel
+    dest = (base_dir / rel).resolve()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dest)
+    pack["installed"] = True
+    pack["updated_at"] = _now_iso()
+    pack["installed_at"] = _now_iso()
+    pack["version"] = version or str(pack.get("version") or "")
+    pack["dataset_id"] = dataset_id or str(pack.get("dataset_id") or "")
+    pack["source_url"] = source_url or str(pack.get("source_url") or "")
+    _write_manifest(manifest)
+    validation = validate_data_pack(pack_id)
+    validation["installed"] = True
+    return validation
+
+
+def validate_data_pack(pack_id: str) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+
+    rel = str(pack.get("relative_path") or "").strip()
+    path = ((_manifest_path().parent / rel).resolve() if rel else None)
+    exists = bool(path and path.exists() and path.is_file())
+    row_count = 0
+    sample_error = ""
+    if exists:
+        try:
+            row_count = _sample_row_count(path)
+        except Exception as exc:
+            sample_error = type(exc).__name__
+    pack["validated_at"] = _now_iso()
+    pack["validation"] = {
+        "exists": exists,
+        "row_count_estimate": row_count,
+        "sample_error": sample_error,
+    }
+    _write_manifest(manifest)
+    return {
+        "pack_id": pack_id,
+        "exists": exists,
+        "row_count_estimate": row_count,
+        "sample_error": sample_error,
+        "validated_at": str(pack.get("validated_at") or ""),
+        "version": str(pack.get("version") or ""),
+    }
+
+
+def pin_data_pack(pack_id: str, *, pinned_version: str) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+    pack["pinned"] = True
+    pack["pinned_version"] = pinned_version.strip()
+    pack["pinned_at"] = _now_iso()
+    _write_manifest(manifest)
+    return {
+        "pack_id": pack_id,
+        "pinned": True,
+        "pinned_version": str(pack.get("pinned_version") or ""),
+        "pinned_at": str(pack.get("pinned_at") or ""),
+    }
+
+
 def _fetch_manifest(source: str) -> Dict[str, Any]:
     if source.startswith("http://") or source.startswith("https://") or source.startswith("file://"):
         with urllib.request.urlopen(source, timeout=20) as response:
@@ -127,6 +217,12 @@ def _merge_packs(base: List[Dict[str, Any]], updates: List[Dict[str, Any]]) -> L
             continue
         merged = dict(by_key.get(key) or {})
         merged.update(pack)
+        merged.setdefault("installed", False)
+        merged.setdefault("pinned", False)
+        merged.setdefault("pinned_version", "")
+        merged.setdefault("installed_at", "")
+        merged.setdefault("validated_at", "")
+        merged.setdefault("validation", {})
         by_key[key] = merged
     return list(by_key.values())
 
@@ -153,6 +249,11 @@ def list_installed_data_packs() -> List[Dict[str, Any]]:
                 "source_url": str(raw.get("source_url") or ""),
                 "dataset_id": str(raw.get("dataset_id") or ""),
                 "updated_at": str(raw.get("updated_at") or ""),
+                "installed_at": str(raw.get("installed_at") or ""),
+                "pinned": bool(raw.get("pinned", False)),
+                "pinned_version": str(raw.get("pinned_version") or ""),
+                "validated_at": str(raw.get("validated_at") or ""),
+                "validation": dict(raw.get("validation") or {}),
                 "description": str(raw.get("description") or ""),
             }
         )
@@ -199,3 +300,33 @@ def local_runtime_status() -> Dict[str, Any]:
         "available_countries": countries,
         "packs": packs,
     }
+
+
+def _write_manifest(manifest: Dict[str, Any]) -> None:
+    path = _manifest_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".json.tmp")
+    tmp_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _find_pack(manifest: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any]]:
+    for pack in manifest.get("packs") or []:
+        if str(pack.get("pack_id") or "") == pack_id:
+            return pack
+    return None
+
+
+def _sample_row_count(path: Path, limit: int = 5000) -> int:
+    count = 0
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+                if count >= limit:
+                    break
+    return count
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().isoformat()

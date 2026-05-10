@@ -149,7 +149,7 @@ def persona_source_info(country: str) -> dict:
             return {
                 "country": code,
                 "source": f"local-pack:{pack['pack_id']}@{pack['version']}",
-                "dataset_id": str(pack.get("pack_id") or ""),
+                "dataset_id": str(pack.get("dataset_id") or pack.get("pack_id") or ""),
                 "path": str(path),
                 "license": str(pack.get("license") or ""),
                 "url": str(pack.get("source_url") or ""),
@@ -232,7 +232,7 @@ def persona_source_info_from_label(country: str, source: str, configured: bool) 
         return {
             "country": code,
             "source": source,
-            "dataset_id": pack_id,
+            "dataset_id": str(pack.get("dataset_id") or pack_id),
             "path": str(pack.get("path") or ""),
             "license": str(pack.get("license") or ""),
             "url": str(pack.get("source_url") or ""),

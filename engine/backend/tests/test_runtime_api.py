@@ -70,6 +70,7 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"
     assert data["packs"][0]["installed"] is True
+    assert data["packs"][0]["pinned"] is False
 
 
 def test_runtime_data_pack_sync_merges_remote_manifest(tmp_path, monkeypatch):
@@ -109,6 +110,67 @@ def test_runtime_data_pack_sync_merges_remote_manifest(tmp_path, monkeypatch):
     us_pack = next(pack for pack in status["packs"] if pack["pack_id"] == "persona-us-core")
     assert us_pack["installed"] is True
     assert us_pack["dataset_id"] == "example/us-personas"
+
+
+def test_runtime_data_pack_install_validate_and_pin(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    src = source_dir / "kr_persona.jsonl"
+    src.write_text(
+        json.dumps({"uuid": "p1", "professional_persona": "서울의 기술자", "occupation": "기술자"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v2",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "draft",
+                "relative_path": "kr/pack.jsonl",
+                "license": "CC BY 4.0",
+                "dataset_id": "nvidia/Nemotron-Personas-Korea",
+            }
+        ],
+    }
+    manifest_path = packs_dir / "packs.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(manifest_path))
+
+    install = client.post(
+        "/runtime/data-packs/install",
+        json={
+            "pack_id": "nemotron-kr-core",
+            "source_path": str(src),
+            "version": "2026.05",
+            "dataset_id": "nvidia/Nemotron-Personas-Korea",
+        },
+    )
+    assert install.status_code == 200
+    install_data = install.json()
+    assert install_data["installed"] is True
+    assert install_data["exists"] is True
+    assert install_data["row_count_estimate"] >= 1
+
+    pin = client.post(
+        "/runtime/data-packs/pin",
+        json={"pack_id": "nemotron-kr-core", "pinned_version": "2026.05"},
+    )
+    assert pin.status_code == 200
+    assert pin.json()["pinned"] is True
+
+    status = client.get("/runtime/local-status")
+    assert status.status_code == 200
+    pack = next(item for item in status.json()["packs"] if item["pack_id"] == "nemotron-kr-core")
+    assert pack["pinned"] is True
+    assert pack["pinned_version"] == "2026.05"
+    assert pack["validation"]["row_count_estimate"] >= 1
 
 
 def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
