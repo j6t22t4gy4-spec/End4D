@@ -20,6 +20,21 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     )
     entry = store.get(wid)
     assert entry is not None
+    entry["coalition_state"] = {
+        "citizen": {
+            "role": "citizen",
+            "cycle_count": 2,
+            "coalition_signal": "moderate",
+            "block_key": "citizen:moderate:stable",
+        }
+    }
+    entry["coalition_history"] = [
+        {
+            "role": "citizen",
+            "cycle_count": 1,
+            "coalition_signal": "moderate",
+        }
+    ]
     entry["snapshot_store"].save(
         3.0,
         [
@@ -75,8 +90,9 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     )
     raw = json.loads((tmp_path / f"{wid}.json").read_text(encoding="utf-8"))
     assert raw["schema_version"] == "organic4d-file-envelope/v1"
-    assert raw["payload_schema_version"] == "world-entry/v3"
+    assert raw["payload_schema_version"] == "world-entry/v4"
     assert raw["integrity"]["algorithm"] == "sha256"
+    assert raw["payload"]["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
     assert raw["payload"]["snapshot_index"][0]["cell_count"] == 1
     assert raw["payload"]["snapshot_archive"]["archived_count"] == 0
 
@@ -93,4 +109,5 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap.cells[0].zone_id == "zone-0"
     assert loaded_snap.cells[0].z == 0.0
     assert loaded_entry["config_version"]
+    assert loaded_entry["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
     assert loaded_entry["snapshot_store"].snapshot_index()[0]["digest"]

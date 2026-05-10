@@ -60,7 +60,12 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = update_worldviews_if_due(cells, current_t)
     cells = update_action_states_if_due(cells, current_t)
     cells = apply_agent_dialogues_if_due(cells, next_t)
-    cells = apply_group_deliberation_if_due(cells, next_t)
+    cells, coalition_state, coalition_history = apply_group_deliberation_if_due(
+        cells,
+        next_t,
+        coalition_state=state.get("coalition_state"),
+        coalition_history=state.get("coalition_history"),
+    )
     cells = [c.copy(t=next_t) for c in cells]
 
     store = state.get("snapshot_store")
@@ -81,4 +86,6 @@ def step_loop_node(state: "SimulationState") -> dict:
         out["world_events"] = list(state["world_events"])
     if "engine_params" in state:
         out["engine_params"] = dict(state["engine_params"])
+    out["coalition_state"] = dict(coalition_state)
+    out["coalition_history"] = [dict(item) for item in coalition_history]
     return out

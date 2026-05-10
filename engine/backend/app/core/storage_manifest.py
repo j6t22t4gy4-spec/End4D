@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 ENVELOPE_SCHEMA_VERSION = "organic4d-file-envelope/v1"
-WORLD_ENTRY_SCHEMA_VERSION = "world-entry/v3"
+WORLD_ENTRY_SCHEMA_VERSION = "world-entry/v4"
 
 
 def canonical_json_bytes(payload: Dict[str, Any]) -> bytes:

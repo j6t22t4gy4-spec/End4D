@@ -162,6 +162,24 @@ def test_state_export_and_restore_fork():
         {"t_max": 4.0, "initial_cell_count": 2, "snapshot_store": entry["snapshot_store"]},
         config={"recursion_limit": 20},
     )
+    world_store.update_coalition_state(
+        wid,
+        coalition_state={
+            "citizen": {
+                "role": "citizen",
+                "cycle_count": 2,
+                "coalition_signal": "moderate",
+                "block_key": "citizen:moderate:stable",
+            }
+        },
+        coalition_history=[
+            {
+                "role": "citizen",
+                "cycle_count": 1,
+                "coalition_signal": "moderate",
+            }
+        ],
+    )
 
     export_res = client.get(f"/worlds/{wid}/state?t=2")
     assert export_res.status_code == 200
@@ -170,6 +188,8 @@ def test_state_export_and_restore_fork():
     assert export_data["cell_count"] >= 1
     assert export_data["config_version"]
     assert "simulation_config" in export_data
+    assert export_data["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
+    assert export_data["coalition_history"][0]["role"] == "citizen"
     assert "behavior_log" in export_data["cells"][0]
 
     fork_res = client.post(
@@ -188,6 +208,7 @@ def test_state_export_and_restore_fork():
     assert fork_entry is not None
     assert fork_entry["snapshot_store"].get(2.0) is not None
     assert fork_entry["snapshot_store"].get(4.0) is not None
+    assert fork_entry["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
     world_res = client.get(f"/worlds/{fork_data['world_id']}")
     assert world_res.status_code == 200
     assert world_res.json()["comparison_meta"]["parent_world_id"] == wid

@@ -129,6 +129,8 @@ class WorldStore:
             "config_version": version,
             "comparison_meta": dict(comparison_meta or {}),
             "session_id": str(session.get("session_id") or ""),
+            "coalition_state": {},
+            "coalition_history": [],
         }
         session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
@@ -155,6 +157,24 @@ class WorldStore:
         if world_id in self._worlds:
             self._worlds[world_id]["status"] = status
             self._persist(world_id)
+
+    def update_coalition_state(
+        self,
+        world_id: str,
+        *,
+        coalition_state: Optional[dict] = None,
+        coalition_history: Optional[list] = None,
+    ) -> None:
+        if world_id not in self._worlds:
+            return
+        if coalition_state is not None:
+            self._worlds[world_id]["coalition_state"] = {
+                str(role): dict(payload)
+                for role, payload in dict(coalition_state).items()
+            }
+        if coalition_history is not None:
+            self._worlds[world_id]["coalition_history"] = [dict(item) for item in list(coalition_history)]
+        self._persist(world_id)
 
     def get_initial_cell_count(self, world_id: str) -> int:
         """초기 세포 수."""
@@ -235,6 +255,11 @@ class WorldStore:
         new_entry = self.get(new_world_id)
         if new_entry is None:
             return None
+        new_entry["coalition_state"] = {
+            str(role): dict(payload)
+            for role, payload in dict(source.get("coalition_state") or {}).items()
+        }
+        new_entry["coalition_history"] = [dict(item) for item in list(source.get("coalition_history") or [])]
         new_entry["snapshot_store"].save(float(snapshot_t), [c.copy() for c in snap.cells])
         self._persist(new_world_id)
         return new_world_id

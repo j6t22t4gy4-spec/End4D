@@ -110,11 +110,18 @@ def inject_event(world_id: str, body: InjectRequest):
                 "engine_params": world_store.get_engine_params(world_id),
                 "world_events": list(world.nutrients),
                 "nutrient_per_step": nps,
+                "coalition_state": dict(entry.get("coalition_state") or {}),
+                "coalition_history": list(entry.get("coalition_history") or []),
             },
             config={"recursion_limit": int(max(t_max - t_inject, 0)) + 80},
         )
         final_t = float(result["current_t"])
         cell_count = len(result["cells"])
+        world_store.update_coalition_state(
+            world_id,
+            coalition_state=result.get("coalition_state"),
+            coalition_history=result.get("coalition_history"),
+        )
     finally:
         world_store.set_status(world_id, "done")
 

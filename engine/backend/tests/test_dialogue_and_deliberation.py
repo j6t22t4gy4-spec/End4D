@@ -157,10 +157,57 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
         ),
         _cell("c", 2.0, "regulator"),
     ]
-    out = apply_group_deliberation_if_due(cells, current_t=50.0)
+    out, coalition_state, coalition_history = apply_group_deliberation_if_due(cells, current_t=50.0)
 
     assert all(c.action_state["group_coalition_signal"] == "moderate" for c in out)
     assert out[0].action_state["group_cohesion_score"] == 0.74
+    assert out[0].action_state["group_block_key"].startswith("citizen:moderate")
     assert out[0].behavior_log[-1]["event_type"] == "group_deliberation"
     assert out[0].long_memory[-1]["kind"] == "group_deliberation"
     assert out[0].long_memory[-1]["payload"]["avg_trust"] > 0.0
+    assert coalition_state["citizen"]["cycle_count"] == 1
+    assert any(item["role"] == "citizen" for item in coalition_history)
+
+
+def test_group_deliberation_accumulates_coalition_state(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_GROUP_DELIBERATION_INTERVAL", "50")
+    monkeypatch.setenv("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS", "2")
+    monkeypatch.setenv("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "4")
+
+    def fake_deliberate_groups(groups, *, current_t):
+        return [
+            json.dumps(
+                {
+                    "stance_summary": "citizen coalition stays coordinated",
+                    "cohesion_delta": 0.08,
+                    "tension_delta": 0.01,
+                    "coalition_signal": "moderate",
+                    "cohesion_score": 0.71,
+                    "relationship_tension": 0.16,
+                    "importance": 0.81,
+                }
+            )
+            for _ in groups
+        ]
+
+    monkeypatch.setattr(
+        "app.llm.group_deliberation.llm_facade.deliberate_groups",
+        fake_deliberate_groups,
+    )
+    cells = [_cell("a", 0.0, "citizen"), _cell("b", 1.0, "citizen")]
+    _, coalition_state, coalition_history = apply_group_deliberation_if_due(
+        cells,
+        current_t=50.0,
+        coalition_state={
+            "citizen": {
+                "role": "citizen",
+                "cycle_count": 1,
+                "coalition_signal": "moderate",
+            }
+        },
+        coalition_history=[{"role": "citizen", "cycle_count": 1, "coalition_signal": "moderate"}],
+    )
+
+    assert coalition_state["citizen"]["cycle_count"] == 2
+    assert coalition_state["citizen"]["block_key"] == "citizen:moderate:stable"
+    assert len(coalition_history) == 2

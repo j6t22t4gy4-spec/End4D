@@ -36,6 +36,8 @@ class StateSnapshotResponse(BaseModel):
     config_version: str = ""
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
+    coalition_state: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    coalition_history: List[Dict[str, Any]] = Field(default_factory=list)
     snapshot_index: List[Dict[str, Any]] = Field(default_factory=list)
     snapshot_archive: Dict[str, Any] = Field(default_factory=dict)
     cell_count: int
@@ -93,6 +95,11 @@ def export_state(
         config_version=str(entry.get("config_version") or ""),
         simulation_config=dict(entry.get("simulation_config") or {}),
         comparison_meta=dict(entry.get("comparison_meta") or {}),
+        coalition_state={
+            str(role): dict(payload)
+            for role, payload in dict(entry.get("coalition_state") or {}).items()
+        },
+        coalition_history=[dict(item) for item in list(entry.get("coalition_history") or [])],
         snapshot_index=store.snapshot_index(),
         snapshot_archive=store.archive_summary(),
         cell_count=len(snap.cells),
@@ -138,11 +145,18 @@ def restore_state(world_id: str, body: RestoreRequest):
                         "engine_params": world_store.get_engine_params(new_world_id),
                         "world_events": list(target_world.nutrients),
                         "nutrient_per_step": world_store.get_nutrient_per_step(new_world_id),
+                        "coalition_state": dict(fork_entry.get("coalition_state") or {}),
+                        "coalition_history": list(fork_entry.get("coalition_history") or []),
                     },
                     config={"recursion_limit": int(max(target_world.t_max - restored_t, 0)) + 80},
                 )
                 final_t = float(result["current_t"])
                 cell_count = len(result["cells"])
+                world_store.update_coalition_state(
+                    new_world_id,
+                    coalition_state=result.get("coalition_state"),
+                    coalition_history=result.get("coalition_history"),
+                )
             finally:
                 world_store.set_status(new_world_id, "done")
         else:
@@ -176,11 +190,18 @@ def restore_state(world_id: str, body: RestoreRequest):
                     "engine_params": world_store.get_engine_params(world_id),
                     "world_events": list(entry["world"].nutrients),
                     "nutrient_per_step": world_store.get_nutrient_per_step(world_id),
+                    "coalition_state": dict(entry.get("coalition_state") or {}),
+                    "coalition_history": list(entry.get("coalition_history") or []),
                 },
                 config={"recursion_limit": int(max(entry["world"].t_max - restored_t, 0)) + 80},
             )
             final_t = float(result["current_t"])
             cell_count = len(result["cells"])
+            world_store.update_coalition_state(
+                world_id,
+                coalition_state=result.get("coalition_state"),
+                coalition_history=result.get("coalition_history"),
+            )
         finally:
             world_store.set_status(world_id, "done")
 

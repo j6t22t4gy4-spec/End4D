@@ -52,6 +52,10 @@ def _run_stream_producer(
     """스레드에서 graph.stream() 실행, 메시지를 큐에 넣음."""
     from app.core.snapshot import SnapshotStore
 
+    entry = world_store.get(world_id)
+    if entry is None:
+        msg_queue.put({"type": "error", "message": "World not found"})
+        return
     store = world_store.get_snapshot_store(world_id)
     if store is None:
         msg_queue.put({"type": "error", "message": "Store not found"})
@@ -67,6 +71,8 @@ def _run_stream_producer(
                 "role_catalog": world_store.get_role_catalog(world_id),
                 "persona_catalog": world_store.get_persona_catalog(world_id),
                 "engine_params": world_store.get_engine_params(world_id),
+                "coalition_state": dict(entry.get("coalition_state") or {}),
+                "coalition_history": list(entry.get("coalition_history") or []),
                 "world_events": list(entry["world"].nutrients),
                 "snapshot_store": store,
                 "nutrient_per_step": nps,
@@ -75,6 +81,11 @@ def _run_stream_producer(
         ):
             if "step_loop" in chunk:
                 s = chunk["step_loop"]
+                world_store.update_coalition_state(
+                    world_id,
+                    coalition_state=s.get("coalition_state"),
+                    coalition_history=s.get("coalition_history"),
+                )
                 msg_queue.put({
                     "type": "step",
                     "t": s["current_t"],
@@ -152,6 +163,8 @@ def run_simulation(
                 "role_catalog": world_store.get_role_catalog(world_id),
                 "persona_catalog": world_store.get_persona_catalog(world_id),
                 "engine_params": world_store.get_engine_params(world_id),
+                "coalition_state": dict(entry.get("coalition_state") or {}),
+                "coalition_history": list(entry.get("coalition_history") or []),
                 "world_events": list(world.nutrients),
                 "snapshot_store": store,
                 "nutrient_per_step": nps,
@@ -160,6 +173,11 @@ def run_simulation(
         )
         final_t = result["current_t"]
         cell_count = len(result["cells"])
+        world_store.update_coalition_state(
+            world_id,
+            coalition_state=result.get("coalition_state"),
+            coalition_history=result.get("coalition_history"),
+        )
     finally:
         world_store.set_status(world_id, "done")
 

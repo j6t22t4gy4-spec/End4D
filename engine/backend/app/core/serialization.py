@@ -167,6 +167,11 @@ def world_entry_to_dict(entry: Dict[str, Any]) -> Dict[str, Any]:
         "config_version": str(entry.get("config_version") or ""),
         "comparison_meta": dict(entry.get("comparison_meta") or {}),
         "session_id": str(entry.get("session_id") or ""),
+        "coalition_state": {
+            str(role): dict(payload)
+            for role, payload in dict(entry.get("coalition_state") or {}).items()
+        },
+        "coalition_history": [dict(item) for item in list(entry.get("coalition_history") or [])],
         "snapshot_index": store.snapshot_index(),
         "snapshot_archive": store.archive_summary(),
         "snapshots": [snapshot_to_dict(store.get(t)) for t in store.list_t() if store.get(t) is not None],

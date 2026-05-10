@@ -107,6 +107,8 @@ def _init_node(state: SimulationState) -> SimulationState:
     out: SimulationState = {
         "cells": cells,
         "current_t": 0.0,
+        "coalition_state": dict(state.get("coalition_state") or {}),
+        "coalition_history": [dict(item) for item in state.get("coalition_history") or []],
     }
     if "t_max" in state:
         out["t_max"] = state["t_max"]
