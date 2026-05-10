@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, conint
 
 from app.core.persona_dataset import (
+    infer_role_catalog_from_personas,
     load_persona_seeds,
     persona_source_info,
     persona_source_info_from_label,
@@ -18,7 +19,11 @@ from app.core.persona_dataset import (
     personas_to_dicts,
 )
 from app.core.store import world_store
-from app.core.world_genesis import apply_genesis_overrides, propose_world_from_prompt
+from app.core.world_genesis import (
+    apply_genesis_overrides,
+    apply_persona_distribution_to_plan,
+    propose_world_from_prompt,
+)
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -59,6 +64,7 @@ class CreateWorldResponse(BaseModel):
     config_version: str
     session_id: str
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
+    persona_distribution_summary: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WorldResponse(BaseModel):
@@ -75,6 +81,7 @@ class WorldResponse(BaseModel):
     persona_country: str = ""
     persona_source: str = ""
     persona_count: int = 0
+    persona_distribution_summary: Dict[str, Any] = Field(default_factory=dict)
     config_version: str = ""
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -126,17 +133,22 @@ def create_world(req: CreateWorldRequest):
         count=plan.initial_cell_count,
         seed_text=req.prompt,
     )
+    plan, persona_bias = apply_persona_distribution_to_plan(plan, personas)
     persona_catalog = personas_to_dicts(personas)
     role_catalog = plan.role_catalog
     if personas and auto_roles_from_personas:
-        persona_roles = []
-        for p in personas:
-            if p.role_label and p.role_label not in persona_roles:
-                persona_roles.append(p.role_label)
-        role_catalog = persona_roles[:8] or role_catalog
+        role_catalog = infer_role_catalog_from_personas(personas, limit=8) or role_catalog
     if god_enabled and god_overrides.get("role_catalog"):
         role_catalog = [str(role).strip() for role in god_overrides.get("role_catalog") or [] if str(role).strip()] or role_catalog
     persona_source = persona_source_label(plan.persona_country) if persona_catalog else f"not_configured:{plan.persona_country}"
+    persona_distribution_summary = dict(plan.persona_distribution_summary or {})
+    inferred_engine_params = {
+        "zone_count": int(persona_bias.get("zone_count", engine_params.get("zone_count", 1) or 1)),
+        "zone_layout": str(persona_bias.get("zone_layout", engine_params.get("zone_layout", "grid"))),
+        "regional_labels": list(persona_bias.get("regional_labels") or []),
+        "persona_role_catalog": list(persona_bias.get("role_catalog") or []),
+        "persona_distribution_summary": persona_distribution_summary,
+    }
     simulation_config = {
         "schema_version": "simulation-config/v3",
         "t_max": float(plan.t_max),
@@ -147,10 +159,13 @@ def create_world(req: CreateWorldRequest):
         "nutrient_per_step": float(plan.nutrient_per_step),
         "persona_country": plan.persona_country,
         "persona_source": persona_source,
+        "persona_distribution_summary": persona_distribution_summary,
         "engine_params": {
+            **inferred_engine_params,
             **engine_params,
             "control_mode": "god" if god_enabled else "auto",
             "auto_roles_from_personas": auto_roles_from_personas,
+            "genesis_mode": "persona-aware" if persona_catalog else "heuristic",
             "z_mode": str(engine_params.get("z_mode", "hybrid")),
             "z_weight": float(engine_params.get("z_weight", 0.08)),
             "z_scale": float(engine_params.get("z_scale", 12.0)),
@@ -190,6 +205,7 @@ def create_world(req: CreateWorldRequest):
         config_version=str((entry or {}).get("config_version") or ""),
         session_id=str((entry or {}).get("session_id") or ""),
         simulation_config=dict((entry or {}).get("simulation_config") or {}),
+        persona_distribution_summary=persona_distribution_summary,
     )
 
 
@@ -213,6 +229,7 @@ def get_world(world_id: str):
         persona_country=str(entry.get("persona_country") or ""),
         persona_source=str(entry.get("persona_source") or ""),
         persona_count=len(entry.get("persona_catalog") or []),
+        persona_distribution_summary=dict((entry.get("simulation_config") or {}).get("persona_distribution_summary") or {}),
         config_version=str(entry.get("config_version") or ""),
         simulation_config=dict(entry.get("simulation_config") or {}),
         comparison_meta=dict(entry.get("comparison_meta") or {}),

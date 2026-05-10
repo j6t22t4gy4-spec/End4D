@@ -32,6 +32,7 @@ def test_create_world_from_prompt():
     assert data["persona_country"]
     assert "persona_source" in data
     assert "persona_count" in data
+    assert "persona_distribution_summary" in data
     assert data["config_version"]
     assert "simulation_config" in data
 
@@ -146,3 +147,63 @@ def test_world_persona_preview_uses_local_pack_source(tmp_path, monkeypatch):
     assert preview.status_code == 200
     data = preview.json()
     assert data["source"]["source"] == "local-pack:nemotron-kr-core@2026.05"
+
+
+def test_create_world_includes_persona_distribution_summary_from_pack(tmp_path, monkeypatch):
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    persona_file = packs_dir / "kr_persona.jsonl"
+    persona_file.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "uuid": "p1",
+                        "professional_persona": "서울의 데이터 분석가",
+                        "occupation": "분석가",
+                        "province": "서울",
+                        "age": 31,
+                        "country": "KR",
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "uuid": "p2",
+                        "professional_persona": "부산의 자영업자",
+                        "occupation": "자영업자",
+                        "province": "부산",
+                        "age": 52,
+                        "country": "KR",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v1",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "2026.05",
+                "relative_path": "kr_persona.jsonl",
+                "license": "CC BY 4.0",
+            }
+        ],
+    }
+    manifest_path = packs_dir / "packs.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(manifest_path))
+
+    r = client.post("/worlds", json={"prompt": "한국 도시 경제 정책 시뮬레이션"})
+    assert r.status_code == 200
+    data = r.json()
+    summary = data["persona_distribution_summary"]
+    assert summary["persona_count"] >= 1
+    assert data["simulation_config"]["engine_params"]["genesis_mode"] == "persona-aware"
+    assert data["simulation_config"]["engine_params"]["zone_count"] >= 1

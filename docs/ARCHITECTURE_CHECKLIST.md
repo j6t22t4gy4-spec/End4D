@@ -135,7 +135,8 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 10.1 | persona dataset 분포가 초기 세계 구조에 반영된다 | seed는 붙었지만 세계 생성은 거의 랜덤/휴리스틱 | DEVELOPMENT_GAPS §1 |
-| 10.2 | group-level stance/cohesion/tension을 조회·비교할 수 있다 | cell 수준 정보만 많고 사회 수준 상태가 약함 | DEVELOPMENT_GAPS §1 |
+| 10.1a | persona-aware Genesis는 role mix뿐 아니라 zone seed, initial energy, social elevation bias까지 결정할 수 있어야 한다 | persona를 붙여도 초기 세계 형태가 거의 안 바뀜 | IMPLEMENTATION_SEQUENCE Phase 11 |
+| 10.2 | group-level stance/cohesion/tension을 role/persona/zone 기준으로 조회·비교할 수 있다 | cell 수준 정보만 많고 사회 수준 상태가 약함 | DEVELOPMENT_GAPS §1 |
 | 10.3 | policy/event는 강도·범위·지속시간을 가진다 | 이벤트가 단발성 key-value 주입에 머묾 | IMPLEMENTATION_SEQUENCE Phase 11 |
 | 10.4 | dataset / prompt / provider provenance가 결과와 함께 남는다 | 장기 예측 결과의 재현·감사가 어려움 | PRODUCT_STRATEGY §6 |
 | 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | IMPLEMENTATION_SEQUENCE Phase 12 |

@@ -366,3 +366,85 @@ def personas_to_dicts(personas: List[PersonaSeed]) -> List[dict]:
         }
         for p in personas
     ]
+
+
+def summarize_persona_distribution(personas: List[PersonaSeed]) -> dict:
+    role_counts: dict[str, int] = {}
+    region_counts: dict[str, int] = {}
+    age_buckets = {"youth": 0, "working": 0, "senior": 0, "unknown": 0}
+
+    for persona in personas:
+        role = (persona.role_label or persona.role_key or "agent").strip() or "agent"
+        role_counts[role] = role_counts.get(role, 0) + 1
+
+        region = _persona_region(persona) or (persona.country or "unknown")
+        region_counts[region] = region_counts.get(region, 0) + 1
+
+        age_buckets[_age_bucket(persona.attrs.get("age"))] += 1
+
+    top_roles = sorted(role_counts.items(), key=lambda item: (-item[1], item[0]))
+    top_regions = sorted(region_counts.items(), key=lambda item: (-item[1], item[0]))
+    total = max(1, len(personas))
+    diversity = round(len(role_counts) / total, 4)
+    regionality = round(len(region_counts) / total, 4)
+    return {
+        "persona_count": len(personas),
+        "role_counts": role_counts,
+        "top_roles": [{"label": label, "count": count} for label, count in top_roles[:8]],
+        "region_counts": region_counts,
+        "top_regions": [{"label": label, "count": count} for label, count in top_regions[:8]],
+        "age_buckets": age_buckets,
+        "role_diversity": diversity,
+        "regional_diversity": regionality,
+    }
+
+
+def infer_role_catalog_from_personas(personas: List[PersonaSeed], *, limit: int = 8) -> List[str]:
+    summary = summarize_persona_distribution(personas)
+    roles = [str(item["label"]).strip() for item in summary["top_roles"] if str(item.get("label") or "").strip()]
+    return roles[: max(1, limit)]
+
+
+def persona_genesis_bias(personas: List[PersonaSeed]) -> dict:
+    summary = summarize_persona_distribution(personas)
+    persona_count = max(1, int(summary["persona_count"]))
+    top_regions = list(summary["top_regions"])
+    top_roles = list(summary["top_roles"])
+    youth_share = summary["age_buckets"]["youth"] / persona_count
+    senior_share = summary["age_buckets"]["senior"] / persona_count
+    zone_count = max(1, min(8, len(top_regions) or 1))
+    z_mode = "influence" if len(top_roles) >= 4 else "hybrid"
+    nutrient_multiplier = 1.0 + min(0.45, summary["role_diversity"] * 1.2)
+    if senior_share > 0.35:
+        nutrient_multiplier += 0.08
+    if youth_share > 0.35:
+        nutrient_multiplier += 0.06
+    return {
+        "summary": summary,
+        "role_catalog": [item["label"] for item in top_roles[:8]],
+        "zone_count": zone_count,
+        "zone_layout": "bands" if zone_count >= 3 else "grid",
+        "regional_labels": [item["label"] for item in top_regions[:8]],
+        "nutrient_multiplier": round(nutrient_multiplier, 4),
+        "z_mode": z_mode,
+    }
+
+
+def _persona_region(persona: PersonaSeed) -> str:
+    for key in ("district", "province", "region", "city"):
+        value = str(persona.attrs.get(key, "") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _age_bucket(value: Any) -> str:
+    try:
+        age = int(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    if age < 30:
+        return "youth"
+    if age < 60:
+        return "working"
+    return "senior"

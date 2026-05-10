@@ -3,9 +3,12 @@ import json
 
 from app.core.persona_dataset import (
     infer_country_from_prompt,
+    infer_role_catalog_from_personas,
     load_persona_seeds,
+    persona_genesis_bias,
     persona_source_info,
     persona_source_label,
+    summarize_persona_distribution,
 )
 from app.graph.time_flow import _create_initial_cells
 
@@ -47,6 +50,14 @@ def test_load_persona_seeds_from_jsonl(tmp_path, monkeypatch):
     assert info["configured"] is True
     assert info["country"] == "KR"
 
+    summary = summarize_persona_distribution(personas)
+    assert summary["persona_count"] == 2
+    assert summary["top_roles"][0]["count"] == 1
+    assert "기술자" in infer_role_catalog_from_personas(personas, limit=4)
+    bias = persona_genesis_bias(personas)
+    assert bias["zone_count"] >= 1
+    assert bias["role_catalog"]
+
 
 def test_hf_source_info_for_known_korea_dataset(monkeypatch):
     monkeypatch.delenv("ORGANIC4D_PERSONA_DATASET_DIR", raising=False)
@@ -60,6 +71,7 @@ def test_hf_source_info_for_known_korea_dataset(monkeypatch):
 def test_initial_cells_use_persona_catalog():
     cells = _create_initial_cells(
         count=1,
+        engine_params={"regional_labels": ["서울"], "zone_count": 1, "z_mode": "influence"},
         persona_catalog=[
             {
                 "persona_id": "p1",
@@ -67,13 +79,15 @@ def test_initial_cells_use_persona_catalog():
                 "role_key": "기술자",
                 "role_label": "기술자",
                 "country": "KR",
-                "attrs": {"age": 34},
+                "attrs": {"age": 34, "province": "서울"},
             }
         ],
     )
     assert cells[0].role_label == "기술자"
     assert cells[0].persona_id == "p1"
     assert cells[0].persona_country == "KR"
+    assert cells[0].zone_label == "서울"
+    assert cells[0].action_state["strategy_summary"] == "persona_seeded_initial_state"
     assert cells[0].memory == ["서울의 제조업 기술자"]
     assert len(cells[0].long_memory) == 1
     assert cells[0].behavior_log[0]["event_type"] == "persona_seed"

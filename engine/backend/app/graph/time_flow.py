@@ -37,6 +37,8 @@ def _create_initial_cells(
     spacing = max(0.6, float(params.get("zone_spacing", 2.0)))
     zone_influence_step = max(0.0, float(params.get("zone_influence_step", 0.08)))
     zone_friction_step = max(0.0, float(params.get("zone_friction_step", 0.1)))
+    regional_labels = [str(label).strip() for label in params.get("regional_labels") or [] if str(label).strip()]
+    region_zone_map = {label: idx for idx, label in enumerate(regional_labels[:zone_count])}
 
     cells = []
     grid_width = max(1, math.ceil(count ** 0.5))
@@ -45,9 +47,17 @@ def _create_initial_cells(
         rk = str(persona.get("role_key") or roles[i % len(roles)])
         label = str(persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
-        zone_index = i % zone_count
+        attrs = dict(persona.get("attrs") or {})
+        region_label = str(
+            attrs.get("district")
+            or attrs.get("province")
+            or attrs.get("region")
+            or persona.get("zone_label")
+            or ""
+        ).strip()
+        zone_index = region_zone_map.get(region_label, i % zone_count)
         zone_id = str(persona.get("zone_id") or f"zone-{zone_index}")
-        zone_label = str(persona.get("zone_label") or f"Zone {zone_index}")
+        zone_label = str(persona.get("zone_label") or region_label or f"Zone {zone_index}")
         zone_influence = float(persona.get("zone_influence", 1.0 + zone_influence_step * zone_index))
         zone_friction = float(persona.get("zone_friction", zone_friction_step * zone_index))
         row = i // grid_width
@@ -63,22 +73,26 @@ def _create_initial_cells(
         else:
             x = float(col * spacing)
             y = float(row * spacing)
+        age = _safe_age(attrs.get("age"))
+        initial_energy = 50.0 + _energy_bias_from_persona(label=label, attrs=attrs, age=age)
+        action_state = _seed_action_state_from_persona(label=label, attrs=attrs, zone_index=zone_index)
         cell = Cell(
                 x=x,
                 y=y,
                 z=0.0,
                 t=t,
-                energy=50.0,
+                energy=initial_energy,
                 gene_vec=np.random.randn(32).astype(np.float32) * 0.1,
                 emotion_vec=np.random.randn(8).astype(np.float32) * 0.1,
                 thought_vec=np.random.randn(256).astype(np.float32) * 0.1,
                 worldview_vec=np.random.randn(384).astype(np.float32) * 0.1,
+                action_state=action_state,
                 role_key=rk,
                 role_label=label,
                 persona_id=str(persona.get("persona_id") or ""),
                 persona_text=persona_text,
                 persona_country=str(persona.get("country") or ""),
-                persona_attrs=dict(persona.get("attrs") or {}),
+                persona_attrs=attrs,
                 zone_id=zone_id,
                 zone_label=zone_label,
                 zone_influence=zone_influence,
@@ -88,6 +102,52 @@ def _create_initial_cells(
             cell = seed_memory_from_text(cell, persona_text)
         cells.append(cell)
     return refresh_social_elevation(cells, current_t=t, engine_params=params)
+
+
+def _safe_age(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _energy_bias_from_persona(*, label: str, attrs: Dict[str, Any], age: int | None) -> float:
+    bias = 0.0
+    role_text = label.lower()
+    if any(token in role_text for token in ("규제", "정부", "분석", "기술", "기업", "시장")):
+        bias += 4.0
+    if any(token in role_text for token in ("시민", "소비", "자영업")):
+        bias += 1.5
+    if age is not None:
+        if age < 30:
+            bias -= 2.0
+        elif age >= 55:
+            bias += 2.0
+    education = str(attrs.get("education_level", "") or "").lower()
+    if education:
+        if "doctor" in education or "phd" in education or "박사" in education:
+            bias += 2.0
+        elif "master" in education or "석사" in education:
+            bias += 1.0
+    return bias
+
+
+def _seed_action_state_from_persona(*, label: str, attrs: Dict[str, Any], zone_index: int) -> Dict[str, Any]:
+    role_text = label.lower()
+    cooperation = 0.54 if any(token in role_text for token in ("시민", "가계", "관측")) else 0.48
+    policy = 0.58 if any(token in role_text for token in ("규제", "정부", "공공")) else 0.44
+    resource = 0.6 if any(token in role_text for token in ("기업", "시장", "투자", "자영업")) else 0.46
+    mobility = 0.42 + min(0.18, zone_index * 0.03)
+    interests = str(attrs.get("hobbies_and_interests", "") or "").lower()
+    if interests and any(token in interests for token in ("community", "봉사", "volunteer")):
+        cooperation += 0.08
+    return {
+        "cooperation_bias": round(max(0.0, min(1.0, cooperation)), 4),
+        "policy_sensitivity": round(max(0.0, min(1.0, policy)), 4),
+        "resource_bias": round(max(0.0, min(1.0, resource)), 4),
+        "mobility_bias": round(max(0.0, min(1.0, mobility)), 4),
+        "strategy_summary": "persona_seeded_initial_state",
+    }
 
 
 # State: TypedDict 대신 dict 사용 (Cell 직렬화 이슈 회피)

@@ -1,7 +1,8 @@
 """프롬프트 기반 세계 제안 (world_genesis 스텁)."""
 import json
 
-from app.core.world_genesis import propose_world_from_prompt
+from app.core.persona_dataset import PersonaSeed
+from app.core.world_genesis import apply_persona_distribution_to_plan, propose_world_from_prompt
 
 
 def test_genesis_returns_plan():
@@ -64,3 +65,30 @@ def test_genesis_can_use_llm_json_plan(monkeypatch):
     assert p.initial_cell_count == 18
     assert p.role_catalog[:3] == ["정부", "기업", "가계"]
     assert p.persona_source == "llm:openai"
+
+
+def test_genesis_can_absorb_persona_distribution():
+    plan = propose_world_from_prompt("한국 산업 정책 시뮬레이션")
+    personas = [
+        PersonaSeed(
+            persona_id="a",
+            persona_text="서울의 데이터 분석가",
+            role_key="분석가",
+            role_label="분석가",
+            country="KR",
+            attrs={"province": "서울", "age": 33},
+        ),
+        PersonaSeed(
+            persona_id="b",
+            persona_text="부산의 자영업자",
+            role_key="자영업자",
+            role_label="자영업자",
+            country="KR",
+            attrs={"province": "부산", "age": 52},
+        ),
+    ]
+    adjusted, bias = apply_persona_distribution_to_plan(plan, personas)
+    assert adjusted.persona_distribution_summary["persona_count"] == 2
+    assert adjusted.role_catalog[0] in {"분석가", "자영업자"}
+    assert bias["zone_count"] >= 2
+    assert adjusted.nutrient_per_step >= plan.nutrient_per_step

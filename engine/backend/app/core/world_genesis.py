@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from app.core.persona_dataset import infer_country_from_prompt
+from app.core.persona_dataset import infer_country_from_prompt, persona_genesis_bias
 from app.core.settings import get_llm_chat_enabled
 from app.llm.facade import llm_facade
 
@@ -51,6 +51,7 @@ class GenesisPlan:
     # 초기 에이전트 페르소나 데이터셋 선택 힌트
     persona_country: str
     persona_source: str
+    persona_distribution_summary: Dict[str, Any] | None = None
 
 
 def _stable_extra_cells(prompt: str) -> int:
@@ -136,6 +137,7 @@ def apply_genesis_overrides(
         ),
         persona_country=str(data.get("persona_country") or plan.persona_country),
         persona_source=str(data.get("persona_source") or plan.persona_source),
+        persona_distribution_summary=dict(data.get("persona_distribution_summary") or plan.persona_distribution_summary or {}),
     )
 
 
@@ -189,6 +191,39 @@ def _heuristic_plan(text: str) -> GenesisPlan:
         nutrient_per_step=nutrient,
         persona_country=persona_country,
         persona_source=persona_source,
+        persona_distribution_summary={},
+    )
+
+
+def apply_persona_distribution_to_plan(
+    plan: GenesisPlan,
+    personas: list,
+) -> tuple[GenesisPlan, Dict[str, Any]]:
+    if not personas:
+        return plan, {}
+    bias = persona_genesis_bias(personas)
+    role_catalog = [str(role).strip() for role in bias.get("role_catalog") or plan.role_catalog if str(role).strip()]
+    nutrient = max(0.01, float(plan.nutrient_per_step) * float(bias.get("nutrient_multiplier", 1.0)))
+    rationale = (
+        f"{plan.rationale} "
+        f"Persona-aware bias applied: roles={', '.join(role_catalog[:5])}; "
+        f"top_regions={', '.join(str(item['label']) for item in bias.get('summary', {}).get('top_regions', [])[:3]) or 'none'}; "
+        f"zone_count≈{int(bias.get('zone_count', 1))}; nutrient_multiplier≈{float(bias.get('nutrient_multiplier', 1.0)):.2f}."
+    )
+    return (
+        GenesisPlan(
+            t_max=plan.t_max,
+            initial_cell_count=plan.initial_cell_count,
+            role_catalog=role_catalog[:8] or list(plan.role_catalog),
+            rationale=rationale,
+            t_step_semantic=plan.t_step_semantic,
+            t_step_unit=plan.t_step_unit,
+            nutrient_per_step=nutrient,
+            persona_country=plan.persona_country,
+            persona_source=plan.persona_source,
+            persona_distribution_summary=dict(bias.get("summary") or {}),
+        ),
+        bias,
     )
 
 
@@ -214,6 +249,7 @@ def _llm_plan(text: str, fallback: GenesisPlan) -> GenesisPlan | None:
             nutrient_per_step=max(0.01, float(payload.get("nutrient_per_step", fallback.nutrient_per_step))),
             persona_country=str(payload.get("persona_country") or fallback.persona_country),
             persona_source=str(payload.get("persona_source") or fallback.persona_source),
+            persona_distribution_summary=dict(fallback.persona_distribution_summary or {}),
         )
     except Exception:
         return None
@@ -247,4 +283,5 @@ def _plan_to_dict(plan: GenesisPlan) -> dict:
         "nutrient_per_step": plan.nutrient_per_step,
         "persona_country": plan.persona_country,
         "persona_source": plan.persona_source,
+        "persona_distribution_summary": dict(plan.persona_distribution_summary or {}),
     }

@@ -327,8 +327,8 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 | 순서 | 작업 | 산출물 | 이유 |
 |------|------|--------|------|
-| 11.1 | **persona-aware Genesis 강화** | 국가별 persona 분포 기반 `t_max`, role mix, nutrient scale, initial bias | 초기 세계가 실제 사회 구조를 반영해야 함 |
-| 11.2 | **group-level belief state** | role/persona group cohesion, tension, stance, drift | 국가 단위 분석은 개별 cell보다 집단 상태가 핵심 |
+| 11.1 | **persona-aware Genesis 강화** | 국가별 persona 분포 기반 `t_max`, role mix, nutrient scale, zone seed, initial energy/z bias | 초기 세계가 실제 사회 구조를 반영해야 함 |
+| 11.2 | **group-level belief state** | role/persona/zone group cohesion, tension, stance, drift | 국가 단위 분석은 개별 cell보다 집단 상태가 핵심 |
 | 11.3 | **policy/event semantics 강화** | 정책 이벤트 타입 체계, 강도, 범위, 지속시간 | what-if가 장난감 이벤트가 아니라 정책 실험이 되게 함 |
 | 11.4 | **prompt version + provider provenance 저장** | genesis/thought/worldview 결과에 LLM 메타 저장 | 장기 예측은 재현성과 감사 가능성이 필수 |
 | 11.5 | **session → world → snapshot 비교 루프 완성** | 세션 단위 비교, 최근 world reopen, fork lineage | 장기 시나리오 실험 워크플로우의 핵심 |
@@ -372,8 +372,8 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 아래는 **지금 당장 개발 집중도를 유지하기 위한 단기 체크리스트**다.
 
-- [ ] `persona-aware Genesis`가 occupation/region/age 분포를 실제로 반영한다
-- [ ] `group stance summary`가 world/session 비교 가능한 구조로 저장된다
+- [ ] `persona-aware Genesis`가 occupation/region/age 분포를 role mix, zone seed, energy/z bias까지 실제 반영한다
+- [ ] `group stance summary`가 role/persona/zone 기준으로 world/session 비교 가능한 구조로 저장된다
 - [ ] policy/event injection이 강도·범위·지속시간을 가진다
 - [ ] `session comparison` 화면에서 최소 2개 world를 나란히 볼 수 있다
 - [ ] LLM 결과에 `provider / model / prompt_version / timestamp`가 남는다

@@ -25,10 +25,10 @@
 
 | 영역 | 현재 상태 | 우선순위 | 문제 |
 |------|-----------|----------|------|
-| persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 초기 세계 구조를 충분히 결정하지 못함 |
+| persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 role mix까지는 일부 반영되지만 zone seed, initial energy/z bias, 장기 초기 조건 반영은 더 필요 |
 | LLM 호출 입구 (Facade / Engine API) | 초기 구현 | 최상 | abstraction은 있지만 엔진 개발자가 `think()`, `decide_actions()`처럼 일관되게 쓰는 공통 입구가 더 필요 |
 | Prompt Template 체계 | 부분 구현 | 높음 | registry와 contract가 생겼지만 평가 루프와 결과물 provenance 저장은 더 필요 |
-| group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 집단 stance/cohesion/tension drift가 아직 약함 |
+| group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 role/persona/zone 집단 stance/cohesion/tension drift와 비교 리포트가 아직 약함 |
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
 | policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
