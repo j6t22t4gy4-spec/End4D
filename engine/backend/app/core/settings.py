@@ -19,6 +19,16 @@ LLM_TASK_NAMES = (
     "group_deliberation",
 )
 
+_TASK_PRIORITY_DEFAULTS = {
+    "genesis": 0,
+    "policy": 0,
+    "action": 1,
+    "thought": 1,
+    "dialogue": 2,
+    "group_deliberation": 3,
+    "worldview": 4,
+}
+
 
 def get_llm_chat_enabled() -> bool:
     """True면 (후속) Ollama 등 대화형 LLM으로 Thought/Worldview 문장 생성."""
@@ -112,6 +122,30 @@ def get_llm_task_budget(task: str) -> int:
 
 def get_llm_task_budgets() -> dict[str, int]:
     return {task: get_llm_task_budget(task) for task in LLM_TASK_NAMES}
+
+
+def get_llm_cycle_prompt_budget() -> int:
+    """Total prompts the engine may send in one simulation cycle."""
+    raw = os.getenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "160").strip()
+    try:
+        return max(1, min(50000, int(raw)))
+    except ValueError:
+        return 160
+
+
+def get_llm_task_priority(task: str) -> int:
+    env_key = f"ORGANIC4D_LLM_PRIORITY_{str(task).upper()}"
+    raw = os.getenv(env_key, "").strip()
+    if raw:
+        try:
+            return max(0, min(9, int(raw)))
+        except ValueError:
+            pass
+    return int(_TASK_PRIORITY_DEFAULTS.get(task, 5))
+
+
+def get_llm_task_priorities() -> dict[str, int]:
+    return {task: get_llm_task_priority(task) for task in LLM_TASK_NAMES}
 
 
 def get_llm_agent_sample_size() -> int:

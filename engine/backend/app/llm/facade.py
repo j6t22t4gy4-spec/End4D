@@ -6,10 +6,13 @@ from threading import Lock
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.core.settings import (
+    get_llm_cycle_prompt_budget,
     get_llm_model,
     get_llm_provider,
     get_llm_task_budget,
     get_llm_task_budgets,
+    get_llm_task_priorities,
+    get_llm_task_priority,
 )
 from app.llm.chat_runtime import generate_reasoning_batch
 from app.llm.prompt_engineering import (
@@ -35,6 +38,26 @@ class LLMFacade:
         self._lock = Lock()
         self._recent_runs: deque[dict[str, Any]] = deque(maxlen=32)
         self._task_totals: dict[str, dict[str, int]] = {}
+        self._scheduler: dict[str, Any] = {
+            "cycle_key": "default",
+            "cycle_budget_total": get_llm_cycle_prompt_budget(),
+            "cycle_budget_remaining": get_llm_cycle_prompt_budget(),
+            "context": {},
+        }
+
+    def begin_cycle(self, cycle_key: str, *, context: Mapping[str, Any] | None = None) -> None:
+        payload = dict(context or {})
+        with self._lock:
+            if self._scheduler.get("cycle_key") == cycle_key:
+                self._scheduler["context"] = payload
+                return
+            total = get_llm_cycle_prompt_budget()
+            self._scheduler = {
+                "cycle_key": cycle_key,
+                "cycle_budget_total": total,
+                "cycle_budget_remaining": total,
+                "context": payload,
+            }
 
     def think(self, cells: Sequence[Cell]) -> list[str]:
         prompts = [build_thought_prompt(cell) for cell in cells]
@@ -99,6 +122,8 @@ class LLMFacade:
                 "provider": get_llm_provider(),
                 "model": get_llm_model(),
                 "task_budgets": get_llm_task_budgets(),
+                "task_priorities": get_llm_task_priorities(),
+                "scheduler": dict(self._scheduler),
                 "recent_runs": [dict(item) for item in self._recent_runs],
                 "task_totals": {
                     key: dict(value)
@@ -110,16 +135,25 @@ class LLMFacade:
         with self._lock:
             self._recent_runs.clear()
             self._task_totals.clear()
+            total = get_llm_cycle_prompt_budget()
+            self._scheduler = {
+                "cycle_key": "default",
+                "cycle_budget_total": total,
+                "cycle_budget_remaining": total,
+                "context": {},
+            }
 
     def _run_task(self, prompts: Iterable[str], *, task: str) -> list[str]:
         items = [str(prompt) for prompt in prompts]
         if not items:
             return []
         task_budget = get_llm_task_budget(task)
-        active_items = items[:task_budget]
-        skipped_items = items[task_budget:]
+        scheduler = self._reserve_prompts(task=task, requested=len(items), task_budget=task_budget)
+        active_budget = int(scheduler["allowed"])
+        active_items = items[:active_budget]
+        skipped_by_scheduler = items[active_budget:]
         batch = generate_reasoning_batch(active_items, task=task)
-        texts = list(batch.get("texts") or []) + skipped_items
+        texts = list(batch.get("texts") or []) + skipped_by_scheduler
         meta = dict(batch.get("meta") or {})
         meta.update(
             {
@@ -128,27 +162,84 @@ class LLMFacade:
                 "provider": str(meta.get("provider") or get_llm_provider()),
                 "model": str(meta.get("model") or get_llm_model()),
                 "task_budget": int(task_budget),
+                "task_priority": int(get_llm_task_priority(task)),
                 "prompt_count_in": len(items),
                 "prompt_count_sent": int(meta.get("prompt_count_sent", len(active_items))),
-                "prompt_count_skipped_by_task_budget": len(skipped_items),
+                "prompt_count_skipped_by_task_budget": int(scheduler["skipped_by_task_budget"]),
+                "prompt_count_skipped_by_cycle_budget": int(scheduler["skipped_by_cycle_budget"]),
+                "cycle_key": str(scheduler["cycle_key"]),
+                "cycle_budget_total": int(scheduler["cycle_budget_total"]),
+                "cycle_budget_remaining_before": int(scheduler["cycle_budget_remaining_before"]),
+                "cycle_budget_remaining_after": int(scheduler["cycle_budget_remaining_after"]),
             }
         )
-        if skipped_items:
+        if skipped_by_scheduler:
             meta["used_fallback"] = True
             fallback_reason = str(meta.get("fallback_reason") or "")
-            meta["fallback_reason"] = (
-                f"{fallback_reason}|task_budget_cap"
-                if fallback_reason
-                else "task_budget_cap"
-            )
+            reasons: list[str] = [part for part in fallback_reason.split("|") if part]
+            if int(scheduler["skipped_by_task_budget"]) > 0:
+                reasons.append("task_budget_cap")
+            if int(scheduler["skipped_by_cycle_budget"]) > 0:
+                reasons.append("cycle_budget_cap")
+            if int(scheduler["adaptive_skip"]) > 0:
+                reasons.append("adaptive_priority_skip")
+            meta["fallback_reason"] = "|".join(dict.fromkeys(reasons))
         self._record_run(meta)
         return texts
+
+    def _reserve_prompts(self, *, task: str, requested: int, task_budget: int) -> dict[str, Any]:
+        with self._lock:
+            cycle_key = str(self._scheduler.get("cycle_key") or "default")
+            total = int(self._scheduler.get("cycle_budget_total", get_llm_cycle_prompt_budget()))
+            remaining_before = int(self._scheduler.get("cycle_budget_remaining", total))
+            priority = int(get_llm_task_priority(task))
+            capped_by_task = min(requested, task_budget)
+            adaptive_cap = self._adaptive_cap(
+                priority=priority,
+                remaining=remaining_before,
+                total=total,
+                requested=capped_by_task,
+            )
+            allowed = min(capped_by_task, remaining_before, adaptive_cap)
+            allowed = max(0, allowed)
+            remaining_after = max(0, remaining_before - allowed)
+            self._scheduler["cycle_budget_remaining"] = remaining_after
+            skipped_by_task_budget = max(0, requested - min(requested, task_budget))
+            skipped_after_task = max(0, requested - min(requested, task_budget))
+            skipped_by_cycle_budget = max(0, capped_by_task - allowed)
+            adaptive_skip = max(0, capped_by_task - min(capped_by_task, remaining_before) if adaptive_cap < min(capped_by_task, remaining_before) else 0)
+            return {
+                "allowed": allowed,
+                "cycle_key": cycle_key,
+                "cycle_budget_total": total,
+                "cycle_budget_remaining_before": remaining_before,
+                "cycle_budget_remaining_after": remaining_after,
+                "skipped_by_task_budget": skipped_by_task_budget,
+                "skipped_by_cycle_budget": skipped_by_cycle_budget,
+                "adaptive_skip": adaptive_skip,
+                "skipped_after_task": skipped_after_task,
+            }
+
+    def _adaptive_cap(self, *, priority: int, remaining: int, total: int, requested: int) -> int:
+        if total <= 0:
+            return 0
+        ratio = remaining / total
+        if ratio <= 0.10 and priority >= 2:
+            return 0
+        if ratio <= 0.20 and priority >= 1:
+            return max(0, min(requested, 1))
+        if ratio <= 0.35 and priority >= 3:
+            return max(0, min(requested, requested // 2))
+        if ratio <= 0.50 and priority >= 4:
+            return max(0, min(requested, requested // 2))
+        return requested
 
     def _record_run(self, meta: Mapping[str, Any]) -> None:
         task = str(meta.get("task") or "unknown")
         prompt_count_in = int(meta.get("prompt_count_in", 0) or 0)
         prompt_count_sent = int(meta.get("prompt_count_sent", 0) or 0)
         skipped = int(meta.get("prompt_count_skipped_by_task_budget", 0) or 0)
+        skipped_by_cycle = int(meta.get("prompt_count_skipped_by_cycle_budget", 0) or 0)
         used_fallback = 1 if bool(meta.get("used_fallback")) else 0
         with self._lock:
             totals = self._task_totals.setdefault(
@@ -158,6 +249,7 @@ class LLMFacade:
                     "prompt_count_in": 0,
                     "prompt_count_sent": 0,
                     "prompt_count_skipped_by_task_budget": 0,
+                    "prompt_count_skipped_by_cycle_budget": 0,
                     "fallback_calls": 0,
                 },
             )
@@ -165,6 +257,7 @@ class LLMFacade:
             totals["prompt_count_in"] += prompt_count_in
             totals["prompt_count_sent"] += prompt_count_sent
             totals["prompt_count_skipped_by_task_budget"] += skipped
+            totals["prompt_count_skipped_by_cycle_budget"] += skipped_by_cycle
             totals["fallback_calls"] += used_fallback
             self._recent_runs.append(
                 {
@@ -175,7 +268,13 @@ class LLMFacade:
                     "prompt_count_in": prompt_count_in,
                     "prompt_count_sent": prompt_count_sent,
                     "prompt_count_skipped_by_task_budget": skipped,
+                    "prompt_count_skipped_by_cycle_budget": skipped_by_cycle,
                     "task_budget": int(meta.get("task_budget", 0) or 0),
+                    "task_priority": int(meta.get("task_priority", 0) or 0),
+                    "cycle_key": str(meta.get("cycle_key") or ""),
+                    "cycle_budget_total": int(meta.get("cycle_budget_total", 0) or 0),
+                    "cycle_budget_remaining_before": int(meta.get("cycle_budget_remaining_before", 0) or 0),
+                    "cycle_budget_remaining_after": int(meta.get("cycle_budget_remaining_after", 0) or 0),
                     "used_fallback": bool(meta.get("used_fallback")),
                     "fallback_reason": str(meta.get("fallback_reason") or ""),
                 }

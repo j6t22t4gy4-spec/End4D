@@ -112,3 +112,71 @@ def test_facade_records_task_budget_fallback(monkeypatch):
     assert recent["prompt_count_skipped_by_task_budget"] == 1
     assert recent["used_fallback"] is True
     assert "task_budget_cap" in recent["fallback_reason"]
+
+
+def test_facade_tracks_cycle_budget_and_priority(monkeypatch):
+    llm_facade.reset_stats()
+    monkeypatch.setenv("ORGANIC4D_LLM_BUDGET_THOUGHT", "8")
+    monkeypatch.setenv("ORGANIC4D_LLM_BUDGET_WORLDVIEW", "8")
+    monkeypatch.setenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "3")
+    llm_facade.begin_cycle("test-cycle", context={"cell_count": 4})
+
+    def fake_batch(prompts, *, task):
+        prompt_list = list(prompts)
+        return {
+            "texts": [task for _ in prompt_list],
+            "meta": {
+                "task": task,
+                "provider": "stub",
+                "model": "stub",
+                "prompt_count_in": len(prompt_list),
+                "prompt_count_sent": len(prompt_list),
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
+
+    monkeypatch.setattr("app.llm.facade.generate_reasoning_batch", fake_batch)
+    thought_out = llm_facade.think([_cell("a"), _cell("b")])
+    worldview_out = llm_facade.update_worldviews([_cell("c"), _cell("d")])
+    assert thought_out == ["thought", "thought"]
+    assert worldview_out[0] == "worldview"
+    assert len(worldview_out) == 2
+    stats = llm_facade.snapshot_stats()
+    assert stats["scheduler"]["cycle_key"] == "test-cycle"
+    assert stats["task_totals"]["worldview"]["prompt_count_skipped_by_cycle_budget"] == 1
+    recent = stats["recent_runs"][-1]
+    assert recent["cycle_key"] == "test-cycle"
+    assert recent["prompt_count_skipped_by_cycle_budget"] == 1
+
+
+def test_facade_adaptive_priority_skip(monkeypatch):
+    llm_facade.reset_stats()
+    monkeypatch.setenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "2")
+    monkeypatch.setenv("ORGANIC4D_LLM_BUDGET_DIALOGUE", "4")
+    llm_facade.begin_cycle("low-budget", context={"cell_count": 10})
+
+    def fake_batch(prompts, *, task):
+        prompt_list = list(prompts)
+        return {
+            "texts": [task for _ in prompt_list],
+            "meta": {
+                "task": task,
+                "provider": "stub",
+                "model": "stub",
+                "prompt_count_in": len(prompt_list),
+                "prompt_count_sent": len(prompt_list),
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
+
+    monkeypatch.setattr("app.llm.facade.generate_reasoning_batch", fake_batch)
+    llm_facade.think([_cell("a"), _cell("b")])
+    out = llm_facade.run_dialogues([(_cell("c"), _cell("d")), (_cell("e"), _cell("f"))], current_t=10.0)
+    assert len(out) == 2
+    stats = llm_facade.snapshot_stats()
+    recent = stats["recent_runs"][-1]
+    assert recent["task"] == "dialogue"
+    assert recent["used_fallback"] is True
+    assert "cycle_budget_cap" in recent["fallback_reason"] or "adaptive_priority_skip" in recent["fallback_reason"]

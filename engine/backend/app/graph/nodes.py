@@ -22,6 +22,7 @@ from app.core.rules import (
 from app.llm.actions import update_action_states_if_due
 from app.llm.dialogue import apply_agent_dialogues_if_due
 from app.llm.group_deliberation import apply_group_deliberation_if_due
+from app.llm.facade import llm_facade
 from app.llm.thought import update_thoughts_if_due
 from app.llm.worldview import update_worldviews_if_due
 
@@ -35,6 +36,15 @@ def step_loop_node(state: "SimulationState") -> dict:
     current_t = state["current_t"]
     nutrient_per_step = state.get("nutrient_per_step", 1.0)
     world_events = state.get("world_events") or []
+    next_t = current_t + 1
+    llm_facade.begin_cycle(
+        f"world-step:{int(next_t)}",
+        context={
+            "current_t": float(current_t),
+            "next_t": float(next_t),
+            "cell_count": len(cells),
+        },
+    )
 
     cells = apply_active_policies(cells, current_t=current_t, events=world_events)
     cells = apply_growth(cells, nutrient_per_step=nutrient_per_step)
@@ -43,7 +53,6 @@ def step_loop_node(state: "SimulationState") -> dict:
     cells = apply_fusion(cells, current_t=current_t)
     cells = apply_mutation(cells)
 
-    next_t = current_t + 1
     cells = append_step_memory(cells, next_t)
     cells = apply_agent_interactions(cells, next_t)
     cells = update_emotions(cells, current_t)
