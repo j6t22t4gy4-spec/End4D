@@ -56,6 +56,9 @@ def test_create_world_with_god_mode_overrides():
                     "zone_count": 6,
                     "zone_layout": "bands",
                     "zone_spacing": 3.5,
+                    "z_mode": "influence",
+                    "z_weight": 0.18,
+                    "z_scale": 14.0,
                 },
             },
         },
@@ -69,6 +72,9 @@ def test_create_world_with_god_mode_overrides():
     assert data["nutrient_per_step"] == 2.5
     assert data["simulation_config"]["engine_params"]["control_mode"] == "god"
     assert data["simulation_config"]["engine_params"]["zone_layout"] == "bands"
+    assert data["simulation_config"]["engine_params"]["z_mode"] == "influence"
+    assert data["simulation_config"]["engine_params"]["z_weight"] == 0.18
+    assert data["simulation_config"]["engine_params"]["z_scale"] == 14.0
 
 
 def test_world_persona_preview():

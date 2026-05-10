@@ -57,6 +57,9 @@ export default function GodView({
   const [zoneSpacing, setZoneSpacing] = useState("2.0");
   const [zoneInfluenceStep, setZoneInfluenceStep] = useState("0.08");
   const [zoneFrictionStep, setZoneFrictionStep] = useState("0.10");
+  const [zMode, setZMode] = useState("hybrid");
+  const [zWeight, setZWeight] = useState("0.08");
+  const [zScale, setZScale] = useState("12.0");
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -111,6 +114,9 @@ export default function GodView({
               zone_spacing: parsePositiveNumber(zoneSpacing),
               zone_influence_step: parseNumber(zoneInfluenceStep),
               zone_friction_step: parseNumber(zoneFrictionStep),
+              z_mode: zMode,
+              z_weight: parseNumber(zWeight),
+              z_scale: parsePositiveNumber(zScale),
             },
           }
         : null;
@@ -149,6 +155,9 @@ export default function GodView({
     zoneInfluenceStep,
     zoneLayout,
     zoneSpacing,
+    zMode,
+    zScale,
+    zWeight,
   ]);
 
   const refreshSnapshots = useCallback(
@@ -351,6 +360,30 @@ export default function GodView({
                   friction step
                   <input value={zoneFrictionStep} onChange={(e) => setZoneFrictionStep(e.target.value)} className="app-input" />
                 </label>
+              </div>
+              <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 md:grid-cols-3">
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  z mode
+                  <select value={zMode} onChange={(e) => setZMode(e.target.value)} className="app-input">
+                    <option value="hybrid">hybrid</option>
+                    <option value="wealth">wealth</option>
+                    <option value="influence">influence</option>
+                    <option value="policy">policy</option>
+                    <option value="memory">memory</option>
+                    <option value="flat">flat</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  z weight
+                  <input value={zWeight} onChange={(e) => setZWeight(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  z scale
+                  <input value={zScale} onChange={(e) => setZScale(e.target.value)} className="app-input" />
+                </label>
+                <p className="md:col-span-3 rounded-2xl bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
+                  `z` is treated as social elevation, not mesh height. Use `weight` to control how much elevation affects interaction distance, and `scale` to control field amplitude.
+                </p>
               </div>
             </div>
           )}

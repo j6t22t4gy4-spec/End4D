@@ -175,6 +175,9 @@ export type GodModePayload = {
     zone_spacing?: number;
     zone_influence_step?: number;
     zone_friction_step?: number;
+    z_mode?: string;
+    z_weight?: number;
+    z_scale?: number;
   };
 };
 
