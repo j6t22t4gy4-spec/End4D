@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   emotionToColorAndScale,
@@ -30,6 +30,12 @@ type ElevationBand = {
   d: string;
   label: string;
   alpha: number;
+  lower: number;
+  upper: number;
+  agentCount: number;
+  avgEnergy: number;
+  avgZ: number;
+  dominantRole: string;
 };
 
 type ZSemantics = {
@@ -52,6 +58,11 @@ export default function SimulationMap2D({
   sampled,
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
+  const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
+  const activeBand =
+    scene.elevationBands.find((band) => band.key === hoveredBandKey) ??
+    scene.elevationBands[scene.elevationBands.length - 1] ??
+    null;
 
   return (
     <div className="simulation-map">
@@ -61,6 +72,9 @@ export default function SimulationMap2D({
           <h3 className="simulation-map__title">Zone-aware agent communication surface</h3>
           <p className="simulation-map__subtitle">
             {scene.zSemantics.subtitle}
+          </p>
+          <p className="simulation-map__subtitle">
+            Derived from live agent `z` values refreshed by energy, zone influence, policy sensitivity, memory, and relationship state.
           </p>
         </div>
         <div className="simulation-map__meta">
@@ -120,7 +134,10 @@ export default function SimulationMap2D({
                 style={{
                   fill: contourFill(scene.zSemantics, index, band.alpha),
                   stroke: contourStroke(scene.zSemantics, index),
+                  opacity: !activeBand || activeBand.key === band.key ? 1 : 0.58,
                 }}
+                onMouseEnter={() => setHoveredBandKey(band.key)}
+                onMouseLeave={() => setHoveredBandKey(null)}
               >
                 <title>{band.label}</title>
               </path>
@@ -165,6 +182,21 @@ export default function SimulationMap2D({
           </svg>
         )}
       </div>
+
+      {activeBand && (
+        <div className="simulation-map__detail-card">
+          <div>
+            <p className="simulation-map__detail-eyebrow">{scene.zSemantics.contourName}</p>
+            <h4 className="simulation-map__detail-title">{activeBand.label}</h4>
+          </div>
+          <div className="simulation-map__detail-grid">
+            <span>{activeBand.agentCount} agents</span>
+            <span>avg z {activeBand.avgZ.toFixed(2)}</span>
+            <span>avg energy {activeBand.avgEnergy.toFixed(1)}</span>
+            <span>dominant role {activeBand.dominantRole}</span>
+          </div>
+        </div>
+      )}
 
       <div className="simulation-map__legend">
         {scene.zoneBoxes.slice(0, 5).map((zone, index) => (
@@ -351,55 +383,134 @@ function buildElevationBands({
 }) {
   const bandCount = 4;
   const spanZ = Math.max(0.001, maxZ - minZ);
-  const bands: ElevationBand[] = [];
+  const buckets = Array.from({ length: bandCount }, (_, index) => ({
+    index,
+    lower: minZ + (spanZ * index) / bandCount,
+    upper: minZ + (spanZ * (index + 1)) / bandCount,
+    points: [] as Array<{ x: number; y: number }>,
+    energySum: 0,
+    zSum: 0,
+    roleCounts: new Map<string, number>(),
+  }));
 
-  for (let index = 0; index < bandCount; index += 1) {
-    const lower = minZ + (spanZ * index) / bandCount;
-    const upper = minZ + (spanZ * (index + 1)) / bandCount;
-    const selected = cells.filter((cell) => {
-      const z = cell.z ?? 0;
-      if (index === bandCount - 1) return z >= lower && z <= upper;
-      return z >= lower && z < upper;
-    });
-    if (selected.length < 2) continue;
-
-    const xs = selected.map((cell) => projectX(cell.x));
-    const ys = selected.map((cell) => projectY(cell.y));
-    const x0 = Math.max(PADDING - 8, Math.min(...xs) - 20);
-    const x1 = Math.min(SVG_WIDTH - PADDING + 8, Math.max(...xs) + 20);
-    const y0 = Math.max(PADDING - 8, Math.min(...ys) - 20);
-    const y1 = Math.min(SVG_HEIGHT - PADDING + 8, Math.max(...ys) + 20);
-    const d = roundedRectPath(x0, y0, Math.max(22, x1 - x0), Math.max(22, y1 - y0), 28);
-    bands.push({
-      key: `band-${index}`,
-      d,
-      label: `elevation ${lower.toFixed(1)}-${upper.toFixed(1)}`,
-      alpha: 0.08 + index * 0.035,
-    });
+  for (const cell of cells) {
+    const z = cell.z ?? 0;
+    const rawIndex = Math.floor(((z - minZ) / spanZ) * bandCount);
+    const index = Math.max(0, Math.min(bandCount - 1, rawIndex));
+    const bucket = buckets[index]!;
+    bucket.points.push({ x: projectX(cell.x), y: projectY(cell.y) });
+    bucket.energySum += cell.energy;
+    bucket.zSum += z;
+    const role = cell.role_label ?? cell.role_key ?? "agent";
+    bucket.roleCounts.set(role, (bucket.roleCounts.get(role) ?? 0) + 1);
   }
-  return bands;
-}
 
-function roundedRectPath(x: number, y: number, width: number, height: number, radius: number) {
-  const r = Math.min(radius, width / 2, height / 2);
-  return [
-    `M ${x + r} ${y}`,
-    `H ${x + width - r}`,
-    `Q ${x + width} ${y} ${x + width} ${y + r}`,
-    `V ${y + height - r}`,
-    `Q ${x + width} ${y + height} ${x + width - r} ${y + height}`,
-    `H ${x + r}`,
-    `Q ${x} ${y + height} ${x} ${y + height - r}`,
-    `V ${y + r}`,
-    `Q ${x} ${y} ${x + r} ${y}`,
-    "Z",
-  ].join(" ");
+  return buckets.flatMap((bucket) => {
+    if (bucket.points.length < 3) {
+      return [];
+    }
+    const hull = convexHull(bucket.points);
+    if (hull.length < 3) {
+      return [];
+    }
+    const expanded = expandPolygon(hull, 16);
+    const d = smoothClosedPath(expanded);
+    const dominantRole =
+      [...bucket.roleCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "agent";
+    return [
+      {
+        key: `band-${bucket.index}`,
+        d,
+        label: `elevation ${bucket.lower.toFixed(1)}-${bucket.upper.toFixed(1)}`,
+        alpha: 0.08 + bucket.index * 0.035,
+        lower: bucket.lower,
+        upper: bucket.upper,
+        agentCount: bucket.points.length,
+        avgEnergy: bucket.energySum / bucket.points.length,
+        avgZ: bucket.zSum / bucket.points.length,
+        dominantRole,
+      },
+    ];
+  });
 }
 
 function contourLegendFill(semantics: ZSemantics) {
   const top = semantics.fills[1]?.replace("__ALPHA__", "0.180") ?? "rgba(14, 165, 233, 0.18)";
   const bottom = semantics.fills[2]?.replace("__ALPHA__", "0.080") ?? "rgba(59, 130, 246, 0.08)";
   return `linear-gradient(180deg, ${top}, ${bottom}), #ffffff`;
+}
+
+function convexHull(points: Array<{ x: number; y: number }>) {
+  const unique = Array.from(
+    new Map(points.map((point) => [`${point.x.toFixed(2)}:${point.y.toFixed(2)}`, point])).values()
+  ).sort((a, b) => a.x - b.x || a.y - b.y);
+  if (unique.length <= 3) return unique;
+
+  const lower: Array<{ x: number; y: number }> = [];
+  for (const point of unique) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, point) <= 0) {
+      lower.pop();
+    }
+    lower.push(point);
+  }
+  const upper: Array<{ x: number; y: number }> = [];
+  for (let index = unique.length - 1; index >= 0; index -= 1) {
+    const point = unique[index]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, point) <= 0) {
+      upper.pop();
+    }
+    upper.push(point);
+  }
+  lower.pop();
+  upper.pop();
+  return [...lower, ...upper];
+}
+
+function expandPolygon(points: Array<{ x: number; y: number }>, padding: number) {
+  const centroid = points.reduce(
+    (acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }),
+    { x: 0, y: 0 }
+  );
+  centroid.x /= points.length;
+  centroid.y /= points.length;
+  return points.map((point) => {
+    const dx = point.x - centroid.x;
+    const dy = point.y - centroid.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return {
+      x: clamp(point.x + (dx / length) * padding, PADDING - 8, SVG_WIDTH - PADDING + 8),
+      y: clamp(point.y + (dy / length) * padding, PADDING - 8, SVG_HEIGHT - PADDING + 8),
+    };
+  });
+}
+
+function smoothClosedPath(points: Array<{ x: number; y: number }>) {
+  if (points.length < 3) return "";
+  const path = [];
+  const firstMid = midpoint(points[0]!, points[1]!);
+  path.push(`M ${firstMid.x.toFixed(1)} ${firstMid.y.toFixed(1)}`);
+  for (let index = 1; index <= points.length; index += 1) {
+    const current = points[index % points.length]!;
+    const next = points[(index + 1) % points.length]!;
+    const mid = midpoint(current, next);
+    path.push(
+      `Q ${current.x.toFixed(1)} ${current.y.toFixed(1)} ${mid.x.toFixed(1)} ${mid.y.toFixed(1)}`
+    );
+  }
+  path.push("Z");
+  return path.join(" ");
+}
+
+function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function cross(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function inferZMode(cells: CellSnapshot[]) {

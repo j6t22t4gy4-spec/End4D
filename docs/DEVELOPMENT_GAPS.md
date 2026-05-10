@@ -31,6 +31,7 @@
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
 | policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
+| social elevation z-field | 부분 구현 | 높음 | z는 재도입됐지만 contour 품질, z drift 비교, 정책/집단 상태와의 연결 설명력이 더 필요 |
 | Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + manifest sync + 운영 전 단계 | 높음 | 실제 대용량 pack 설치·품질 검증은 더 필요 |
 | 비용 제어 & 호출 스케줄링 | 초기 구현 | 높음 | 샘플링·간격 제어는 있으나 task priority, adaptive budget, cost accounting이 더 필요 |
 | Storage Layer 추상화 | 부분 구현 | 높음 | file envelope와 integrity는 있으나 snapshot index, archive, partial restore 최적화가 더 필요 |
@@ -97,6 +98,15 @@
 - 분포 기반 role mix 결정
 - 분포 기반 초기 위치/energy/gene bias
 - 한국/미국/일본 등 국가별 fallback 정책
+
+### 2.7 Social Elevation z-field
+
+현재 엔진은 `(x, y, z, t)`를 유지하며 `z`를 social elevation으로 저장·복원하고, God Mode에서 `z_mode / z_weight / z_scale`까지 제어할 수 있다. 그러나 다음이 더 필요하다.
+
+- contour 품질 개선: 단순 밴드가 아니라 더 자연스러운 고도장 표현
+- z drift 비교: session/world comparison에서 정책 전후 또는 fork 간 elevation 변화 비교
+- z provenance: 현재 z가 어떤 mode와 어떤 agent state 축에서 계산됐는지 결과물에 더 명확히 노출
+- group/policy linkage: coalition drift, policy sensitivity, memory accumulation과 z 변화의 관계를 리포트할 수 있어야 함
 
 ### 2.6 멀티 에이전트 대화 / 집단 상호작용
 
