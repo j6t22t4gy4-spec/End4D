@@ -105,6 +105,7 @@ def inject_event(world_id: str, body: InjectRequest):
                 "current_t": t_inject,
                 "t_max": t_max,
                 "snapshot_store": store,
+                "engine_params": world_store.get_engine_params(world_id),
                 "nutrient_per_step": nps,
             },
             config={"recursion_limit": int(max(t_max - t_inject, 0)) + 80},

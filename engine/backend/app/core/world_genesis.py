@@ -9,7 +9,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
-from typing import List
+from typing import Any, Dict, List
 
 from app.core.persona_dataset import infer_country_from_prompt
 from app.core.settings import get_llm_chat_enabled
@@ -108,6 +108,35 @@ def propose_world_from_prompt(prompt: str) -> GenesisPlan:
 
     llm_plan = _llm_plan(text, heuristic)
     return llm_plan or heuristic
+
+
+def apply_genesis_overrides(
+    plan: GenesisPlan,
+    overrides: Dict[str, Any] | None = None,
+) -> GenesisPlan:
+    data = dict(overrides or {})
+    role_catalog = [
+        str(item).strip()
+        for item in data.get("role_catalog") or plan.role_catalog
+        if str(item).strip()
+    ]
+    if not role_catalog:
+        role_catalog = list(plan.role_catalog)
+    return GenesisPlan(
+        t_max=max(1.0, float(data.get("t_max", plan.t_max))),
+        initial_cell_count=max(
+            6, min(256, int(data.get("initial_cell_count", plan.initial_cell_count)))
+        ),
+        role_catalog=role_catalog[:16],
+        rationale=str(data.get("rationale") or plan.rationale),
+        t_step_semantic=str(data.get("t_step_semantic") or plan.t_step_semantic),
+        t_step_unit=str(data.get("t_step_unit") or plan.t_step_unit),
+        nutrient_per_step=max(
+            0.01, float(data.get("nutrient_per_step", plan.nutrient_per_step))
+        ),
+        persona_country=str(data.get("persona_country") or plan.persona_country),
+        persona_source=str(data.get("persona_source") or plan.persona_source),
+    )
 
 
 def _heuristic_plan(text: str) -> GenesisPlan:

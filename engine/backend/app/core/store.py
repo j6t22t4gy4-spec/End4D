@@ -73,6 +73,7 @@ class WorldStore:
         persona_country: str = "",
         persona_source: str = "",
         persona_catalog: Optional[list] = None,
+        engine_params: Optional[dict] = None,
         simulation_config: Optional[dict] = None,
         config_version: str = "",
         comparison_meta: Optional[dict] = None,
@@ -90,6 +91,7 @@ class WorldStore:
             t_step_unit=t_step_unit,
             nutrient_per_step=float(nutrient_per_step),
         )
+        params = dict(engine_params or {})
         config = simulation_config or build_simulation_config(
             t_max=float(t_max),
             initial_cell_count=int(initial_cell_count),
@@ -99,7 +101,7 @@ class WorldStore:
             nutrient_per_step=float(nutrient_per_step),
             persona_country=persona_country,
             persona_source=persona_source,
-            engine_params={},
+            engine_params=params,
             comparison_meta=dict(comparison_meta or {}),
         )
         version = config_version or simulation_config_version(config)
@@ -118,6 +120,7 @@ class WorldStore:
             "persona_country": persona_country,
             "persona_source": persona_source,
             "persona_catalog": list(persona_catalog or []),
+            "engine_params": params,
             "simulation_config": dict(config),
             "config_version": version,
             "comparison_meta": dict(comparison_meta or {}),
@@ -175,6 +178,16 @@ class WorldStore:
             return []
         return list(entry.get("persona_catalog") or [])
 
+    def get_engine_params(self, world_id: str) -> dict:
+        entry = self._worlds.get(world_id)
+        if not entry:
+            return {}
+        params = entry.get("engine_params")
+        if params is not None:
+            return dict(params)
+        config = dict(entry.get("simulation_config") or {})
+        return dict(config.get("engine_params") or {})
+
     def clone_from_snapshot(
         self,
         source_world_id: str,
@@ -204,6 +217,7 @@ class WorldStore:
             persona_country=str(source.get("persona_country") or ""),
             persona_source=str(source.get("persona_source") or ""),
             persona_catalog=list(source.get("persona_catalog") or []),
+            engine_params=dict(source.get("engine_params") or {}),
             simulation_config=dict(source.get("simulation_config") or {}),
             config_version=str(source.get("config_version") or ""),
             comparison_meta={

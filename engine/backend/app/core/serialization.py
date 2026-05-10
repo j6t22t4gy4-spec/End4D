@@ -154,6 +154,7 @@ def world_entry_to_dict(entry: Dict[str, Any]) -> Dict[str, Any]:
         "persona_country": str(entry.get("persona_country") or ""),
         "persona_source": str(entry.get("persona_source") or ""),
         "persona_catalog": list(entry.get("persona_catalog") or []),
+        "engine_params": dict(entry.get("engine_params") or {}),
         "simulation_config": dict(entry.get("simulation_config") or {}),
         "config_version": str(entry.get("config_version") or ""),
         "comparison_meta": dict(entry.get("comparison_meta") or {}),

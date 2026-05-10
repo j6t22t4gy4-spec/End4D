@@ -28,6 +28,27 @@ def test_graph_run_preserves_vector_shapes_and_advances_t():
         assert isinstance(c.action_state, dict)
 
 
+def test_graph_uses_engine_zone_layout_params():
+    store = SnapshotStore()
+    graph = create_time_flow_graph()
+    out = graph.invoke(
+        {
+            "initial_cell_count": 6,
+            "t_max": 1,
+            "snapshot_store": store,
+            "engine_params": {
+                "zone_count": 3,
+                "zone_layout": "bands",
+                "zone_spacing": 3.0,
+            },
+        }
+    )
+    zone_ids = {c.zone_id for c in out["cells"]}
+    ys = {round(float(c.y), 1) for c in out["cells"]}
+    assert len(zone_ids) == 3
+    assert len(ys) >= 2
+
+
 def test_thought_refresh_at_interval_changes_vector():
     """Thought는 current_t=20인 스텝에서 갱신되므로 t_max>20 필요."""
     store = SnapshotStore()

@@ -16,6 +16,7 @@ import {
   sampleCellsForVisualization,
   type CreateWorldResult,
   type CellSnapshot,
+  type GodModePayload,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
@@ -43,6 +44,19 @@ export default function GodView({
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
   const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [godModeEnabled, setGodModeEnabled] = useState(false);
+  const [autoRolesFromPersonas, setAutoRolesFromPersonas] = useState(true);
+  const [customTMax, setCustomTMax] = useState("160");
+  const [customInitialCells, setCustomInitialCells] = useState("16");
+  const [customRoles, setCustomRoles] = useState("시민, 규제자, 시장참여자, 기업, 관측자");
+  const [customCountry, setCustomCountry] = useState("KR");
+  const [customNutrient, setCustomNutrient] = useState("1.0");
+  const [customTUnit, setCustomTUnit] = useState("day");
+  const [zoneCount, setZoneCount] = useState("4");
+  const [zoneLayout, setZoneLayout] = useState("grid");
+  const [zoneSpacing, setZoneSpacing] = useState("2.0");
+  const [zoneInfluenceStep, setZoneInfluenceStep] = useState("0.08");
+  const [zoneFrictionStep, setZoneFrictionStep] = useState("0.10");
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -79,7 +93,32 @@ export default function GodView({
     }
     try {
       disconnectWebSocket();
-      const out = await createWorld({ prompt, session_id: activeSessionId });
+      const godMode: GodModePayload | null = godModeEnabled
+        ? {
+            enabled: true,
+            auto_roles_from_personas: autoRolesFromPersonas,
+            overrides: {
+              t_max: parsePositiveNumber(customTMax),
+              initial_cell_count: parsePositiveInt(customInitialCells),
+              role_catalog: splitRoles(customRoles),
+              t_step_unit: customTUnit.trim() || undefined,
+              nutrient_per_step: parsePositiveNumber(customNutrient),
+              persona_country: customCountry.trim() || undefined,
+            },
+            engine_params: {
+              zone_count: parsePositiveInt(zoneCount),
+              zone_layout: zoneLayout,
+              zone_spacing: parsePositiveNumber(zoneSpacing),
+              zone_influence_step: parseNumber(zoneInfluenceStep),
+              zone_friction_step: parseNumber(zoneFrictionStep),
+            },
+          }
+        : null;
+      const out = await createWorld({
+        prompt,
+        session_id: activeSessionId,
+        god_mode: godMode,
+      });
       setLastGenesis(out);
       setWorldId(out.world_id);
       setActiveSessionId(out.session_id);
@@ -92,7 +131,25 @@ export default function GodView({
     } catch (e) {
       setCreateError((e as Error).message);
     }
-  }, [bumpChartRefresh, disconnectWebSocket, genesisPrompt]);
+  }, [
+    activeSessionId,
+    autoRolesFromPersonas,
+    bumpChartRefresh,
+    customCountry,
+    customInitialCells,
+    customNutrient,
+    customRoles,
+    customTMax,
+    customTUnit,
+    disconnectWebSocket,
+    genesisPrompt,
+    godModeEnabled,
+    zoneCount,
+    zoneFrictionStep,
+    zoneInfluenceStep,
+    zoneLayout,
+    zoneSpacing,
+  ]);
 
   const refreshSnapshots = useCallback(
     async (wid: string) => {
@@ -194,6 +251,16 @@ export default function GodView({
           title="Scenario Genesis"
           subtitle="Prompt-driven world creation"
           bodyClassName="space-y-4"
+          action={
+            <label className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={godModeEnabled}
+                onChange={(e) => setGodModeEnabled(e.target.checked)}
+              />
+              God Mode
+            </label>
+          }
         >
           <label className="flex flex-col gap-2">
             <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
@@ -217,6 +284,76 @@ export default function GodView({
               </span>
             )}
           </div>
+          {godModeEnabled && (
+            <div className="grid gap-3 rounded-[22px] border border-slate-200 bg-slate-50/90 p-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  t_max
+                  <input value={customTMax} onChange={(e) => setCustomTMax(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  initial cells
+                  <input value={customInitialCells} onChange={(e) => setCustomInitialCells(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
+                  roles (comma separated)
+                  <input value={customRoles} onChange={(e) => setCustomRoles(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  persona country
+                  <input value={customCountry} onChange={(e) => setCustomCountry(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  nutrient / step
+                  <input value={customNutrient} onChange={(e) => setCustomNutrient(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  time unit
+                  <select value={customTUnit} onChange={(e) => setCustomTUnit(e.target.value)} className="app-input">
+                    <option value="hour">hour</option>
+                    <option value="day">day</option>
+                    <option value="month">month</option>
+                    <option value="year">year</option>
+                    <option value="decade_scale">decade_scale</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={autoRolesFromPersonas}
+                    onChange={(e) => setAutoRolesFromPersonas(e.target.checked)}
+                  />
+                  persona roles auto-merge
+                </label>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  zone count
+                  <input value={zoneCount} onChange={(e) => setZoneCount(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  zone layout
+                  <select value={zoneLayout} onChange={(e) => setZoneLayout(e.target.value)} className="app-input">
+                    <option value="grid">grid</option>
+                    <option value="bands">bands</option>
+                    <option value="ring">ring</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  zone spacing
+                  <input value={zoneSpacing} onChange={(e) => setZoneSpacing(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  influence step
+                  <input value={zoneInfluenceStep} onChange={(e) => setZoneInfluenceStep(e.target.value)} className="app-input" />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  friction step
+                  <input value={zoneFrictionStep} onChange={(e) => setZoneFrictionStep(e.target.value)} className="app-input" />
+                </label>
+              </div>
+            </div>
+          )}
           {worldId && (
             <div className="grid gap-2">
               <p className="rounded-2xl bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
@@ -316,6 +453,29 @@ export default function GodView({
 
     </div>
   );
+}
+
+function parsePositiveInt(value: string): number | undefined {
+  const parsed = parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parsePositiveNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseNumber(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function splitRoles(value: string): string[] | undefined {
+  const roles = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return roles.length ? roles : undefined;
 }
 
 function RunPanel({

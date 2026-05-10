@@ -153,6 +153,29 @@ export type CreateWorldResult = {
   persona_source: string;
   persona_count: number;
   session_id: string;
+  simulation_config: Record<string, unknown>;
+};
+
+export type GodModePayload = {
+  enabled: boolean;
+  auto_roles_from_personas?: boolean;
+  overrides?: {
+    t_max?: number;
+    initial_cell_count?: number;
+    role_catalog?: string[];
+    t_step_semantic?: string;
+    t_step_unit?: string;
+    nutrient_per_step?: number;
+    persona_country?: string;
+    persona_source?: string;
+  };
+  engine_params?: {
+    zone_count?: number;
+    zone_layout?: string;
+    zone_spacing?: number;
+    zone_influence_step?: number;
+    zone_friction_step?: number;
+  };
 };
 
 export type SessionWorldSummary = {
@@ -178,11 +201,16 @@ export type SessionSummary = {
 export async function createWorld(body: {
   prompt: string;
   session_id?: string | null;
+  god_mode?: GodModePayload | null;
 }): Promise<CreateWorldResult> {
   const res = await fetch(`${API_BASE}/worlds`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: body.prompt }),
+    body: JSON.stringify({
+      prompt: body.prompt,
+      session_id: body.session_id,
+      god_mode: body.god_mode,
+    }),
   });
   if (!res.ok) throw new Error(`createWorld: ${res.status}`);
   return res.json();

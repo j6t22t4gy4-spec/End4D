@@ -18,7 +18,7 @@ from app.core.persona_dataset import (
     personas_to_dicts,
 )
 from app.core.store import world_store
-from app.core.world_genesis import propose_world_from_prompt
+from app.core.world_genesis import apply_genesis_overrides, propose_world_from_prompt
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
 
@@ -35,6 +35,10 @@ class CreateWorldRequest(BaseModel):
     session_id: Optional[str] = Field(
         default=None,
         description="결과를 연결할 실행 세션 ID. 미지정 시 자동 생성",
+    )
+    god_mode: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="고급 수동 제어. 미지정 시 자동 계획 사용",
     )
 
 
@@ -54,6 +58,7 @@ class CreateWorldResponse(BaseModel):
     persona_count: int
     config_version: str
     session_id: str
+    simulation_config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WorldResponse(BaseModel):
@@ -108,6 +113,13 @@ class PersonaPreviewResponse(BaseModel):
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
     plan = propose_world_from_prompt(req.prompt)
+    god_mode = dict(req.god_mode or {})
+    god_enabled = bool(god_mode.get("enabled"))
+    god_overrides = dict(god_mode.get("overrides") or {})
+    engine_params = dict(god_mode.get("engine_params") or {})
+    auto_roles_from_personas = bool(god_mode.get("auto_roles_from_personas", True))
+    if god_enabled:
+        plan = apply_genesis_overrides(plan, god_overrides)
     personas = load_persona_seeds(
         country=plan.persona_country,
         count=plan.initial_cell_count,
@@ -115,13 +127,32 @@ def create_world(req: CreateWorldRequest):
     )
     persona_catalog = personas_to_dicts(personas)
     role_catalog = plan.role_catalog
-    if personas:
+    if personas and auto_roles_from_personas:
         persona_roles = []
         for p in personas:
             if p.role_label and p.role_label not in persona_roles:
                 persona_roles.append(p.role_label)
         role_catalog = persona_roles[:8] or role_catalog
+    if god_enabled and god_overrides.get("role_catalog"):
+        role_catalog = [str(role).strip() for role in god_overrides.get("role_catalog") or [] if str(role).strip()] or role_catalog
     persona_source = persona_source_label(plan.persona_country) if persona_catalog else f"not_configured:{plan.persona_country}"
+    simulation_config = {
+        "schema_version": "simulation-config/v2",
+        "t_max": float(plan.t_max),
+        "initial_cell_count": int(plan.initial_cell_count),
+        "role_catalog": list(role_catalog),
+        "t_step_semantic": plan.t_step_semantic,
+        "t_step_unit": plan.t_step_unit,
+        "nutrient_per_step": float(plan.nutrient_per_step),
+        "persona_country": plan.persona_country,
+        "persona_source": persona_source,
+        "engine_params": {
+            **engine_params,
+            "control_mode": "god" if god_enabled else "auto",
+            "auto_roles_from_personas": auto_roles_from_personas,
+        },
+        "comparison_meta": {},
+    }
 
     world_id = world_store.create(
         t_max=plan.t_max,
@@ -135,6 +166,8 @@ def create_world(req: CreateWorldRequest):
         persona_country=plan.persona_country,
         persona_source=persona_source,
         persona_catalog=persona_catalog,
+        engine_params=simulation_config["engine_params"],
+        simulation_config=simulation_config,
         session_id=req.session_id,
     )
     entry = world_store.get(world_id)
@@ -152,6 +185,7 @@ def create_world(req: CreateWorldRequest):
         persona_count=len(persona_catalog),
         config_version=str((entry or {}).get("config_version") or ""),
         session_id=str((entry or {}).get("session_id") or ""),
+        simulation_config=dict((entry or {}).get("simulation_config") or {}),
     )
 
 

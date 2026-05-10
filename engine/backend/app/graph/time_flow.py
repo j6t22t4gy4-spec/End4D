@@ -20,15 +20,22 @@ def _create_initial_cells(
     t: float = 0.0,
     role_catalog: Optional[List[str]] = None,
     persona_catalog: Optional[List[dict]] = None,
+    engine_params: Optional[Dict[str, Any]] = None,
 ) -> List[Cell]:
     """초기 세포 생성. 페르소나가 있으면 역할·메모리 seed로 사용."""
     import numpy as np
     import math
 
+    params = dict(engine_params or {})
     roles = role_catalog if role_catalog else ["agent"]
     if not roles:
         roles = ["agent"]
     personas = persona_catalog or []
+    zone_count = max(1, min(12, int(params.get("zone_count", max(1, min(4, count))))))
+    zone_layout = str(params.get("zone_layout", "grid")).strip() or "grid"
+    spacing = max(0.6, float(params.get("zone_spacing", 2.0)))
+    zone_influence_step = max(0.0, float(params.get("zone_influence_step", 0.08)))
+    zone_friction_step = max(0.0, float(params.get("zone_friction_step", 0.1)))
 
     cells = []
     grid_width = max(1, math.ceil(count ** 0.5))
@@ -37,16 +44,27 @@ def _create_initial_cells(
         rk = str(persona.get("role_key") or roles[i % len(roles)])
         label = str(persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
-        zone_index = i % max(1, min(4, count))
+        zone_index = i % zone_count
         zone_id = str(persona.get("zone_id") or f"zone-{zone_index}")
         zone_label = str(persona.get("zone_label") or f"Zone {zone_index}")
-        zone_influence = float(persona.get("zone_influence", 1.0 + 0.08 * zone_index))
-        zone_friction = float(persona.get("zone_friction", 0.1 * zone_index))
+        zone_influence = float(persona.get("zone_influence", 1.0 + zone_influence_step * zone_index))
+        zone_friction = float(persona.get("zone_friction", zone_friction_step * zone_index))
         row = i // grid_width
         col = i % grid_width
+        if zone_layout == "bands":
+            x = float(col * spacing)
+            y = float(zone_index * spacing * 2.2 + (row // max(1, zone_count)) * spacing)
+        elif zone_layout == "ring":
+            theta = (2.0 * math.pi * i) / max(1, count)
+            radius = spacing * (2.4 + zone_index * 0.55)
+            x = float(math.cos(theta) * radius)
+            y = float(math.sin(theta) * radius)
+        else:
+            x = float(col * spacing)
+            y = float(row * spacing)
         cell = Cell(
-                x=float(col * 2.0),
-                y=float(row * 2.0),
+                x=x,
+                y=y,
                 z=0.0,
                 t=t,
                 energy=50.0,
@@ -84,6 +102,7 @@ def _init_node(state: SimulationState) -> SimulationState:
             t=0.0,
             role_catalog=state.get("role_catalog"),
             persona_catalog=state.get("persona_catalog"),
+            engine_params=state.get("engine_params"),
         )
     out: SimulationState = {
         "cells": cells,
@@ -95,6 +114,8 @@ def _init_node(state: SimulationState) -> SimulationState:
         out["nutrient_per_step"] = state["nutrient_per_step"]
     if "snapshot_store" in state:
         out["snapshot_store"] = state["snapshot_store"]
+    if "engine_params" in state:
+        out["engine_params"] = dict(state["engine_params"])
     store = state.get("snapshot_store")
     if store is not None:
         store.save(0.0, cells)

@@ -33,6 +33,42 @@ def test_create_world_from_prompt():
     assert "persona_source" in data
     assert "persona_count" in data
     assert data["config_version"]
+    assert "simulation_config" in data
+
+
+def test_create_world_with_god_mode_overrides():
+    r = client.post(
+        "/worlds",
+        json={
+            "prompt": "한국 도시 정책 시뮬레이션",
+            "god_mode": {
+                "enabled": True,
+                "auto_roles_from_personas": False,
+                "overrides": {
+                    "t_max": 42,
+                    "initial_cell_count": 12,
+                    "role_catalog": ["시민", "규제자", "기업"],
+                    "persona_country": "JP",
+                    "nutrient_per_step": 2.5,
+                    "t_step_unit": "month",
+                },
+                "engine_params": {
+                    "zone_count": 6,
+                    "zone_layout": "bands",
+                    "zone_spacing": 3.5,
+                },
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["t_max"] == 42
+    assert data["initial_cell_count"] == 12
+    assert data["role_catalog"] == ["시민", "규제자", "기업"]
+    assert data["persona_country"] == "JP"
+    assert data["nutrient_per_step"] == 2.5
+    assert data["simulation_config"]["engine_params"]["control_mode"] == "god"
+    assert data["simulation_config"]["engine_params"]["zone_layout"] == "bands"
 
 
 def test_world_persona_preview():
