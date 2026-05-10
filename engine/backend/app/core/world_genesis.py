@@ -13,8 +13,7 @@ from typing import List
 
 from app.core.persona_dataset import infer_country_from_prompt
 from app.core.settings import get_llm_chat_enabled
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_registry import get_prompt_version
+from app.llm.facade import llm_facade
 
 
 # 기본 역할 풀 — 시나리오가 구체적이지 않을 때
@@ -165,14 +164,10 @@ def _heuristic_plan(text: str) -> GenesisPlan:
 
 
 def _llm_plan(text: str, fallback: GenesisPlan) -> GenesisPlan | None:
-    prompt = (
-        f"prompt_version={get_prompt_version('genesis')}\n"
-        f"user_prompt={text}\n"
-        "Heuristic baseline:\n"
-        f"{json.dumps(_plan_to_dict(fallback), ensure_ascii=False)}\n"
-        "Return JSON only."
+    out = llm_facade.plan_genesis(
+        text,
+        json.dumps(_plan_to_dict(fallback), ensure_ascii=False),
     )
-    out = generate_reasoning_texts([prompt], task="genesis")[0]
     payload = _extract_json_object(out)
     if payload is None:
         return None

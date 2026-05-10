@@ -26,11 +26,15 @@
 | 영역 | 현재 상태 | 우선순위 | 문제 |
 |------|-----------|----------|------|
 | persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 초기 세계 구조를 충분히 결정하지 못함 |
+| LLM 호출 입구 (Facade / Engine API) | 초기 구현 | 최상 | abstraction은 있지만 엔진 개발자가 `think()`, `decide_actions()`처럼 일관되게 쓰는 공통 입구가 더 필요 |
 | group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 집단 stance/cohesion/tension drift가 아직 약함 |
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
 | policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
 | Nemotron-Personas-Korea 및 다국가 실제 운영 연동 | seed adapter + manifest sync + 운영 전 단계 | 높음 | 실제 대용량 pack 설치·품질 검증은 더 필요 |
+| 비용 제어 & 호출 스케줄링 | 초기 구현 | 높음 | 샘플링·간격 제어는 있으나 task priority, adaptive budget, cost accounting이 더 필요 |
+| Storage Layer 추상화 | 부분 구현 | 높음 | file envelope와 integrity는 있으나 snapshot index, archive, partial restore 최적화가 더 필요 |
+| 대규모 에이전트 성능 최적화 | 중간 이하 | 높음 | 샘플링은 있으나 10k+ 실측 벤치와 병렬 처리·lazy update 검증이 더 필요 |
 | 챗봇 UI / 대화 엔진 | 전무 | 중 | 중요하지만 현재는 코어 시뮬레이션 설명력보다 후순위 |
 | 사용자 입력 → Thought/Worldview 업데이트 파이프라인 | 전무 | 중 | 데이터 플라이휠 핵심이지만 내부 엔진 플라이휠 이후가 더 적절 |
 | 사용자 데이터 수집·동의·익명화 체계 | 전무 | 중 | 제품화에는 필수지만 지금은 엔진 코어보다 후순위 |
@@ -112,15 +116,15 @@
 | 순서 | 작업 | 이유 |
 |------|------|------|
 | 1 | persona-aware Genesis | 국가 단위 사회의 초기 조건 품질을 끌어올림 |
-| 2 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
-| 3 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
-| 4 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
-| 5 | prompt/provider/dataset provenance 저장 | 예측 결과의 재현성과 감사 가능성 확보 |
-| 6 | Nemotron 및 다국가 registry 운영 검증 | 데이터 레이어를 제품화 가능한 수준으로 올림 |
-| 7 | ChatPanel + 대화 엔진 | 코어 시뮬레이션 위에 자연어 인터페이스를 얹음 |
-| 8 | 사용자 발화 → memory/event 변환 | 대화가 실제 시뮬레이션 상태를 바꾸게 함 |
-| 9 | consent/anonymization | 사용자 데이터 플라이휠의 법적 안전성 확보 |
-| 10 | group conversation | 집단 정책 토론/협상 시뮬레이션 강화 |
+| 2 | LLM 호출 입구 + Facade 표준화 | 기능이 늘어날수록 provider/prompt/budget 제어를 한곳으로 모아야 함 |
+| 3 | 비용 제어 & 호출 스케줄링 | 장시간 시뮬레이션과 로컬 하이브리드 방향의 핵심 |
+| 4 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
+| 5 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
+| 6 | Storage Layer 고도화 | 스냅샷, 포크, 재현성, 무결성의 기반 |
+| 7 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
+| 8 | Nemotron 및 다국가 registry 운영 검증 | 데이터 레이어를 제품화 가능한 수준으로 올림 |
+| 9 | 대규모 성능 벤치와 최적화 | 10k+ 규모 신뢰성 확보 |
+| 10 | ChatPanel + 대화 엔진 | 코어 시뮬레이션 위에 자연어 인터페이스를 얹음 |
 
 ---
 
@@ -157,6 +161,8 @@
 ### 5.1 반드시 먼저 완성할 것
 
 - [ ] persona distribution이 Genesis 결과(`t_max`, role mix, nutrient scale, initial bias)에 반영된다
+- [ ] 엔진이 `llm_facade.think() / decide_actions() / interpret_policy()` 같은 일관된 LLM 입구를 사용한다
+- [ ] task별 budget, sampling, cadence가 메타와 함께 추적된다
 - [ ] role/persona group 기준의 stance/cohesion/tension drift가 저장·조회된다
 - [ ] policy/event injection이 강도, 범위, 지속시간을 가진다
 - [ ] session에서 world 간 비교와 최근 world reopen이 가능하다

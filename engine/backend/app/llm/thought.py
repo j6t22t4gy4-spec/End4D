@@ -11,8 +11,7 @@ from typing import List
 
 from app.core.settings import get_llm_agent_sample_size
 from app.llm.embeddings import embed_texts
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_thought_prompt
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 # ARCHITECTURE_CHECKLIST 4.3: 10~50 t
@@ -24,8 +23,7 @@ def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
 
     selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
     selected_cells = [cells[idx] for idx in selected]
-    prompts = [build_thought_prompt(c) for c in selected_cells]
-    texts = generate_reasoning_texts(prompts, task="thought")
+    texts = llm_facade.think(selected_cells)
     vecs = embed_texts(texts, 256)
     out: List[Cell] = [c.copy() for c in cells]
     for k, idx in enumerate(selected):

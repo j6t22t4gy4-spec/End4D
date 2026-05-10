@@ -11,8 +11,7 @@ from app.core.settings import (
     get_group_deliberation_max_groups,
     get_llm_agent_sample_size,
 )
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_group_deliberation_prompt
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 
@@ -27,11 +26,11 @@ def apply_group_deliberation_if_due(cells: List[Cell], current_t: float) -> List
     if not groups:
         return cells
 
-    prompts = [
-        build_group_deliberation_prompt(role, members[: min(len(members), 16)], current_t=current_t)
+    prompt_groups = {
+        role: members[: min(len(members), 16)]
         for role, members in groups.items()
-    ]
-    generated = generate_reasoning_texts(prompts, task="group_deliberation")
+    }
+    generated = llm_facade.deliberate_groups(prompt_groups, current_t=current_t)
     out = [cell.copy() for cell in cells]
     index_by_id = {cell.cell_id: idx for idx, cell in enumerate(out)}
     representative_limit = max(4, get_llm_agent_sample_size() // max(1, len(groups)))

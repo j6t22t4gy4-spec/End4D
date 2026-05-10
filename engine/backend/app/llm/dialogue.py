@@ -8,8 +8,7 @@ from app.core.coordinates import distance_4d
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.settings import get_dialogue_interval, get_dialogue_max_pairs
 from app.core.spatial_index import SpatialHashGrid
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_dialogue_prompt
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 DIALOGUE_RADIUS = 5.0
@@ -26,8 +25,10 @@ def apply_agent_dialogues_if_due(cells: List[Cell], current_t: float) -> List[Ce
     if not pairs:
         return cells
 
-    prompts = [build_dialogue_prompt(cells[i], cells[j], current_t=current_t) for i, j in pairs]
-    generated = generate_reasoning_texts(prompts, task="dialogue")
+    generated = llm_facade.run_dialogues(
+        [(cells[i], cells[j]) for i, j in pairs],
+        current_t=current_t,
+    )
     out = [cell.copy() for cell in cells]
     for (i, j), text in zip(pairs, generated):
         outcome = _parse_dialogue_outcome(text, out[i], out[j])

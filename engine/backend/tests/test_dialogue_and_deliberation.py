@@ -30,8 +30,9 @@ def test_agent_dialogue_writes_behavior_log(monkeypatch):
     monkeypatch.setenv("ORGANIC4D_DIALOGUE_INTERVAL", "25")
     monkeypatch.setenv("ORGANIC4D_DIALOGUE_MAX_PAIRS", "2")
 
-    def fake_generate(prompts, *, task):
-        assert task == "dialogue"
+    def fake_run_dialogues(pairs, *, current_t):
+        assert current_t == 25.0
+        assert len(pairs) == 1
         return [
             json.dumps(
                 {
@@ -43,10 +44,9 @@ def test_agent_dialogue_writes_behavior_log(monkeypatch):
                     "importance": 0.8,
                 }
             )
-            for _ in prompts
         ]
 
-    monkeypatch.setattr("app.llm.dialogue.generate_reasoning_texts", fake_generate)
+    monkeypatch.setattr("app.llm.dialogue.llm_facade.run_dialogues", fake_run_dialogues)
     cells = [_cell("a", 0.0, "citizen"), _cell("b", 1.0, "regulator")]
     out = apply_agent_dialogues_if_due(cells, current_t=25.0)
 
@@ -61,8 +61,9 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
     monkeypatch.setenv("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS", "2")
     monkeypatch.setenv("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "4")
 
-    def fake_generate(prompts, *, task):
-        assert task == "group_deliberation"
+    def fake_deliberate_groups(groups, *, current_t):
+        assert current_t == 50.0
+        assert groups
         return [
             json.dumps(
                 {
@@ -73,10 +74,13 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
                     "importance": 0.82,
                 }
             )
-            for _ in prompts
+            for _ in groups
         ]
 
-    monkeypatch.setattr("app.llm.group_deliberation.generate_reasoning_texts", fake_generate)
+    monkeypatch.setattr(
+        "app.llm.group_deliberation.llm_facade.deliberate_groups",
+        fake_deliberate_groups,
+    )
     cells = [
         _cell("a", 0.0, "citizen"),
         _cell("b", 1.0, "citizen"),

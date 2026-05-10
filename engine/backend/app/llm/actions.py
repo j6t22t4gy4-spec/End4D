@@ -4,10 +4,9 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
-from app.core.settings import get_llm_agent_sample_size
 from app.core.memory_store import append_memory, behavior_event, memory_entry
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_action_prompt
+from app.core.settings import get_llm_agent_sample_size
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 ACTION_REFRESH_INTERVAL = 10
@@ -20,8 +19,7 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
 
     selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
     selected_cells = [cells[idx] for idx in selected]
-    prompts = [build_action_prompt(cell) for cell in selected_cells]
-    generated = generate_reasoning_texts(prompts, task="action")
+    generated = llm_facade.decide_actions(selected_cells)
     out: List[Cell] = [cell.copy() for cell in cells]
     for idx, cell, text in zip(selected, selected_cells, generated):
         action_state = _parse_action_state(text, cell)

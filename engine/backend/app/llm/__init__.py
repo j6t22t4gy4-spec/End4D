@@ -2,3 +2,7 @@
 
 Ollama는 선택 사항; 기본은 sentence-transformers 또는 결정적 스텁.
 """
+
+from app.llm.facade import LLMFacade, llm_facade
+
+__all__ = ["LLMFacade", "llm_facade"]

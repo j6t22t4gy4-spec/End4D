@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, Iterable, List
+from typing import Dict, List
 
 import numpy as np
 
 from app.core.memory_store import append_memory, behavior_event, memory_entry
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_policy_prompt
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 
@@ -31,8 +30,11 @@ def apply_policy_interpretation(
     if not selected:
         return [cell.copy() for cell in cells]
 
-    prompts = [build_policy_prompt(cell, event_type, payload) for cell in selected]
-    generated = generate_reasoning_texts(prompts, task="policy")
+    generated = llm_facade.interpret_policy(
+        selected,
+        event_type=event_type,
+        payload=payload,
+    )
 
     out = [cell.copy() for cell in cells]
     for idx, cell, text in zip(indices, selected, generated):

@@ -50,6 +50,8 @@ Phase 8: 최적화·배포
     ↓
 Phase 10A: 엔진/에이전트 데이터 플라이휠 기초
     ↓
+Phase 10B: LLM 운영 코어
+    ↓
 Phase 11: 국가 단위 시뮬레이션 코어
     ↓
 Phase 12: 비교·리포트·전문가 워크플로우
@@ -258,6 +260,28 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 9.5 | God View 역할·페르소나 레이블/필터 시각화 | 색/필터로 역할·국가·페르소나 구분 |
 
 ---
+
+## Phase 10B: LLM 운영 코어
+
+| 순서 | 작업 | 산출물 |
+|------|------|--------|
+| 10B.1 | LLM Facade / Convenient Interface | `llm/facade.py`, `llm_facade.think()`, `decide_actions()`, `interpret_policy()` |
+| 10B.2 | Task별 prompt template 정규화 | `prompt_engineering.py`, `prompt_registry.py` |
+| 10B.3 | LLM budget & cadence 제어 | task batch cap, agent sample size, dialogue/deliberation interval |
+| 10B.4 | Provider / prompt / fallback provenance 저장 | snapshot·world·behavior payload 메타 |
+| 10B.5 | 엔진 모듈의 직접 provider 호출 제거 | thought/action/policy/dialogue/group_deliberation → facade 경유 |
+
+---
+
+## 다음 스프린트 체크리스트
+
+| 우선순위 | 작업 | 이유 |
+|----------|------|------|
+| 1 | LLM Facade 표준화 | 개발자가 실제로 쓰기 편한 입구를 먼저 고정 |
+| 2 | 비용 제어 & 호출 스케줄링 | 장시간 로컬 시뮬레이션 안정성 확보 |
+| 3 | Storage Layer 고도화 | Snapshot/Fork/Versioning 무결성 강화 |
+| 4 | Nemotron Data Pack 운영 검증 | 실제 다국가 데이터 레이어 제품화 |
+| 5 | 10k+ 성능 벤치 | 대규모 사회 시뮬레이션 신뢰성 확보 |
 
 ## Phase 10A (엔진/에이전트 데이터 플라이휠 기초)
 

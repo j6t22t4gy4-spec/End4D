@@ -35,10 +35,10 @@ def test_genesis_hourly_smaller_nutrient():
 def test_genesis_can_use_llm_json_plan(monkeypatch):
     monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "1")
 
-    def fake_reasoning_texts(prompts, task):
-        assert task == "genesis"
-        assert "prompt_version=genesis-v1" in prompts[0]
-        return [
+    def fake_plan_genesis(prompt_text, heuristic_payload):
+        assert "향후 30년 한국 사회 구조 변화" in prompt_text
+        assert "initial_cell_count" in heuristic_payload
+        return (
             json.dumps(
                 {
                     "t_max": 320,
@@ -53,11 +53,11 @@ def test_genesis_can_use_llm_json_plan(monkeypatch):
                 },
                 ensure_ascii=False,
             )
-        ]
+        )
 
     monkeypatch.setattr(
-        "app.core.world_genesis.generate_reasoning_texts",
-        fake_reasoning_texts,
+        "app.core.world_genesis.llm_facade.plan_genesis",
+        fake_plan_genesis,
     )
     p = propose_world_from_prompt("향후 30년 한국 사회 구조 변화")
     assert p.t_max == 320

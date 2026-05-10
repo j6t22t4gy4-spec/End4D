@@ -66,6 +66,7 @@
 | 4.6 | Worldview: 384차원, sentence-transformers | 차원·생성 방식 변경 시 문서 반영 | CONCEPT §6.3 |
 | 4.7 | Thought/Worldview 생성 시 **역할**을 프롬프트·임베딩 맥락에 포함 | 역할 무시한 동일 프롬프트만 사용 | CONCEPT §2.3, §6 |
 | 4.8 | Genesis / Thought / Worldview는 provider·model·prompt_version을 추적 가능해야 한다 | 나중에 어떤 LLM 설정으로 결과가 나왔는지 알 수 없음 | IMPLEMENTATION_SEQUENCE Phase 11 |
+| 4.9 | 엔진 모듈은 가급적 `llm_facade` 같은 task-oriented 입구를 사용한다 | 각 모듈이 prompt 조립과 provider 호출을 제각각 수행 | IMPLEMENTATION_SEQUENCE Phase 10B |
 
 ---
 
@@ -136,6 +137,7 @@
 | 10.3 | policy/event는 강도·범위·지속시간을 가진다 | 이벤트가 단발성 key-value 주입에 머묾 | IMPLEMENTATION_SEQUENCE Phase 11 |
 | 10.4 | dataset / prompt / provider provenance가 결과와 함께 남는다 | 장기 예측 결과의 재현·감사가 어려움 | PRODUCT_STRATEGY §6 |
 | 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | IMPLEMENTATION_SEQUENCE Phase 12 |
+| 10.6 | 장시간 실행에서는 LLM budget·snapshot cadence·sampling이 조절 가능해야 한다 | agent 수가 늘면 호출과 저장이 폭주함 | IMPLEMENTATION_SEQUENCE Phase 10B, 11 |
 
 ---
 

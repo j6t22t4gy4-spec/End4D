@@ -25,26 +25,27 @@ def _cell(role: str = "citizen") -> Cell:
 
 
 def test_action_update_populates_action_state(monkeypatch):
-    def fake_reasoning_texts(prompts, task):
-        assert task == "action"
+    def fake_decide_actions(cells):
+        assert len(cells) == 1
         return [
             '{"strategy_summary":"build coalition","resource_bias":0.7,"risk_tolerance":0.4,"cooperation_bias":0.8,"policy_sensitivity":0.6,"mobility_bias":0.3}'
         ]
 
-    monkeypatch.setattr("app.llm.actions.generate_reasoning_texts", fake_reasoning_texts)
+    monkeypatch.setattr("app.llm.actions.llm_facade.decide_actions", fake_decide_actions)
     updated = update_action_states_if_due([_cell()], current_t=10.0)
     assert updated[0].action_state["cooperation_bias"] == 0.8
     assert updated[0].behavior_log[-1]["event_type"] == "action_plan"
 
 
 def test_policy_shift_uses_llm_interpretation(monkeypatch):
-    def fake_reasoning_texts(prompts, task):
-        assert task == "policy"
+    def fake_interpret_policy(cells, *, event_type, payload):
+        assert event_type == "policy_shift"
+        assert payload["name"] == "housing subsidy reform"
         return [
             '{"memory_summary":"supports targeted subsidy reform","emotion_index":5,"emotion_delta":0.25,"cooperation_shift":0.1,"policy_sensitivity_shift":0.2,"importance":0.8}'
         ]
 
-    monkeypatch.setattr("app.llm.policy.generate_reasoning_texts", fake_reasoning_texts)
+    monkeypatch.setattr("app.llm.policy.llm_facade.interpret_policy", fake_interpret_policy)
     updated = apply_inject_to_cells(
         [_cell("시민")],
         "policy_shift",

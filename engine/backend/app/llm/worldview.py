@@ -9,8 +9,7 @@ from typing import List
 
 from app.core.settings import get_llm_agent_sample_size
 from app.llm.embeddings import embed_texts
-from app.llm.chat_runtime import generate_reasoning_texts
-from app.llm.prompt_engineering import build_worldview_prompt
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 WORLDVIEW_MEMORY_THRESHOLD = 100
@@ -22,7 +21,7 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     if t_int <= 0 or t_int % WORLDVIEW_REFRESH_INTERVAL != 0:
         return cells
 
-    texts: List[str] = []
+    selected_cells: List[Cell] = []
     indices: List[int] = []
     limit = get_llm_agent_sample_size()
     ranked_indices = sorted(
@@ -44,13 +43,13 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
             or len(c.memory) >= WORLDVIEW_MEMORY_THRESHOLD
         )
         if qualifies:
-            texts.append(build_worldview_prompt(c))
             indices.append(i)
+            selected_cells.append(c)
 
-    if not texts:
+    if not selected_cells:
         return cells
 
-    generated = generate_reasoning_texts(texts, task="worldview")
+    generated = llm_facade.update_worldviews(selected_cells)
     vecs = embed_texts(generated, 384)
     out = list(cells)
     for k, idx in enumerate(indices):
