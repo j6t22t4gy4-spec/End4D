@@ -202,6 +202,9 @@ def get_review_summary(world_id: str):
                 "provider": str(summary.get("provider") or ""),
                 "model": str(summary.get("model") or ""),
                 "fallback_reason": str(summary.get("fallback_reason") or ""),
+                "repair_used": bool(summary.get("repair_used")),
+                "repair_count": int(summary.get("repair_count") or 0),
+                "repair_reason": str(summary.get("repair_reason") or ""),
             },
             "timeline_annotation": {
                 "prompt_version": annotations["prompt_version"],
@@ -281,6 +284,9 @@ def get_review_diff(world_id: str, base_world_id: str):
                 "provider": str(diff.get("provider") or ""),
                 "model": str(diff.get("model") or ""),
                 "fallback_reason": str(diff.get("fallback_reason") or ""),
+                "repair_used": bool(diff.get("repair_used")),
+                "repair_count": int(diff.get("repair_count") or 0),
+                "repair_reason": str(diff.get("repair_reason") or ""),
             }
         },
     )
@@ -330,6 +336,9 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
                 "provider": str(query.get("provider") or ""),
                 "model": str(query.get("model") or ""),
                 "fallback_reason": str(query.get("fallback_reason") or ""),
+                "repair_used": bool(query.get("repair_used")),
+                "repair_count": int(query.get("repair_count") or 0),
+                "repair_reason": str(query.get("repair_reason") or ""),
             }
         },
     )
@@ -369,6 +378,9 @@ def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQu
                 "provider": str(query.get("provider") or ""),
                 "model": str(query.get("model") or ""),
                 "fallback_reason": str(query.get("fallback_reason") or ""),
+                "repair_used": bool(query.get("repair_used")),
+                "repair_count": int(query.get("repair_count") or 0),
+                "repair_reason": str(query.get("repair_reason") or ""),
             }
         },
     )

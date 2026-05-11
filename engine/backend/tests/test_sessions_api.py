@@ -91,6 +91,7 @@ def test_session_review_returns_multi_world_summary():
     assert "key_findings.0" in payload["citations"]
     assert "decision_implications.0" in payload["citations"]
     assert all(item.get("anchor_id") for item in payload["citations"]["key_findings.0"])
+    assert "repair_used" in payload["review_meta"]["summary"]
 
 
 def test_session_review_query_returns_answer_and_grounding():

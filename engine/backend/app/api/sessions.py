@@ -183,6 +183,9 @@ def get_session_review(
                 "provider": str(summary.get("provider") or ""),
                 "model": str(summary.get("model") or ""),
                 "fallback_reason": str(summary.get("fallback_reason") or ""),
+                "repair_used": bool(summary.get("repair_used")),
+                "repair_count": int(summary.get("repair_count") or 0),
+                "repair_reason": str(summary.get("repair_reason") or ""),
             }
         },
     )
@@ -220,6 +223,9 @@ def post_session_review_query(session_id: str, body: SessionReviewQueryRequest):
                 "provider": str(query.get("provider") or ""),
                 "model": str(query.get("model") or ""),
                 "fallback_reason": str(query.get("fallback_reason") or ""),
+                "repair_used": bool(query.get("repair_used")),
+                "repair_count": int(query.get("repair_count") or 0),
+                "repair_reason": str(query.get("repair_reason") or ""),
             }
         },
     )

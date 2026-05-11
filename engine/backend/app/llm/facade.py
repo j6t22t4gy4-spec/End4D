@@ -39,6 +39,7 @@ from app.llm.review import (
     build_review_diff_query_prompt,
     build_review_query_prompt,
     build_review_summary_prompt,
+    build_citation_repair_prompt,
     build_session_review_prompt,
     build_session_review_query_prompt,
     build_timeline_annotation_prompt,
@@ -50,6 +51,7 @@ from app.llm.review import (
     heuristic_agent_interview_diff,
     heuristic_session_review,
     heuristic_session_review_query,
+    needs_citation_repair,
     parse_review_diff,
     parse_review_diff_query,
     parse_review_query,
@@ -158,6 +160,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="review_summary")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="review_summary",
+                raw_text=text,
+                grounding=payload,
+                required_keys=("headline", "key_events.0", "causal_analysis.0", "decision_implications.0"),
+                citation_mode="map",
+            )
         summary = (
             heuristic_review_summary(payload)
             if used_heuristic
@@ -171,6 +182,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def annotate_timeline(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -202,6 +216,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="review_diff")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="review_diff",
+                raw_text=text,
+                grounding=diff_payload,
+                required_keys=("key_deltas.0", "causal_comparison.0", "decision_implications.0"),
+                citation_mode="map",
+            )
         summary = (
             heuristic_review_diff(diff_payload)
             if used_heuristic
@@ -215,6 +238,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def query_review(
@@ -227,6 +253,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="review_query")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="review_query",
+                raw_text=text,
+                grounding=payload,
+                required_keys=(),
+                citation_mode="list",
+            )
         answer = (
             heuristic_review_query(payload, question)
             if used_heuristic
@@ -240,6 +275,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def query_review_diff(
@@ -252,6 +290,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="review_diff_query")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="review_diff_query",
+                raw_text=text,
+                grounding=diff_payload,
+                required_keys=(),
+                citation_mode="list",
+            )
         answer = (
             heuristic_review_diff_query(diff_payload, question)
             if used_heuristic
@@ -265,6 +312,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def summarize_session_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -272,6 +322,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="session_review")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="session_review",
+                raw_text=text,
+                grounding=payload,
+                required_keys=("key_findings.0", "decision_implications.0"),
+                citation_mode="map",
+            )
         summary = (
             heuristic_session_review(payload)
             if used_heuristic
@@ -285,6 +344,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def interview_agent(
@@ -298,6 +360,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="agent_interview")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="agent_interview",
+                raw_text=text,
+                grounding=grounding,
+                required_keys=(),
+                citation_mode="list",
+            )
         answer = (
             heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
             if used_heuristic
@@ -311,6 +382,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def interview_agent_diff(
@@ -330,6 +404,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="agent_interview_diff")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="agent_interview_diff",
+                raw_text=text,
+                grounding=grounding,
+                required_keys=(),
+                citation_mode="list",
+            )
         answer = (
             heuristic_agent_interview_diff(
                 current_cell=current_cell,
@@ -354,6 +437,9 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
 
     def query_session_review(
@@ -366,6 +452,15 @@ class LLMFacade:
         texts, meta = self._run_task_with_meta([prompt], task="session_review_query")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        repair = {"used": False, "count": 0, "reason": ""}
+        if not used_heuristic:
+            text, repair = self._repair_citation_output(
+                task_name="session_review_query",
+                raw_text=text,
+                grounding=payload,
+                required_keys=(),
+                citation_mode="list",
+            )
         answer = (
             heuristic_session_review_query(payload, question)
             if used_heuristic
@@ -379,7 +474,48 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "repair_used": bool(repair["used"]),
+            "repair_count": int(repair["count"]),
+            "repair_reason": str(repair["reason"] or ""),
         }
+
+    def _repair_citation_output(
+        self,
+        *,
+        task_name: str,
+        raw_text: str,
+        grounding: Mapping[str, Any],
+        required_keys: Sequence[str],
+        citation_mode: str,
+    ) -> tuple[str, dict[str, Any]]:
+        needs_repair, reason = needs_citation_repair(
+            raw_text,
+            grounding=grounding,
+            citation_mode=citation_mode,
+            required_keys=required_keys,
+        )
+        if not needs_repair:
+            return raw_text, {"used": False, "count": 0, "reason": ""}
+        repair_prompt = build_citation_repair_prompt(
+            task=task_name,
+            raw_text=raw_text,
+            grounding=grounding.get("grounding") if isinstance(grounding, Mapping) and "grounding" in grounding else grounding,
+            required_keys=required_keys,
+            citation_mode=citation_mode,
+        )
+        texts, _meta = self._run_task_with_meta([repair_prompt], task="review_citation_repair")
+        repaired_text = str(texts[0] if texts else "").strip()
+        if not repaired_text or repaired_text == repair_prompt or repaired_text.startswith("[PROMPT_CONTRACT]"):
+            return raw_text, {"used": False, "count": 0, "reason": reason}
+        repaired_ok, repaired_reason = needs_citation_repair(
+            repaired_text,
+            grounding=grounding,
+            citation_mode=citation_mode,
+            required_keys=required_keys,
+        )
+        if repaired_ok:
+            return raw_text, {"used": True, "count": 1, "reason": repaired_reason or reason}
+        return repaired_text, {"used": True, "count": 1, "reason": reason}
 
     def snapshot_stats(self) -> dict[str, Any]:
         with self._lock:

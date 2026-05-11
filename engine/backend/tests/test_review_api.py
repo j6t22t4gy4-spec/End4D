@@ -34,6 +34,8 @@ def test_review_summary_returns_summary_and_annotations():
     assert "headline" in payload["citations"]
     assert all(item.get("anchor_id") for item in payload["citations"]["causal_analysis.0"])
     assert "review_meta" in payload
+    assert "repair_used" in payload["review_meta"]["summary"]
+    assert "repair_count" in payload["review_meta"]["summary"]
     assert "group_analysis" in payload
     assert "group_tables" in payload
     assert "lineage_summary" in payload
@@ -87,6 +89,7 @@ def test_review_diff_returns_comparison():
     assert "causal_comparison.0" in payload["citations"]
     assert "decision_implications.0" in payload["citations"]
     assert all(item.get("anchor_id") for item in payload["citations"]["key_deltas.0"])
+    assert "repair_used" in payload["review_meta"]["diff"]
 
 
 def test_review_query_returns_answer_and_grounding():

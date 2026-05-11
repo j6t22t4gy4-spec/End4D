@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from app.llm.prompt_registry import build_prompt_contract
 from app.models.cell import Cell
@@ -134,6 +134,31 @@ def build_session_review_query_prompt(payload: Mapping[str, Any], question: str)
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
+        ],
+    )
+
+
+def build_citation_repair_prompt(
+    *,
+    task: str,
+    raw_text: str,
+    grounding: Mapping[str, Any],
+    required_keys: Sequence[str],
+    citation_mode: str,
+) -> str:
+    payload = {
+        "task": task,
+        "citation_mode": citation_mode,
+        "required_keys": list(required_keys),
+        "allowed_anchor_ids": sorted(_allowed_anchor_ids(grounding)),
+    }
+    return build_prompt_contract(
+        "review_citation_repair",
+        [
+            ("repair_meta", _compact(payload)),
+            ("anchor_candidates", _compact_anchor_candidates(grounding)),
+            ("grounding", _compact(grounding)),
+            ("broken_output", str(raw_text or "")[:4000]),
         ],
     )
 
@@ -984,6 +1009,46 @@ def parse_agent_interview_diff(
     }
 
 
+def needs_citation_repair(
+    raw_text: str,
+    *,
+    grounding: Mapping[str, Any],
+    citation_mode: str,
+    required_keys: Sequence[str] = (),
+) -> tuple[bool, str]:
+    parsed = _parse_json_object(raw_text)
+    if parsed is None:
+        return True, "json_decode_failed"
+    citations = parsed.get("citations")
+    allowed_ids = _allowed_anchor_ids(grounding)
+    if citation_mode == "map":
+        if not isinstance(citations, Mapping):
+            return True, "missing_citation_map"
+        for key in required_keys:
+            rows = citations.get(str(key))
+            if not isinstance(rows, list):
+                return True, f"missing_required_key:{key}"
+            valid = [str(item).strip() for item in rows if str(item).strip() in allowed_ids]
+            if not valid:
+                return True, f"invalid_required_anchor:{key}"
+        for key, rows in citations.items():
+            if not isinstance(rows, list):
+                return True, f"invalid_citation_shape:{key}"
+            invalid = [str(item).strip() for item in rows if str(item).strip() and str(item).strip() not in allowed_ids]
+            if invalid:
+                return True, f"invalid_anchor_id:{key}"
+        return False, ""
+    if not isinstance(citations, list):
+        return True, "missing_citation_list"
+    valid = [str(item).strip() for item in citations if str(item).strip() in allowed_ids]
+    if not valid:
+        return True, "invalid_or_empty_citation_list"
+    invalid = [str(item).strip() for item in citations if str(item).strip() and str(item).strip() not in allowed_ids]
+    if invalid:
+        return True, "invalid_anchor_id:list"
+    return False, ""
+
+
 def _compact(mapping: Mapping[str, Any]) -> str:
     return "; ".join(f"{key}={value}" for key, value in mapping.items())[:1800]
 
@@ -1087,3 +1152,14 @@ def _severity(score: float) -> str:
     if score >= 0.9:
         return "medium"
     return "low"
+
+
+def _parse_json_object(raw_text: str) -> dict[str, Any] | None:
+    text = str(raw_text or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None

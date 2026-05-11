@@ -281,6 +281,20 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "citations",
         ),
     ),
+    "review_citation_repair": PromptSpec(
+        task="review_citation_repair",
+        version="review-citation-repair-v1",
+        output_mode="json",
+        description="Repair a previously generated review JSON so that citations use only valid anchor ids.",
+        system_prompt=(
+            "You are repairing a broken analyst JSON response. "
+            "Do not invent new evidence. Keep the original meaning, but rewrite only as needed so the output stays valid compact JSON. "
+            "Citations must use only anchor ids from ALLOWED_ANCHOR_IDS / ANCHOR_CANDIDATES. "
+            "If citation_mode=map, required_keys must all be present in citations with at least one valid anchor id each. "
+            "If citation_mode=list, citations must be a non-empty list of valid anchor ids."
+        ),
+        expected_keys=("citations",),
+    ),
     "agent_interview": PromptSpec(
         task="agent_interview",
         version="agent-interview-v1",
