@@ -10,7 +10,6 @@ import {
   type LocalRuntimeStatus,
   type SessionSummary,
 } from "@/lib/api";
-import { ActivityRail } from "@/components/app-shell/ActivityRail";
 import { AppToolbar } from "@/components/app-shell/AppToolbar";
 import { RuntimeDock } from "@/components/app-shell/RuntimeDock";
 import {
@@ -102,11 +101,7 @@ export default function HomeWithCanvas() {
         />
 
         <div className="app-shell__workspace">
-          <aside className="hidden min-h-0 xl:block">
-            <ActivityRail activeView={activeView} onChange={setActiveView} />
-          </aside>
-
-          <section className="min-h-0">
+          <section className="min-h-0 overflow-y-auto pr-1">
             {activeView === "overview" ? (
               <OverviewWorkspace
                 runtime={runtime}
@@ -176,7 +171,7 @@ export default function HomeWithCanvas() {
             ) : null}
           </section>
 
-          <aside className="hidden min-h-0 2xl:block">
+          <aside className="hidden min-h-0 xl:block">
             <RuntimeDock
               runtime={runtime}
               runtimeError={runtimeError}
