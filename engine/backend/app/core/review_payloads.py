@@ -146,10 +146,45 @@ def build_review_diff_payload(
         )
     zone_z_delta.sort(key=lambda item: abs(float(item["avg_z_gap"])), reverse=True)
 
+    base_policy = dict(base_payload.get("policy_impact") or {})
+    target_policy = dict(target_payload.get("policy_impact") or {})
+    base_roles = [str(item) for item in list(base_policy.get("dominant_target_roles") or []) if str(item).strip()]
+    target_roles = [str(item) for item in list(target_policy.get("dominant_target_roles") or []) if str(item).strip()]
+    base_zones_policy = [str(item) for item in list(base_policy.get("dominant_target_zones") or []) if str(item).strip()]
+    target_zones_policy = [str(item) for item in list(target_policy.get("dominant_target_zones") or []) if str(item).strip()]
     policy_impact_delta = {
-        "base": dict(base_payload.get("policy_impact") or {}),
-        "target": dict(target_payload.get("policy_impact") or {}),
-        "event_count_gap": int((target_payload.get("policy_impact") or {}).get("event_count", 0)) - int((base_payload.get("policy_impact") or {}).get("event_count", 0)),
+        "base": base_policy,
+        "target": target_policy,
+        "event_count_gap": int(target_policy.get("event_count", 0)) - int(base_policy.get("event_count", 0)),
+        "shared_roles": [role for role in target_roles if role in set(base_roles)][:6],
+        "target_only_roles": [role for role in target_roles if role not in set(base_roles)][:6],
+        "base_only_roles": [role for role in base_roles if role not in set(target_roles)][:6],
+        "shared_zones": [zone for zone in target_zones_policy if zone in set(base_zones_policy)][:6],
+        "target_only_zones": [zone for zone in target_zones_policy if zone not in set(base_zones_policy)][:6],
+        "base_only_zones": [zone for zone in base_zones_policy if zone not in set(target_zones_policy)][:6],
+        "largest_group_shift_gap": {
+            "base_role_label": str((base_policy.get("largest_group_shift") or {}).get("role_label") or ""),
+            "target_role_label": str((target_policy.get("largest_group_shift") or {}).get("role_label") or ""),
+            "cohesion_gap": round(
+                float((target_policy.get("largest_group_shift") or {}).get("cohesion_delta", 0.0))
+                - float((base_policy.get("largest_group_shift") or {}).get("cohesion_delta", 0.0)),
+                3,
+            ),
+            "tension_gap": round(
+                float((target_policy.get("largest_group_shift") or {}).get("tension_delta", 0.0))
+                - float((base_policy.get("largest_group_shift") or {}).get("tension_delta", 0.0)),
+                3,
+            ),
+        },
+        "largest_zone_shift_gap": {
+            "base_zone_label": str((base_policy.get("largest_zone_z_shift") or {}).get("zone_label") or ""),
+            "target_zone_label": str((target_policy.get("largest_zone_z_shift") or {}).get("zone_label") or ""),
+            "avg_z_gap": round(
+                float((target_policy.get("largest_zone_z_shift") or {}).get("avg_z_delta", 0.0))
+                - float((base_policy.get("largest_zone_z_shift") or {}).get("avg_z_delta", 0.0)),
+                3,
+            ),
+        },
     }
 
     timeline_turning_point_delta = {

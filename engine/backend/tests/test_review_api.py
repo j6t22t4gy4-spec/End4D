@@ -57,3 +57,4 @@ def test_review_diff_returns_comparison():
     assert "compared_metrics" in payload
     assert "timeline_turning_point_delta" in payload["compared_metrics"]
     assert "group_drift_deltas" in payload["compared_metrics"]
+    assert "policy_impact_delta" in payload["compared_metrics"]

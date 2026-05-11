@@ -56,6 +56,27 @@ export function ReviewLabWorkspace({
   const targetTurningPoints = Array.isArray(turningPoints.target)
     ? (turningPoints.target as Array<Record<string, unknown>>)
     : [];
+  const policyImpactDelta = (diffMetrics.policy_impact_delta ?? {}) as Record<string, unknown>;
+  const sharedRoles = Array.isArray(policyImpactDelta.shared_roles)
+    ? (policyImpactDelta.shared_roles as string[])
+    : [];
+  const targetOnlyRoles = Array.isArray(policyImpactDelta.target_only_roles)
+    ? (policyImpactDelta.target_only_roles as string[])
+    : [];
+  const baseOnlyRoles = Array.isArray(policyImpactDelta.base_only_roles)
+    ? (policyImpactDelta.base_only_roles as string[])
+    : [];
+  const sharedZones = Array.isArray(policyImpactDelta.shared_zones)
+    ? (policyImpactDelta.shared_zones as string[])
+    : [];
+  const targetOnlyZones = Array.isArray(policyImpactDelta.target_only_zones)
+    ? (policyImpactDelta.target_only_zones as string[])
+    : [];
+  const baseOnlyZones = Array.isArray(policyImpactDelta.base_only_zones)
+    ? (policyImpactDelta.base_only_zones as string[])
+    : [];
+  const largestGroupShiftGap = (policyImpactDelta.largest_group_shift_gap ?? {}) as Record<string, unknown>;
+  const largestZoneShiftGap = (policyImpactDelta.largest_zone_shift_gap ?? {}) as Record<string, unknown>;
 
   useEffect(() => {
     if (!worldId) {
@@ -383,6 +404,124 @@ export function ReviewLabWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel
+          title="Policy Impact Delta"
+          subtitle="Who and where the intervention diverged"
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-3">
+                <MetricCard
+                  label="Event Count Gap"
+                  value={String(policyImpactDelta.event_count_gap ?? 0)}
+                />
+                <MetricCard
+                  label="Largest Group Shift"
+                  value={`${String(largestGroupShiftGap.base_role_label ?? "n/a")} -> ${String(
+                    largestGroupShiftGap.target_role_label ?? "n/a"
+                  )}`}
+                />
+                <MetricCard
+                  label="Largest Zone Shift"
+                  value={`${String(largestZoneShiftGap.base_zone_label ?? "n/a")} -> ${String(
+                    largestZoneShiftGap.target_zone_label ?? "n/a"
+                  )}`}
+                />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <PolicyTokenCard title="Shared Roles" items={sharedRoles} tone="neutral" />
+                <PolicyTokenCard title="Target-only Roles" items={targetOnlyRoles} tone="target" />
+                <PolicyTokenCard title="Baseline-only Roles" items={baseOnlyRoles} tone="base" />
+                <PolicyTokenCard title="Shared Zones" items={sharedZones} tone="neutral" />
+                <PolicyTokenCard title="Target-only Zones" items={targetOnlyZones} tone="target" />
+                <PolicyTokenCard title="Baseline-only Zones" items={baseOnlyZones} tone="base" />
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Group Shift Gap</p>
+                    <span className="session-thread-card__meta">
+                      cohesion {Number(largestGroupShiftGap.cohesion_gap ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    tension {Number(largestGroupShiftGap.tension_gap ?? 0).toFixed(2)}
+                  </p>
+                </div>
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Zone Shift Gap</p>
+                    <span className="session-thread-card__meta">
+                      avg z {Number(largestZoneShiftGap.avg_z_gap ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    strongest regional divergence between baseline and target interventions
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">정책 영향 비교는 diff report 생성 후 표시됩니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title="Comparison Guidance"
+          subtitle="Where to inspect next"
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <>
+              <div className="session-thread-card">
+                <p className="inspector-body">
+                  target-only role과 zone은 baseline과 다른 정책 자극이 집중된 후보입니다.
+                </p>
+              </div>
+              <div className="session-thread-card">
+                <p className="inspector-body">
+                  turning point와 group drift table을 함께 보면 어떤 정책 대상이 어떤 집단 변화를 일으켰는지 더 빨리 좁힐 수 있습니다.
+                </p>
+              </div>
+              <div className="session-thread-card__actions">
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() =>
+                    targetTurningPoints[0]
+                      ? onOpenWorldAt(
+                          diff.target_world_id,
+                          Number((targetTurningPoints[0] as Record<string, unknown>).t ?? 0)
+                        )
+                      : onOpenWorldAt(diff.target_world_id)
+                  }
+                >
+                  Open Strongest Target Shift
+                </button>
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() =>
+                    baseTurningPoints[0]
+                      ? onOpenWorldAt(
+                          diff.base_world_id,
+                          Number((baseTurningPoints[0] as Record<string, unknown>).t ?? 0)
+                        )
+                      : onOpenWorldAt(diff.base_world_id)
+                  }
+                >
+                  Open Baseline Reference
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">비교 결과가 생기면 다음 탐색 가이드를 제안합니다.</p>
+          )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel
           title="Group Before / After"
           subtitle="Baseline to target role comparison"
           bodyClassName="space-y-3"
@@ -595,6 +734,42 @@ function StageCard({ index, label }: { index: string; label: string }) {
     <div className="rounded-[16px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
       <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{index}</p>
       <p className="mt-2 text-sm font-medium text-slate-900">{label}</p>
+    </div>
+  );
+}
+
+function PolicyTokenCard({
+  title,
+  items,
+  tone,
+}: {
+  title: string;
+  items: string[];
+  tone: "neutral" | "target" | "base";
+}) {
+  const toneClass =
+    tone === "target"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : tone === "base"
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-slate-100 text-slate-700 border-slate-200";
+  return (
+    <div className="session-thread-card">
+      <div className="session-thread-card__header">
+        <p className="session-thread-card__title">{title}</p>
+        <span className="session-thread-card__meta">{items.length}</span>
+      </div>
+      {items.length ? (
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <span key={item} className={`rounded-full border px-2 py-1 text-[11px] font-medium ${toneClass}`}>
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="session-thread-card__prompt">none</p>
+      )}
     </div>
   );
 }
