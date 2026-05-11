@@ -28,6 +28,8 @@ LLM_TASK_NAMES = (
     "agent_interview",
 )
 
+LLM_RUNTIME_PROFILES = ("rules-first", "balanced", "llm-first")
+
 _TASK_PRIORITY_DEFAULTS = {
     "genesis": 0,
     "policy": 0,
@@ -86,7 +88,9 @@ def set_runtime_llm_config(
     api_key: str = "",
     temperature: float = 0.2,
     timeout_s: float = 20.0,
+    runtime_profile: str = "balanced",
 ) -> dict[str, str]:
+    runtime_profile = runtime_profile.strip() if runtime_profile.strip() in LLM_RUNTIME_PROFILES else "balanced"
     config = {
         "ORGANIC4D_LLM_CHAT_ENABLED": "1" if enabled else "0",
         "ORGANIC4D_LLM_PROVIDER": provider.strip(),
@@ -95,6 +99,7 @@ def set_runtime_llm_config(
         "ORGANIC4D_LLM_API_KEY": api_key.strip(),
         "ORGANIC4D_LLM_TEMPERATURE": str(float(temperature)),
         "ORGANIC4D_LLM_TIMEOUT_S": str(float(timeout_s)),
+        "ORGANIC4D_LLM_RUNTIME_PROFILE": runtime_profile,
     }
     _write_runtime_llm_config(config)
     for key, value in config.items():
@@ -171,12 +176,22 @@ def get_llm_temperature() -> float:
         return 0.2
 
 
+def get_llm_runtime_profile() -> str:
+    profile = _get_runtime_llm_value("ORGANIC4D_LLM_RUNTIME_PROFILE", "balanced")
+    return profile if profile in LLM_RUNTIME_PROFILES else "balanced"
+
+
 def get_llm_max_prompts_per_task() -> int:
     """Hard cap for one LLM task batch to keep long runs predictable."""
     raw = os.getenv("ORGANIC4D_LLM_MAX_PROMPTS_PER_TASK", "64").strip()
     try:
         return max(1, min(2048, int(raw)))
     except ValueError:
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            return 256
+        if profile == "rules-first":
+            return 32
         return 64
 
 
@@ -202,6 +217,11 @@ def get_llm_cycle_prompt_budget() -> int:
     try:
         return max(1, min(50000, int(raw)))
     except ValueError:
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            return 640
+        if profile == "rules-first":
+            return 96
         return 160
 
 
@@ -226,6 +246,11 @@ def get_llm_agent_sample_size() -> int:
     try:
         return max(1, min(10000, int(raw)))
     except ValueError:
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            return 1024
+        if profile == "rules-first":
+            return 96
         return 256
 
 
@@ -242,6 +267,9 @@ def get_dialogue_max_pairs() -> int:
     try:
         return max(1, min(5000, int(raw)))
     except ValueError:
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            return 160
         return 64
 
 
@@ -258,6 +286,9 @@ def get_group_deliberation_max_groups() -> int:
     try:
         return max(1, min(256, int(raw)))
     except ValueError:
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            return 24
         return 12
 
 

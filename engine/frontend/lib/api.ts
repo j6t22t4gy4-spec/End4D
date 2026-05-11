@@ -133,6 +133,7 @@ export type RuntimeLlmStatus = {
   base_url: string;
   has_api_key: boolean;
   configured_via: string;
+  runtime_profile: string;
 };
 
 export type LocalRuntimeStatus = {
@@ -156,6 +157,7 @@ export type RuntimeLlmConfigResponse = {
   temperature: number;
   timeout_s: number;
   configured_via: string;
+  runtime_profile: string;
 };
 
 export type RuntimeLlmTestResponse = {
@@ -538,6 +540,7 @@ export async function updateRuntimeLlmConfig(body: {
   api_key?: string;
   temperature?: number;
   timeout_s?: number;
+  runtime_profile?: string;
 }): Promise<RuntimeLlmConfigResponse> {
   const res = await fetch(`${API_BASE}/runtime/llm-config`, {
     method: "POST",

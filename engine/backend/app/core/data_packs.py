@@ -17,6 +17,7 @@ from app.core.settings import (
     get_llm_chat_enabled,
     get_llm_model,
     get_llm_provider,
+    get_llm_runtime_profile,
     get_runtime_profile,
     get_state_dir,
 )
@@ -510,6 +511,7 @@ def local_runtime_status() -> Dict[str, Any]:
             "base_url": str(get_llm_base_url() or ""),
             "has_api_key": bool(get_llm_api_key()),
             "configured_via": "runtime-ui" if get_llm_chat_enabled() else "default",
+            "runtime_profile": get_llm_runtime_profile(),
         },
         "llm_runtime": llm_facade.snapshot_stats(),
         "installed_pack_count": len(installed),

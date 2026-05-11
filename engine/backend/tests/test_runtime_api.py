@@ -353,6 +353,7 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
             "api_key": "test-key",
             "temperature": 0.3,
             "timeout_s": 12,
+            "runtime_profile": "llm-first",
         },
     )
     assert response.status_code == 200
@@ -361,6 +362,7 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
     assert payload["provider"] == "openai-compatible"
     assert payload["model"] == "local-model"
     assert payload["has_api_key"] is True
+    assert payload["runtime_profile"] == "llm-first"
 
     status = client.get("/runtime/local-status")
     assert status.status_code == 200
@@ -368,6 +370,7 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
     assert status_payload["llm"]["enabled"] is True
     assert status_payload["llm"]["provider"] == "openai-compatible"
     assert status_payload["llm"]["has_api_key"] is True
+    assert status_payload["llm"]["runtime_profile"] == "llm-first"
 
 
 def test_runtime_llm_test_endpoint_reports_runtime_result(monkeypatch):

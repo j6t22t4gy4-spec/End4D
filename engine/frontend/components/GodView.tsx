@@ -122,6 +122,7 @@ export default function GodView({
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmTemperature, setLlmTemperature] = useState("0.2");
   const [llmTimeout, setLlmTimeout] = useState("20");
+  const [llmRuntimeProfile, setLlmRuntimeProfile] = useState("balanced");
   const [llmConfigStatus, setLlmConfigStatus] = useState<string | null>(null);
   const [llmTestResult, setLlmTestResult] = useState<RuntimeLlmTestResponse | null>(null);
 
@@ -180,6 +181,7 @@ export default function GodView({
           setLlmProvider(String(payload.llm?.provider || "openai"));
           setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
           setLlmBaseUrl(String(payload.llm?.base_url || ""));
+          setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
           if (!selectedPackId && payload.packs[0]?.pack_id) {
             setSelectedPackId(payload.packs[0].pack_id);
           }
@@ -716,6 +718,14 @@ export default function GodView({
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  runtime profile
+                  <select className="app-input" value={llmRuntimeProfile} onChange={(event) => setLlmRuntimeProfile(event.target.value)}>
+                    <option value="rules-first">Rules-first</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="llm-first">LLM-first</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
                   temperature
                   <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
                 </label>
@@ -739,6 +749,7 @@ export default function GodView({
                         api_key: llmApiKey,
                         temperature: Number(llmTemperature) || 0.2,
                         timeout_s: Number(llmTimeout) || 20,
+                        runtime_profile: llmRuntimeProfile,
                       });
                       setRuntimeStatus(await getLocalRuntimeStatus());
                       setLlmConfigStatus("llm runtime saved");
@@ -783,7 +794,7 @@ export default function GodView({
                 </div>
               ) : null}
               <p className="text-xs text-slate-500">
-                LLM이 연결되면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation이 규칙 fallback보다 실제 provider 경로를 우선 사용합니다.
+                `LLM-first`를 선택하면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation의 샘플링과 예산이 더 공격적으로 올라가서 규칙 fallback보다 실제 provider 호출이 주가 되도록 맞춥니다.
               </p>
               {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
             </AppPanel>

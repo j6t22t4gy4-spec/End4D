@@ -39,6 +39,10 @@ export function RuntimeDock({
           }
         />
         <InfoRow
+          label="LLM Profile"
+          value={runtime?.llm?.runtime_profile ?? "balanced"}
+        />
+        <InfoRow
           label="Manifest"
           value={runtime?.manifest_path ?? "Waiting for runtime"}
         />

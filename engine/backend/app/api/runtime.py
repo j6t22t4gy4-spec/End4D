@@ -51,6 +51,7 @@ class RuntimeLlmResponse(BaseModel):
     base_url: str = ""
     has_api_key: bool = False
     configured_via: str = "default"
+    runtime_profile: str = "balanced"
 
 
 class RuntimeLlmRunResponse(BaseModel):
@@ -203,6 +204,7 @@ class RuntimeLlmConfigRequest(BaseModel):
     api_key: str = ""
     temperature: float = 0.2
     timeout_s: float = 20.0
+    runtime_profile: str = "balanced"
 
 
 class RuntimeLlmConfigResponse(BaseModel):
@@ -214,6 +216,7 @@ class RuntimeLlmConfigResponse(BaseModel):
     temperature: float = 0.2
     timeout_s: float = 20.0
     configured_via: str = "runtime-ui"
+    runtime_profile: str = "balanced"
 
 
 class RuntimeLlmTestResponse(BaseModel):
@@ -265,6 +268,7 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
         api_key=req.api_key,
         temperature=req.temperature,
         timeout_s=req.timeout_s,
+        runtime_profile=req.runtime_profile,
     )
     return RuntimeLlmConfigResponse(
         enabled=config["ORGANIC4D_LLM_CHAT_ENABLED"] == "1",
@@ -275,6 +279,7 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
         temperature=float(config["ORGANIC4D_LLM_TEMPERATURE"]),
         timeout_s=float(config["ORGANIC4D_LLM_TIMEOUT_S"]),
         configured_via="runtime-ui",
+        runtime_profile=str(config.get("ORGANIC4D_LLM_RUNTIME_PROFILE") or "balanced"),
     )
 
 
