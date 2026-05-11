@@ -26,13 +26,16 @@ from app.llm.prompt_engineering import (
 from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
 from app.llm.review import (
     build_review_diff_prompt,
+    build_review_diff_query_prompt,
     build_review_query_prompt,
     build_review_summary_prompt,
     build_timeline_annotation_prompt,
     heuristic_review_diff,
+    heuristic_review_diff_query,
     heuristic_review_query,
     heuristic_review_summary,
     parse_review_diff,
+    parse_review_diff_query,
     parse_review_query,
     heuristic_timeline_annotations,
     parse_review_summary,
@@ -214,6 +217,31 @@ class LLMFacade:
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("review_query"),
             "prompt_meta": get_prompt_meta("review_query"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
+        }
+
+    def query_review_diff(
+        self,
+        diff_payload: Mapping[str, Any],
+        *,
+        question: str,
+    ) -> dict[str, Any]:
+        prompt = build_review_diff_query_prompt(diff_payload, question)
+        texts, meta = self._run_task_with_meta([prompt], task="review_diff_query")
+        text = str(texts[0] if texts else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        answer = (
+            heuristic_review_diff_query(diff_payload, question)
+            if used_heuristic
+            else parse_review_diff_query(text, diff_payload, question)
+        )
+        return {
+            "query": answer,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("review_diff_query"),
+            "prompt_meta": get_prompt_meta("review_diff_query"),
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),

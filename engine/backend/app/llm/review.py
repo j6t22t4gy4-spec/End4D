@@ -67,6 +67,22 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
     )
 
 
+def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: str) -> str:
+    return build_prompt_contract(
+        "review_diff_query",
+        [
+            ("question", question),
+            ("base_summary_stats", _compact(diff_payload.get("base_summary_stats") or {})),
+            ("target_summary_stats", _compact(diff_payload.get("target_summary_stats") or {})),
+            ("group_drift_deltas", _compact_list(diff_payload.get("group_drift_deltas") or [], limit=6)),
+            ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=6)),
+            ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
+            ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
+            ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
+        ],
+    )
+
+
 def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     summary_stats = dict(payload.get("summary_stats") or {})
     belief_drift = dict(payload.get("belief_drift") or {})
@@ -279,6 +295,69 @@ def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[st
     }
 
 
+def heuristic_review_diff_query(diff_payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    prompt = str(question or "").strip().lower()
+    groups = list(diff_payload.get("group_drift_deltas") or [])
+    zones = list(diff_payload.get("zone_z_delta") or [])
+    policy = dict(diff_payload.get("policy_impact_delta") or {})
+    top_group = dict(groups[0] if groups else {})
+    top_zone = dict(zones[0] if zones else {})
+    answer = "현재 diff evidence로는 질문에 대한 결정적 결론이 제한적입니다."
+    evidence: list[str] = []
+    if "정책" in prompt or "policy" in prompt:
+        answer = (
+            f"target 쪽 정책 영향은 role {', '.join(list(policy.get('target_only_roles') or [])[:3]) or 'n/a'}와 "
+            f"zone {', '.join(list(policy.get('target_only_zones') or [])[:3]) or 'n/a'}에서 baseline과 가장 크게 갈렸습니다."
+        )
+        evidence.append(
+            f"target_only_roles={', '.join(list(policy.get('target_only_roles') or [])[:4]) or 'n/a'}"
+        )
+        evidence.append(
+            f"target_only_zones={', '.join(list(policy.get('target_only_zones') or [])[:4]) or 'n/a'}"
+        )
+    elif "집단" in prompt or "group" in prompt or "분열" in prompt or "fracture" in prompt:
+        answer = (
+            f"{top_group.get('role_label', '핵심 집단')}이 baseline 대비 가장 큰 집단 차이를 보였습니다. "
+            f"split risk {float(top_group.get('split_risk_gap', 0.0)):+.2f}, "
+            f"block divergence {float(top_group.get('block_divergence_gap', 0.0)):+.2f}, "
+            f"cross-zone fracture {float(top_group.get('cross_zone_fracture_gap', 0.0)):+.2f}입니다."
+        )
+        evidence.append(
+            f"group={top_group.get('role_label', 'n/a')} split_risk_gap={float(top_group.get('split_risk_gap', 0.0)):+.2f}"
+        )
+        evidence.append(
+            f"block_divergence_gap={float(top_group.get('block_divergence_gap', 0.0)):+.2f}, cross_zone_fracture_gap={float(top_group.get('cross_zone_fracture_gap', 0.0)):+.2f}"
+        )
+    elif "지역" in prompt or "zone" in prompt:
+        answer = (
+            f"{top_zone.get('zone_label', '주요 zone')}이 baseline 대비 가장 큰 지역 차이를 보였습니다. "
+            f"avg z gap {float(top_zone.get('avg_z_gap', 0.0)):+.2f}, energy gap {float(top_zone.get('avg_energy_gap', 0.0)):+.2f}입니다."
+        )
+        evidence.append(
+            f"zone={top_zone.get('zone_label', 'n/a')} avg_z_gap={float(top_zone.get('avg_z_gap', 0.0)):+.2f}"
+        )
+    else:
+        answer = (
+            f"가장 큰 차이는 {top_group.get('role_label', '집단')}의 집단 동학 변화와 "
+            f"{top_zone.get('zone_label', '지역')}의 regional elevation shift에 집중됩니다."
+        )
+        evidence.append(
+            f"group={top_group.get('role_label', 'n/a')} cohesion_gap={float(top_group.get('cohesion_gap', 0.0)):+.2f}, tension_gap={float(top_group.get('tension_gap', 0.0)):+.2f}"
+        )
+        evidence.append(
+            f"zone={top_zone.get('zone_label', 'n/a')} avg_z_gap={float(top_zone.get('avg_z_gap', 0.0)):+.2f}"
+        )
+    return {
+        "answer": answer,
+        "evidence": evidence[:4],
+        "follow_up": [
+            "target와 baseline turning point를 각각 열어 같은 시점을 직접 비교해보는 것이 좋습니다.",
+            "policy impact delta와 group drift table을 함께 보면 원인 해석이 더 선명해집니다.",
+        ],
+        "confidence_notes": ["heuristic diff query used"],
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -354,6 +433,23 @@ def parse_review_query(raw_text: str, payload: Mapping[str, Any], question: str)
     except json.JSONDecodeError:
         return heuristic_review_query(payload, question)
     fallback = heuristic_review_query(payload, question)
+    return {
+        "answer": str(parsed.get("answer") or fallback["answer"]),
+        "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
+        "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
+        "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+    }
+
+
+def parse_review_diff_query(raw_text: str, diff_payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_review_diff_query(diff_payload, question)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_review_diff_query(diff_payload, question)
+    fallback = heuristic_review_diff_query(diff_payload, question)
     return {
         "answer": str(parsed.get("answer") or fallback["answer"]),
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),

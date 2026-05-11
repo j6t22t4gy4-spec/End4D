@@ -242,6 +242,7 @@ export type ReviewSummaryResponse = {
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
   grounding: Record<string, ReviewGroundingItem[]>;
+  citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
 };
 
@@ -255,11 +256,25 @@ export type ReviewDiffResponse = {
   causal_comparison: string[];
   decision_implications: string[];
   compared_metrics: Record<string, unknown>;
+  citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
 };
 
 export type ReviewQueryResponse = {
   world_id: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+  follow_up: string[];
+  confidence_notes: string[];
+  mode: string;
+  grounding: Record<string, ReviewGroundingItem[]>;
+  review_meta: Record<string, unknown>;
+};
+
+export type ReviewDiffQueryResponse = {
+  base_world_id: string;
+  target_world_id: string;
   question: string;
   answer: string;
   evidence: string[];
@@ -406,6 +421,24 @@ export async function postReviewQuery(
     }
   );
   if (!res.ok) throw new Error(`postReviewQuery: ${res.status}`);
+  return res.json();
+}
+
+export async function postReviewDiffQuery(
+  worldId: string,
+  baseWorldId: string,
+  question: string
+): Promise<ReviewDiffQueryResponse> {
+  const q = new URLSearchParams({ base_world_id: baseWorldId });
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/diff-query?${q}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }
+  );
+  if (!res.ok) throw new Error(`postReviewDiffQuery: ${res.status}`);
   return res.json();
 }
 

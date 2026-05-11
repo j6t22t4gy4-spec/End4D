@@ -28,6 +28,7 @@ def test_review_summary_returns_summary_and_annotations():
     assert isinstance(payload["timeline_annotations"], list)
     assert "metrics" in payload
     assert "grounding" in payload
+    assert "citations" in payload
     assert "review_meta" in payload
 
 
@@ -59,6 +60,7 @@ def test_review_diff_returns_comparison():
     assert "timeline_turning_point_delta" in payload["compared_metrics"]
     assert "group_drift_deltas" in payload["compared_metrics"]
     assert "policy_impact_delta" in payload["compared_metrics"]
+    assert "citations" in payload
 
 
 def test_review_query_returns_answer_and_grounding():
@@ -83,3 +85,34 @@ def test_review_query_returns_answer_and_grounding():
     assert isinstance(payload["evidence"], list)
     assert "grounding" in payload
     assert payload["mode"] in {"heuristic", "llm"}
+
+
+def test_review_diff_query_returns_answer_and_grounding():
+    base = client.post(
+        "/worlds",
+        json={"prompt": "기준 시나리오로 사회적 고도와 집단 분열을 본다"},
+    )
+    assert base.status_code == 200
+    base_world_id = base.json()["world_id"]
+    assert client.post(f"/worlds/{base_world_id}/run", json={"stream": False}).status_code == 200
+
+    target = client.post(
+        "/worlds",
+        json={"prompt": "강한 정책 주입으로 집단 분열과 지역 격차를 비교한다"},
+    )
+    assert target.status_code == 200
+    target_world_id = target.json()["world_id"]
+    assert client.post(f"/worlds/{target_world_id}/run", json={"stream": False}).status_code == 200
+
+    response = client.post(
+        f"/worlds/{target_world_id}/review/diff-query",
+        params={"base_world_id": base_world_id},
+        json={"question": "어떤 집단 분열과 정책 차이가 가장 크게 갈렸나?"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["base_world_id"] == base_world_id
+    assert payload["target_world_id"] == target_world_id
+    assert payload["answer"]
+    assert isinstance(payload["evidence"], list)
+    assert "grounding" in payload

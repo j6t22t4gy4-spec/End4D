@@ -213,6 +213,22 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "confidence_notes",
         ),
     ),
+    "review_diff_query": PromptSpec(
+        task="review_diff_query",
+        version="review-diff-query-v1",
+        output_mode="json",
+        description="Answer an analyst question about differences between a baseline world and a target world.",
+        system_prompt=(
+            "Answer the analyst question using only the structured baseline-vs-target evidence. "
+            "Return compact JSON only with answer, evidence, follow-up, and confidence notes."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "follow_up",
+            "confidence_notes",
+        ),
+    ),
 }
 
 

@@ -135,10 +135,20 @@ def build_review_diff_payload(
                 "z_gap": round(float(target_group.get("avg_z_delta", 0.0)) - float(base_group.get("avg_z_delta", 0.0)), 3),
                 "cell_gap": int(target_group.get("cell_delta", 0)) - int(base_group.get("cell_delta", 0)),
                 "worldview_gap": round(float(target_group.get("worldview_norm_delta", 0.0)) - float(base_group.get("worldview_norm_delta", 0.0)), 3),
+                "split_risk_gap": round(float(target_group.get("sub_coalition_split_risk", 0.0)) - float(base_group.get("sub_coalition_split_risk", 0.0)), 3),
+                "block_divergence_gap": round(float(target_group.get("ideology_block_divergence", 0.0)) - float(base_group.get("ideology_block_divergence", 0.0)), 3),
+                "cross_zone_fracture_gap": round(float(target_group.get("cross_zone_group_fracture", 0.0)) - float(base_group.get("cross_zone_group_fracture", 0.0)), 3),
             }
         )
     group_drift_deltas.sort(
-        key=lambda item: abs(float(item["cohesion_gap"])) + abs(float(item["tension_gap"])) + abs(float(item["z_gap"])),
+        key=lambda item: (
+            abs(float(item["cohesion_gap"]))
+            + abs(float(item["tension_gap"]))
+            + abs(float(item["z_gap"]))
+            + abs(float(item["split_risk_gap"]))
+            + abs(float(item["block_divergence_gap"]))
+            + abs(float(item["cross_zone_fracture_gap"]))
+        ),
         reverse=True,
     )
 
@@ -342,6 +352,14 @@ def _group_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
                 float(np.std([np.linalg.norm(cell.worldview_vec) for cell in cells])) if len(cells) > 1 else 0.0,
                 3,
             ),
+            "split_risk_score": round(
+                _clip01(
+                    tension * 0.4
+                    + (float(np.std([np.linalg.norm(cell.worldview_vec) for cell in cells])) if len(cells) > 1 else 0.0) * 0.35
+                    + max(0.0, 0.5 - (float(np.mean(trusts)) if trusts else 0.0)) * 0.25
+                ),
+                3,
+            ),
         }
     return out
 
@@ -395,6 +413,20 @@ def _belief_drift_summary(
                     min(1.0, int(coalition.get("cycle_count", 0) or 0) / 4.0),
                     3,
                 ),
+                "sub_coalition_split_risk": round(float(latest.get("split_risk_score", 0.0)), 3),
+                "ideology_block_divergence": round(
+                    abs(float(latest.get("worldview_norm", 0.0)) - float(first.get("worldview_norm", 0.0)))
+                    + float(latest.get("polarization_score", 0.0)),
+                    3,
+                ),
+                "cross_zone_group_fracture": round(
+                    _clip01(
+                        abs(float(latest.get("avg_z", 0.0)) - float(first.get("avg_z", 0.0))) * 0.35
+                        + float(latest.get("tension_score", 0.0)) * 0.4
+                        + float(latest.get("polarization_score", 0.0)) * 0.25
+                    ),
+                    3,
+                ),
             }
         )
     groups.sort(
@@ -415,6 +447,9 @@ def _belief_drift_summary(
         "overall_polarization": round(float(np.mean([g["polarization_after"] for g in groups])) if groups else 0.0, 3),
         "overall_cohesion": round(float(np.mean([g["cohesion_after"] for g in groups])) if groups else 0.0, 3),
         "overall_tension": round(float(np.mean([g["tension_after"] for g in groups])) if groups else 0.0, 3),
+        "overall_split_risk": round(float(np.mean([g["sub_coalition_split_risk"] for g in groups])) if groups else 0.0, 3),
+        "overall_block_divergence": round(float(np.mean([g["ideology_block_divergence"] for g in groups])) if groups else 0.0, 3),
+        "overall_cross_zone_fracture": round(float(np.mean([g["cross_zone_group_fracture"] for g in groups])) if groups else 0.0, 3),
         "groups": groups[:8],
     }
 
@@ -607,6 +642,10 @@ def _build_grounding(
             for item in notable_agents[:5]
         ],
     }
+
+
+def _clip01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
 
 
 def _event_summary(event: Any) -> dict[str, Any]:

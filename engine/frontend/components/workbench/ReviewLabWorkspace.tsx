@@ -6,8 +6,10 @@ import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
   getReviewDiff,
   getReviewSummary,
+  postReviewDiffQuery,
   postReviewQuery,
   type ReviewDiffResponse,
+  type ReviewDiffQueryResponse,
   type ReviewGroundingItem,
   type ReviewQueryResponse,
   type ReviewSummaryResponse,
@@ -39,6 +41,10 @@ export function ReviewLabWorkspace({
   const [queryData, setQueryData] = useState<ReviewQueryResponse | null>(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [queryError, setQueryError] = useState<string | null>(null);
+  const [diffQuery, setDiffQuery] = useState("어떤 집단 분열과 정책 차이가 baseline 대비 가장 크게 갈렸나?");
+  const [diffQueryData, setDiffQueryData] = useState<ReviewDiffQueryResponse | null>(null);
+  const [diffQueryLoading, setDiffQueryLoading] = useState(false);
+  const [diffQueryError, setDiffQueryError] = useState<string | null>(null);
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -154,6 +160,11 @@ export function ReviewLabWorkspace({
     setQueryData(null);
     setQueryError(null);
   }, [worldId]);
+
+  useEffect(() => {
+    setDiffQueryData(null);
+    setDiffQueryError(null);
+  }, [worldId, baseWorldId]);
 
   if (!worldId) {
     return (
@@ -345,6 +356,73 @@ export function ReviewLabWorkspace({
         )}
       </AppPanel>
 
+      <AppPanel
+        title="Diff Query"
+        subtitle="Ask about baseline vs target"
+        bodyClassName="space-y-3"
+      >
+        <textarea
+          className="app-input min-h-[84px]"
+          value={diffQuery}
+          onChange={(event) => setDiffQuery(event.target.value)}
+          placeholder="예: 어떤 집단 분열과 정책 차이가 baseline 대비 가장 크게 갈렸나?"
+        />
+        <div className="session-thread-card__actions">
+          <button
+            type="button"
+            className="app-button app-button--ghost"
+            onClick={() => {
+              if (!worldId || !baseWorldId || !diffQuery.trim()) return;
+              setDiffQueryLoading(true);
+              setDiffQueryError(null);
+              postReviewDiffQuery(worldId, baseWorldId, diffQuery.trim())
+                .then((payload) => setDiffQueryData(payload))
+                .catch((reason: Error) => setDiffQueryError(reason.message))
+                .finally(() => setDiffQueryLoading(false));
+            }}
+          >
+            Ask Diff
+          </button>
+        </div>
+        {diffQueryLoading ? <p className="text-sm text-slate-500">Diff query loading…</p> : null}
+        {diffQueryError ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            diff 질의를 처리하지 못했습니다: {diffQueryError}
+          </p>
+        ) : null}
+        {diffQueryData ? (
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="space-y-3">
+              <div className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">Diff Answer</p>
+                  <span className="session-thread-card__meta">{diffQueryData.mode}</span>
+                </div>
+                <p className="session-thread-card__prompt">{diffQueryData.answer}</p>
+              </div>
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                <div className="mt-2 grid gap-2">
+                  {diffQueryData.evidence.map((item, index) => (
+                    <p key={`${index}-${item}`} className="inspector-body">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <GroundingPanel
+              title="Diff Grounding"
+              items={flattenGrounding(diffQueryData.grounding)}
+              onOpenWorldAt={(wid, t) => onOpenWorldAt(wid || worldId, t)}
+              worldId={worldId}
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">baseline과 target 차이에 대해 자연어로 질문할 수 있습니다.</p>
+        )}
+      </AppPanel>
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel title="Diff Report" subtitle="Baseline vs current world" bodyClassName="space-y-3">
           {diffLoading ? <p className="text-sm text-slate-500">Diff report loading…</p> : null}
@@ -392,20 +470,31 @@ export function ReviewLabWorkspace({
               {diff.key_deltas.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
-                  {targetTurningPoints[index] ? (
+                  {targetTurningPoints[index] || diff?.citations?.key_deltas?.[0]?.group_id ? (
                     <div className="session-thread-card__actions">
-                      <button
-                        type="button"
-                        className="app-button app-button--ghost"
-                        onClick={() =>
-                          onOpenWorldAt(
-                            diff.target_world_id,
-                            Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
-                          )
-                        }
-                      >
-                        Open Target Shift
-                      </button>
+                      {targetTurningPoints[index] ? (
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() =>
+                            onOpenWorldAt(
+                              diff.target_world_id,
+                              Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
+                            )
+                          }
+                        >
+                          Open Target Shift
+                        </button>
+                      ) : null}
+                      {diff?.citations?.key_deltas?.[0]?.t != null ? (
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => onOpenWorldAt(diff.target_world_id, diff.citations.key_deltas[0].t ?? null)}
+                        >
+                          Citation
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -472,10 +561,11 @@ export function ReviewLabWorkspace({
                     <th className="px-2 py-2">Group</th>
                     <th className="px-2 py-2">Stance</th>
                     <th className="px-2 py-2">Cohesion</th>
-                    <th className="px-2 py-2">Tension</th>
-                    <th className="px-2 py-2">Polarization</th>
-                    <th className="px-2 py-2">Coalition</th>
-                  </tr>
+                      <th className="px-2 py-2">Tension</th>
+                      <th className="px-2 py-2">Polarization</th>
+                      <th className="px-2 py-2">Coalition</th>
+                      <th className="px-2 py-2">Fracture</th>
+                    </tr>
                 </thead>
                 <tbody>
                   {data.stance_groups.slice(0, 8).map((item, index) => {
@@ -497,6 +587,9 @@ export function ReviewLabWorkspace({
                         </td>
                         <td className="px-2 py-2">
                           {String(row.coalition_signal ?? "n/a")} · {Number(row.coalition_persistence ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2">
+                          {Number(row.sub_coalition_split_risk ?? 0).toFixed(2)} / {Number(row.ideology_block_divergence ?? 0).toFixed(2)} / {Number(row.cross_zone_group_fracture ?? 0).toFixed(2)}
                         </td>
                       </tr>
                     );
@@ -792,20 +885,36 @@ export function ReviewLabWorkspace({
               {diff.causal_comparison.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
-                  {targetTurningPoints[index] ? (
+                  {targetTurningPoints[index] || diff?.citations?.causal_comparison?.[index]?.t != null ? (
                     <div className="session-thread-card__actions">
-                      <button
-                        type="button"
-                        className="app-button app-button--ghost"
-                        onClick={() =>
-                          onOpenWorldAt(
-                            diff.target_world_id,
-                            Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
-                          )
-                        }
-                      >
-                        Inspect Target Cause
-                      </button>
+                      {targetTurningPoints[index] ? (
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() =>
+                            onOpenWorldAt(
+                              diff.target_world_id,
+                              Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
+                            )
+                          }
+                        >
+                          Inspect Target Cause
+                        </button>
+                      ) : null}
+                      {diff?.citations?.causal_comparison?.[index]?.t != null ? (
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() =>
+                            onOpenWorldAt(
+                              index === 1 ? diff.base_world_id : diff.target_world_id,
+                              diff.citations.causal_comparison[index].t ?? null
+                            )
+                          }
+                        >
+                          Citation
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -834,6 +943,17 @@ export function ReviewLabWorkspace({
               {diff.decision_implications.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
+                  {diff?.citations?.decision_implications?.[0]?.zone_id ? (
+                    <div className="session-thread-card__actions">
+                      <button
+                        type="button"
+                        className="app-button app-button--ghost"
+                        onClick={() => onOpenWorldAt(diff.target_world_id)}
+                      >
+                        Citation
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </>

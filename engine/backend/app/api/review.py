@@ -50,6 +50,7 @@ class ReviewSummaryResponse(BaseModel):
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
+    citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -63,6 +64,7 @@ class ReviewDiffResponse(BaseModel):
     causal_comparison: List[str] = Field(default_factory=list)
     decision_implications: List[str] = Field(default_factory=list)
     compared_metrics: Dict[str, Any] = Field(default_factory=dict)
+    citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -72,6 +74,23 @@ class ReviewQueryRequest(BaseModel):
 
 class ReviewQueryResponse(BaseModel):
     world_id: str
+    question: str
+    answer: str
+    evidence: List[str] = Field(default_factory=list)
+    follow_up: List[str] = Field(default_factory=list)
+    confidence_notes: List[str] = Field(default_factory=list)
+    mode: str
+    grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
+    review_meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewDiffQueryRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+
+
+class ReviewDiffQueryResponse(BaseModel):
+    base_world_id: str
+    target_world_id: str
     question: str
     answer: str
     evidence: List[str] = Field(default_factory=list)
@@ -130,6 +149,7 @@ def get_review_summary(world_id: str):
             ]
             for key, value in dict(payload.get("grounding") or {}).items()
         },
+        citations=_build_summary_citations(payload),
         review_meta={
             "summary": {
                 "prompt_version": summary["prompt_version"],
@@ -191,6 +211,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         causal_comparison=[str(item) for item in list(diff["diff"].get("causal_comparison") or [])],
         decision_implications=[str(item) for item in list(diff["diff"].get("decision_implications") or [])],
         compared_metrics=compared_metrics,
+        citations=_build_diff_citations(diff_payload),
         review_meta={
             "diff": {
                 "prompt_version": diff["prompt_version"],
@@ -247,3 +268,143 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
             }
         },
     )
+
+
+@router.post("/{world_id}/review/diff-query", response_model=ReviewDiffQueryResponse)
+def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQueryRequest):
+    target_entry = world_store.get(world_id)
+    if target_entry is None:
+        raise HTTPException(status_code=404, detail="Target world not found")
+    base_entry = world_store.get(base_world_id)
+    if base_entry is None:
+        raise HTTPException(status_code=404, detail="Base world not found")
+    try:
+        target_payload = build_world_review_payload(target_entry)
+        base_payload = build_world_review_payload(base_entry)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    diff_payload = build_review_diff_payload(base_payload=base_payload, target_payload=target_payload)
+    query = llm_facade.query_review_diff(diff_payload, question=body.question)
+    answer = dict(query.get("query") or {})
+    return ReviewDiffQueryResponse(
+        base_world_id=base_world_id,
+        target_world_id=world_id,
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        follow_up=[str(item) for item in list(answer.get("follow_up") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(query.get("mode") or "heuristic"),
+        grounding=_build_diff_citations(diff_payload),
+        review_meta={
+            "query": {
+                "prompt_version": str(query.get("prompt_version") or ""),
+                "prompt_meta": dict(query.get("prompt_meta") or {}),
+                "provider": str(query.get("provider") or ""),
+                "model": str(query.get("model") or ""),
+                "fallback_reason": str(query.get("fallback_reason") or ""),
+            }
+        },
+    )
+
+
+def _ground_item(*, kind: str, label: str, reason: str = "", t: Optional[float] = None, group_id: Optional[str] = None, zone_id: Optional[str] = None, cell_id: Optional[str] = None) -> ReviewGroundingItem:
+    return ReviewGroundingItem(
+        kind=kind,
+        label=label,
+        reason=reason,
+        t=t,
+        group_id=group_id,
+        zone_id=zone_id,
+        cell_id=cell_id,
+    )
+
+
+def _build_summary_citations(payload: Dict[str, Any]) -> Dict[str, List[ReviewGroundingItem]]:
+    groups = list((payload.get("belief_drift") or {}).get("groups") or [])
+    events = list(payload.get("key_events") or [])
+    zones = list(payload.get("zone_z_drift") or [])
+    top_group = dict(groups[0] if groups else {})
+    top_event = dict(events[0] if events else {})
+    top_zone = dict(zones[0] if zones else {})
+    return {
+        "headline": [
+            _ground_item(
+                kind="group",
+                label=str(top_group.get("role_label") or "group"),
+                reason=f"stance {top_group.get('stance_before', 'n/a')} -> {top_group.get('stance_after', 'n/a')}",
+                group_id=str(top_group.get("group_id")) if top_group.get("group_id") is not None else None,
+            )
+        ]
+        if top_group
+        else [],
+        "causal_analysis": [
+            _ground_item(
+                kind="event",
+                label=str(top_event.get("name") or "event"),
+                reason=str(top_event.get("summary") or top_event.get("event_type") or ""),
+                t=float(top_event.get("t")) if top_event.get("t") is not None else None,
+            )
+        ]
+        if top_event
+        else [],
+        "decision_implications": [
+            _ground_item(
+                kind="zone",
+                label=str(top_zone.get("zone_label") or "zone"),
+                reason=f"avg z delta {float(top_zone.get('avg_z_delta', 0.0)):+.2f}",
+                zone_id=str(top_zone.get("zone_id")) if top_zone.get("zone_id") is not None else None,
+            )
+        ]
+        if top_zone
+        else [],
+    }
+
+
+def _build_diff_citations(diff_payload: Dict[str, Any]) -> Dict[str, List[ReviewGroundingItem]]:
+    groups = list(diff_payload.get("group_drift_deltas") or [])
+    zones = list(diff_payload.get("zone_z_delta") or [])
+    target_turning = list((diff_payload.get("timeline_turning_point_delta") or {}).get("target") or [])
+    base_turning = list((diff_payload.get("timeline_turning_point_delta") or {}).get("base") or [])
+    top_group = dict(groups[0] if groups else {})
+    top_zone = dict(zones[0] if zones else {})
+    top_target = dict(target_turning[0] if target_turning else {})
+    top_base = dict(base_turning[0] if base_turning else {})
+    return {
+        "key_deltas": [
+            _ground_item(
+                kind="group",
+                label=str(top_group.get("role_label") or "group"),
+                reason=f"cohesion {float(top_group.get('cohesion_gap', 0.0)):+.2f}, tension {float(top_group.get('tension_gap', 0.0)):+.2f}",
+                group_id=str(top_group.get("group_id")) if top_group.get("group_id") is not None else None,
+            )
+        ]
+        if top_group
+        else [],
+        "causal_comparison": [
+            _ground_item(
+                kind="event",
+                label=str(top_target.get("label") or "target shift"),
+                reason=str(top_target.get("reason") or ""),
+                t=float(top_target.get("t")) if top_target.get("t") is not None else None,
+            ),
+            _ground_item(
+                kind="event",
+                label=str(top_base.get("label") or "baseline shift"),
+                reason=str(top_base.get("reason") or ""),
+                t=float(top_base.get("t")) if top_base.get("t") is not None else None,
+            ),
+        ]
+        if top_target or top_base
+        else [],
+        "decision_implications": [
+            _ground_item(
+                kind="zone",
+                label=str(top_zone.get("zone_label") or "zone"),
+                reason=f"avg z gap {float(top_zone.get('avg_z_gap', 0.0)):+.2f}",
+                zone_id=str(top_zone.get("zone_id")) if top_zone.get("zone_id") is not None else None,
+            )
+        ]
+        if top_zone
+        else [],
+    }
