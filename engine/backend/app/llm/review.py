@@ -145,17 +145,21 @@ def build_citation_repair_prompt(
     grounding: Mapping[str, Any],
     required_keys: Sequence[str],
     citation_mode: str,
+    repair_reason: str = "",
 ) -> str:
     payload = {
         "task": task,
         "citation_mode": citation_mode,
         "required_keys": list(required_keys),
         "allowed_anchor_ids": sorted(_allowed_anchor_ids(grounding)),
+        "repair_reason": str(repair_reason or ""),
     }
     return build_prompt_contract(
         "review_citation_repair",
         [
             ("repair_meta", _compact(payload)),
+            ("repair_focus", _repair_focus_instructions(str(repair_reason or ""), citation_mode=citation_mode)),
+            ("sentence_anchor_hints", _compact_sentence_anchor_hints(grounding, required_keys, citation_mode=citation_mode)),
             ("anchor_candidates", _compact_anchor_candidates(grounding)),
             ("grounding", _compact(grounding)),
             ("broken_output", str(raw_text or "")[:4000]),
@@ -1072,6 +1076,68 @@ def _compact_anchor_candidates(grounding: Mapping[str, Any]) -> str:
                 snippet += f"::{reason[:80]}"
             candidates.append(snippet)
     return " | ".join(candidates[:18])[:1800]
+
+
+def _compact_sentence_anchor_hints(
+    grounding: Mapping[str, Any],
+    required_keys: Sequence[str],
+    *,
+    citation_mode: str,
+) -> str:
+    if citation_mode == "list":
+        ids = (
+            _citation_ids(grounding, "groups", limit=2)
+            + _citation_ids(grounding, "events", limit=2)
+            + _citation_ids(grounding, "zones", limit=1)
+        )
+        return "citations -> " + ", ".join(ids[:5])
+    hints: list[str] = []
+    for key in required_keys:
+        section = str(key).split(".", 1)[0]
+        if section == "headline":
+            candidates = _citation_ids(grounding, "groups", limit=1) + _citation_ids(grounding, "events", limit=1)
+        elif "event" in section:
+            candidates = _citation_ids(grounding, "events", limit=2)
+        elif "causal" in section:
+            candidates = _citation_ids(grounding, "events", limit=1) + _citation_ids(grounding, "groups", limit=1)
+        elif "decision" in section:
+            candidates = _citation_ids(grounding, "groups", limit=1) + _citation_ids(grounding, "zones", limit=1)
+        elif "key_findings" in section:
+            candidates = _citation_ids(grounding, "worlds", limit=2) or _citation_ids(grounding, "groups", limit=2)
+        else:
+            candidates = _citation_ids(grounding, "groups", limit=1)
+        if candidates:
+            hints.append(f"{key} -> {', '.join(candidates[:3])}")
+    return " | ".join(hints)[:1800]
+
+
+def _repair_focus_instructions(reason: str, *, citation_mode: str) -> str:
+    normalized = str(reason or "").strip()
+    if normalized.startswith("missing_required_key:"):
+        return (
+            "Fill every missing required sentence key. Preserve the original analysis text. "
+            "For each required key, attach at least one valid anchor id from the hinted candidates."
+        )
+    if normalized.startswith("invalid_required_anchor:") or normalized.startswith("invalid_anchor_id:"):
+        return (
+            "Replace invalid anchor ids only. Keep the sentence structure stable, but swap every invalid id with the closest valid candidate."
+        )
+    if normalized == "missing_citation_map":
+        return (
+            "Rebuild the citations object as a sentence-key map. Do not rewrite the analysis unless needed for valid compact JSON."
+        )
+    if normalized == "invalid_or_empty_citation_list":
+        return (
+            "Rebuild citations as a non-empty list using only valid anchor ids. Prefer group/event anchors before others."
+        )
+    if normalized == "json_decode_failed":
+        return (
+            "Reconstruct the compact JSON faithfully from the broken output. Keep the original meaning, but ensure valid JSON and valid citations."
+        )
+    return (
+        "Repair citations using only valid anchor ids from the provided candidate list. "
+        f"Keep citation_mode={citation_mode}."
+    )
 
 
 def _string_list(value: Any, fallback: list[str]) -> list[str]:

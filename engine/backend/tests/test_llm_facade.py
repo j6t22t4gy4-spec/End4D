@@ -184,3 +184,14 @@ def test_facade_adaptive_priority_skip(monkeypatch):
     assert recent["task"] == "dialogue"
     assert recent["used_fallback"] is True
     assert "cycle_budget_cap" in recent["fallback_reason"] or "adaptive_priority_skip" in recent["fallback_reason"]
+
+
+def test_facade_exposes_repair_summary():
+    llm_facade.reset_stats()
+    llm_facade._record_repair("review_summary", {"used": True, "count": 1, "reason": "missing_required_key:causal_analysis.0"})
+    llm_facade._record_repair("review_summary", {"used": True, "count": 1, "reason": "invalid_anchor_id:decision_implications.0"})
+    stats = llm_facade.snapshot_stats()
+    assert stats["repair_summary"]["total_repairs"] == 2
+    assert stats["repair_summary"]["task_repairs"][0]["task"] == "review_summary"
+    reasons = {item["reason"] for item in stats["repair_summary"]["top_reasons"]}
+    assert "missing_required_key:causal_analysis.0" in reasons

@@ -349,6 +349,17 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert "stability_score" in data["llm_runtime"]["health"]
     assert "task_insights" in data["llm_runtime"]
     assert isinstance(data["llm_runtime"]["recommended_actions"], list)
+    assert "repair_summary" in data["llm_runtime"]
+
+
+def test_runtime_local_status_includes_repair_summary():
+    llm_facade.reset_stats()
+    llm_facade._record_repair("review_diff", {"used": True, "count": 1, "reason": "invalid_anchor_id:key_deltas.0"})
+    response = client.get("/runtime/local-status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["llm_runtime"]["repair_summary"]["total_repairs"] >= 1
+    assert data["llm_runtime"]["repair_summary"]["task_repairs"][0]["task"] == "review_diff"
 
 
 def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):

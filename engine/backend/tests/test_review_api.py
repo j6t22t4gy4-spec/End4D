@@ -1,10 +1,16 @@
 """Review summary API tests."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def disable_live_llm(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "0")
 
 
 def test_review_summary_returns_summary_and_annotations():

@@ -503,6 +503,7 @@ class LLMFacade:
             grounding=grounding.get("grounding") if isinstance(grounding, Mapping) and "grounding" in grounding else grounding,
             required_keys=required_keys,
             citation_mode=citation_mode,
+            repair_reason=reason,
         )
         texts, _meta = self._run_task_with_meta([repair_prompt], task="review_citation_repair")
         repaired_text = str(texts[0] if texts else "").strip()
