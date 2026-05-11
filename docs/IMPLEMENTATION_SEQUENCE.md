@@ -338,13 +338,19 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 ## Phase 12 — 비교·리포트·전문가 워크플로우
 
+핵심 원칙:
+- 시뮬레이션 중 LLM보다 시뮬레이션 후 `무슨 일이 일어났고 왜 중요한지`를 설명하는 리뷰 레이어를 먼저 강화한다.
+- Review Lab은 `summary → annotation → diff → query` 흐름으로 자라야 한다.
+
 | 순서 | 작업 | 산출물 | 이유 |
 |------|------|--------|------|
-| 12.1 | 세션별 world comparison 화면 | baseline vs branch 비교 | 전문가 사용성 핵심 |
-| 12.2 | stance/cohesion diff report | before/after 변화 요약 | 정책·시장 비교 설명력 강화 |
-| 12.3 | selection-driven God View | Setup/Run 2단 패널, 좌-중-우 레이아웃, 선택 상세 패널, 타임라인 마커/북마크 | 전문가 탐색 워크플로우 기반 |
-| 12.4 | snapshot lineage / fork graph | 복원·분기 이력 시각화 | 실험 추적성 |
-| 12.5 | exportable report payload | JSON/PDF/slide용 결과 구조 | 기관 보고 워크플로우 대응 |
+| 12.1 | world review payload builder | group belief, z-field, policy events, coalition history 요약 | LLM 리뷰 입력층 |
+| 12.2 | 자동 world summary | `GET /worlds/{id}/review/summary`, Review Facade | 결과를 자연어로 읽어줌 |
+| 12.3 | timeline annotation | 주요 변곡점 자동 마킹과 reason 생성 | 타임라인 해석력 강화 |
+| 12.4 | 세션별 world comparison 화면 | baseline vs branch 비교 | 전문가 사용성 핵심 |
+| 12.5 | stance/cohesion diff report | before/after 변화 요약 | 정책·시장 비교 설명력 강화 |
+| 12.6 | snapshot lineage / fork graph | 복원·분기 이력 시각화 | 실험 추적성 |
+| 12.7 | exportable report payload | JSON/PDF/slide용 결과 구조 | 기관 보고 워크플로우 대응 |
 
 ---
 
@@ -375,6 +381,8 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 - [ ] `persona-aware Genesis`가 occupation/region/age 분포를 role mix, zone seed, energy/z bias까지 실제 반영한다
 - [ ] `group stance summary`가 role/persona/zone 기준으로 world/session 비교 가능한 구조로 저장된다
+- [ ] 시뮬 종료 후 자동 요약이 Review Lab에 노출된다
+- [ ] 주요 타임라인 변곡점이 자동 annotation된다
 - [ ] policy/event injection이 강도·범위·지속시간을 가진다
 - [ ] `session comparison` 화면에서 최소 2개 world를 나란히 볼 수 있다
 - [ ] LLM 결과에 `provider / model / prompt_version / timestamp`가 남는다

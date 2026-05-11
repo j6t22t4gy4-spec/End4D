@@ -30,6 +30,7 @@
 | Prompt Template 체계 | 부분 구현 | 높음 | registry와 contract가 생겼지만 평가 루프와 결과물 provenance 저장은 더 필요 |
 | group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 role/persona/zone 집단 stance/cohesion/tension drift와 비교 리포트가 아직 약함 |
 | session/world comparison workflow | 부분 구현 | 최상 | 저장은 되지만 장기 시나리오 비교 도구로는 아직 부족 |
+| post-simulation LLM review layer | 초기 구현 | 최상 | 시뮬 종료 후 자동 요약, diff report, timeline annotation, 자연어 질의가 약해 “그래서 무엇이 중요한가”를 바로 답하지 못함 |
 | prompt/provider/dataset provenance | 부분 구현 | 높음 | LLM/provider/prompt/dataset 메타가 결과 분석 전반에 충분히 남지 않음 |
 | policy/event semantics | 부분 구현 | 높음 | 이벤트 주입은 있으나 정책 단위 실험 모델로는 아직 단순함 |
 | social elevation z-field | 부분 구현 | 높음 | z는 재도입됐지만 contour 품질, z drift 비교, 정책/집단 상태와의 연결 설명력이 더 필요 |
@@ -109,6 +110,17 @@
 - z provenance: 현재 z가 어떤 mode와 어떤 agent state 축에서 계산됐는지 결과물에 더 명확히 노출
 - group/policy linkage: coalition drift, policy sensitivity, memory accumulation과 z 변화의 관계를 리포트할 수 있어야 함
 
+### 2.8 시뮬 후 LLM 리뷰 레이어
+
+현재 LLM은 agent cognition에는 깊게 들어가 있지만, 시뮬 종료 후 결과를 읽어주는 분석가 레이어는 약하다. 이 결손이 크면 사용자는 시뮬레이션을 돌린 뒤 raw timeline과 기본 통계만 보고 직접 해석해야 하므로 제품이 엔진 디버거처럼 느껴질 수 있다.
+
+필수 산출물:
+- world summary generator
+- timeline annotation generator
+- baseline vs intervention diff report
+- causal insight generation
+- 자연어 review query (`review.ask(...)`)
+
 ### 2.6 멀티 에이전트 대화 / 집단 상호작용
 
 현재 세포는 벡터와 규칙 상호작용에 더해, 주기적인 직접 대화(`agent_dialogue`)와 역할 집단 협상(`group_deliberation`)을 수행할 수 있다. 다음 단계는 이 결과를 UI와 장기 비교 리포트에 더 명확히 노출하는 것이다.
@@ -130,12 +142,13 @@
 | 2 | LLM 호출 입구 + Facade 표준화 | 기능이 늘어날수록 provider/prompt/budget 제어를 한곳으로 모아야 함 |
 | 3 | 비용 제어 & 호출 스케줄링 | 장시간 시뮬레이션과 로컬 하이브리드 방향의 핵심 |
 | 4 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
-| 5 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
-| 6 | Storage Layer 고도화 | 스냅샷, 포크, 재현성, 무결성의 기반 |
-| 7 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
-| 8 | Nemotron 및 다국가 registry 운영 검증 | 데이터 레이어를 제품화 가능한 수준으로 올림 |
-| 9 | 대규모 성능 벤치와 최적화 | 10k+ 규모 신뢰성 확보 |
-| 10 | ChatPanel + 대화 엔진 | 코어 시뮬레이션 위에 자연어 인터페이스를 얹음 |
+| 5 | post-simulation LLM review layer | 결과를 자연어 요약·주석·비교 가능한 분석 워크플로우로 전환 |
+| 6 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
+| 7 | Storage Layer 고도화 | 스냅샷, 포크, 재현성, 무결성의 기반 |
+| 8 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
+| 9 | Nemotron 및 다국가 registry 운영 검증 | 데이터 레이어를 제품화 가능한 수준으로 올림 |
+| 10 | 대규모 성능 벤치와 최적화 | 10k+ 규모 신뢰성 확보 |
+| 11 | ChatPanel + 대화 엔진 | 코어 시뮬레이션 위에 자연어 인터페이스를 얹음 |
 
 ---
 
@@ -175,6 +188,8 @@
 - [ ] 엔진이 `llm_facade.think() / decide_actions() / interpret_policy()` 같은 일관된 LLM 입구를 사용한다
 - [ ] task별 budget, sampling, cadence가 메타와 함께 추적된다
 - [ ] role/persona group 기준의 stance/cohesion/tension drift가 저장·조회된다
+- [ ] 시뮬 종료 후 자동 요약과 주요 시점 timeline annotation이 생성된다
+- [ ] baseline vs intervention/world vs world diff report가 자연어로 생성된다
 - [ ] policy/event injection이 강도, 범위, 지속시간을 가진다
 - [ ] session에서 world 간 비교와 최근 world reopen이 가능하다
 - [ ] 결과물에 `provider / model / prompt_version / dataset_version` 메타가 남는다

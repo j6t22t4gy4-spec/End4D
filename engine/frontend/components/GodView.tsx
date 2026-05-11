@@ -36,9 +36,11 @@ const PROMPT_PLACEHOLDER =
 export default function GodView({
   initialWorldId = null,
   onOpenWorkbenchView,
+  onWorldSelected,
 }: {
   initialWorldId?: string | null;
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
+  onWorldSelected?: (worldId: string) => void;
 }) {
   const [stage, setStage] = useState<"setup" | "run">("setup");
   const [genesisPrompt, setGenesisPrompt] = useState("");
@@ -146,6 +148,7 @@ export default function GodView({
       });
       setLastGenesis(out);
       setWorldId(out.world_id);
+      onWorldSelected?.(out.world_id);
       setActiveSessionId(out.session_id);
       setAvailableT([]);
       setCurrentT(0);
@@ -304,6 +307,7 @@ export default function GodView({
       .then(([meta, snapshots]) => {
         if (cancelled) return;
         setWorldId(meta.world_id);
+        onWorldSelected?.(meta.world_id);
         setGenesisPrompt(meta.genesis_prompt ?? "");
         setAvailableT(snapshots.available_t);
         const lastT = snapshots.available_t[snapshots.available_t.length - 1] ?? 0;
@@ -316,7 +320,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [initialWorldId]);
+  }, [initialWorldId, onWorldSelected]);
 
   return (
     <div className="godview-staged">

@@ -152,6 +152,26 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "importance",
         ),
     ),
+    "review_summary": PromptSpec(
+        task="review_summary",
+        version="review-summary-v1",
+        output_mode="text",
+        description="Executive summary for a completed simulation world.",
+        system_prompt=(
+            "Write a compact analyst summary of what happened in the simulation, why it matters, "
+            "and which group-level signals deserve attention."
+        ),
+    ),
+    "timeline_annotation": PromptSpec(
+        task="timeline_annotation",
+        version="timeline-annotation-v1",
+        output_mode="json",
+        description="Annotate key turning points in a completed simulation timeline.",
+        system_prompt=(
+            "Identify the most meaningful turning points in the timeline and return compact JSON only."
+        ),
+        expected_keys=("annotations",),
+    ),
 }
 
 

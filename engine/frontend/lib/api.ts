@@ -205,6 +205,30 @@ export type SessionSummary = {
   worlds: SessionWorldSummary[];
 };
 
+export type TimelineAnnotation = {
+  t: number;
+  label: string;
+  reason: string;
+  severity: string;
+};
+
+export type ReviewSummaryResponse = {
+  world_id: string;
+  summary: string;
+  summary_mode: string;
+  highlights: string[];
+  overall_signal: string;
+  outcome: string;
+  timeline_annotations: TimelineAnnotation[];
+  annotation_mode: string;
+  metrics: Record<string, unknown>;
+  stance_groups: Array<Record<string, unknown>>;
+  zone_z_summary: Array<Record<string, unknown>>;
+  top_z_movers: Array<Record<string, unknown>>;
+  policy_events: Array<Record<string, unknown>>;
+  review_meta: Record<string, unknown>;
+};
+
 export async function createWorld(body: {
   prompt: string;
   session_id?: string | null;
@@ -303,6 +327,16 @@ export async function deleteSession(
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`deleteSession: ${res.status}`);
+  return res.json();
+}
+
+export async function getReviewSummary(
+  worldId: string
+): Promise<ReviewSummaryResponse> {
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/summary`
+  );
+  if (!res.ok) throw new Error(`getReviewSummary: ${res.status}`);
   return res.json();
 }
 

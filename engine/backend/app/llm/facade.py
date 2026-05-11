@@ -24,6 +24,13 @@ from app.llm.prompt_engineering import (
     build_worldview_prompt,
 )
 from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
+from app.llm.review import (
+    build_review_summary_prompt,
+    build_timeline_annotation_prompt,
+    heuristic_review_summary,
+    heuristic_timeline_annotations,
+    parse_timeline_annotations,
+)
 from app.models.cell import Cell
 
 
@@ -115,6 +122,36 @@ class LLMFacade:
         )
         out = self._run_task([prompt], task="genesis")
         return out[0] if out else prompt
+
+    def summarize_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        prompt = build_review_summary_prompt(payload)
+        out = self._run_task([prompt], task="review_summary")
+        text = str(out[0] if out else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        summary = heuristic_review_summary(payload) if used_heuristic else text
+        return {
+            "summary": summary,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("review_summary"),
+            "prompt_meta": get_prompt_meta("review_summary"),
+        }
+
+    def annotate_timeline(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        prompt = build_timeline_annotation_prompt(payload)
+        out = self._run_task([prompt], task="timeline_annotation")
+        text = str(out[0] if out else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        annotations = (
+            heuristic_timeline_annotations(payload)
+            if used_heuristic
+            else parse_timeline_annotations(text, payload)
+        )
+        return {
+            "annotations": annotations,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("timeline_annotation"),
+            "prompt_meta": get_prompt_meta("timeline_annotation"),
+        }
 
     def snapshot_stats(self) -> dict[str, Any]:
         with self._lock:

@@ -1,0 +1,76 @@
+"""Post-simulation review APIs."""
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from app.core.review_payloads import build_world_review_payload
+from app.core.store import world_store
+from app.llm.facade import llm_facade
+
+router = APIRouter(prefix="/worlds", tags=["review"])
+
+
+class TimelineAnnotation(BaseModel):
+    t: float
+    label: str
+    reason: str
+    severity: str
+
+
+class ReviewSummaryResponse(BaseModel):
+    world_id: str
+    summary: str
+    summary_mode: str
+    highlights: List[str] = Field(default_factory=list)
+    overall_signal: str
+    outcome: str
+    timeline_annotations: List[TimelineAnnotation] = Field(default_factory=list)
+    annotation_mode: str
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    stance_groups: List[Dict[str, Any]] = Field(default_factory=list)
+    zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
+    top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
+    policy_events: List[Dict[str, Any]] = Field(default_factory=list)
+    review_meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+@router.get("/{world_id}/review/summary", response_model=ReviewSummaryResponse)
+def get_review_summary(world_id: str):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    try:
+        payload = build_world_review_payload(entry)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    summary = llm_facade.summarize_review(payload)
+    annotations = llm_facade.annotate_timeline(payload)
+    return ReviewSummaryResponse(
+        world_id=world_id,
+        summary=str(summary["summary"]),
+        summary_mode=str(summary["mode"]),
+        highlights=[str(item) for item in list(payload.get("highlights") or [])],
+        overall_signal=str((payload.get("stance_summary") or {}).get("overall_signal") or "diffuse"),
+        outcome=str((payload.get("timeline") or {}).get("outcome") or "stable"),
+        timeline_annotations=[TimelineAnnotation(**item) for item in list(annotations["annotations"] or [])],
+        annotation_mode=str(annotations["mode"]),
+        metrics=dict(payload.get("metrics") or {}),
+        stance_groups=[dict(item) for item in list((payload.get("stance_summary") or {}).get("groups") or [])],
+        zone_z_summary=[dict(item) for item in list(payload.get("zone_z_summary") or [])],
+        top_z_movers=[dict(item) for item in list(payload.get("top_z_movers") or [])],
+        policy_events=[dict(item) for item in list(payload.get("policy_events") or [])],
+        review_meta={
+            "summary": {
+                "prompt_version": summary["prompt_version"],
+                "prompt_meta": dict(summary["prompt_meta"]),
+            },
+            "timeline_annotation": {
+                "prompt_version": annotations["prompt_version"],
+                "prompt_meta": dict(annotations["prompt_meta"]),
+            },
+        },
+    )

@@ -19,6 +19,7 @@ import {
 } from "@/components/app-shell/workbench-types";
 import { OverviewWorkspace } from "@/components/workbench/OverviewWorkspace";
 import { DataPacksWorkspace } from "@/components/workbench/DataPacksWorkspace";
+import { ReviewLabWorkspace } from "@/components/workbench/ReviewLabWorkspace";
 import { FocusedWorkspace } from "@/components/workbench/FocusedWorkspace";
 
 const GodView = dynamic(() => import("@/components/GodView"), {
@@ -136,17 +137,17 @@ export default function HomeWithCanvas() {
             ) : null}
 
             {activeView === "simulation" ? (
-              <GodView initialWorldId={selectedWorldId} onOpenWorkbenchView={setActiveView} />
+              <GodView
+                initialWorldId={selectedWorldId}
+                onOpenWorkbenchView={setActiveView}
+                onWorldSelected={(worldId) => setSelectedWorldId(worldId)}
+              />
             ) : null}
 
             {activeView === "review-lab" ? (
-              <FocusedWorkspace
-                title="Simulation Review"
-                subtitle="LLM-assisted interpretation and analyst chat"
-                body="이 영역은 추후 시뮬 결과를 해석하는 Review/Chat 워크스페이스로 확장할 예정입니다. 현재는 Setup과 Run을 분리해 시뮬레이션 자체를 정리했고, 다음 단계에서 stance diff, policy drift, coalition drift를 LLM과 함께 검토하는 페이지로 자연스럽게 이어질 수 있도록 자리를 확보했습니다."
-                ctaLabel="Open Simulation Setup"
+              <ReviewLabWorkspace
+                worldId={selectedWorldId ?? sessions[0]?.latest_world_id ?? null}
                 onOpenView={setActiveView}
-                targetView="simulation"
               />
             ) : null}
 

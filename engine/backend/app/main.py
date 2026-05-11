@@ -13,6 +13,7 @@ from app.api.agents import router as agents_router
 from app.api.state import router as state_router
 from app.api.runtime import router as runtime_router
 from app.api.sessions import router as sessions_router
+from app.api.review import router as review_router
 
 app = FastAPI(title="Organic4D Engine", version="0.1.0")
 
@@ -34,6 +35,7 @@ app.include_router(agents_router)
 app.include_router(state_router)
 app.include_router(runtime_router)
 app.include_router(sessions_router)
+app.include_router(review_router)
 
 
 @app.get("/health")
