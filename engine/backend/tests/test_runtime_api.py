@@ -335,3 +335,72 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert data["llm_runtime"]["task_totals"]["thought"]["calls"] == 1
     assert data["llm_runtime"]["task_totals"]["action"]["calls"] == 1
     assert data["llm_runtime"]["recent_runs"][-1]["task"] == "action"
+
+
+def test_runtime_data_pack_diff_preview_returns_changed_fields(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    src = source_dir / "kr_persona.jsonl"
+    src.write_text(
+        json.dumps(
+            {
+                "uuid": "p1",
+                "country": "KR",
+                "professional_persona": "서울의 연구 관리자",
+                "occupation": "연구 관리자",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v2",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "draft",
+                "relative_path": "kr/pack.jsonl",
+                "license": "CC BY 4.0",
+                "dataset_id": "nvidia/Nemotron-Personas-Korea",
+            }
+        ],
+    }
+    manifest_path = packs_dir / "packs.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(manifest_path))
+
+    assert client.post(
+        "/runtime/data-packs/install",
+        json={
+            "pack_id": "nemotron-kr-core",
+            "source_path": str(src),
+            "version": "2026.05",
+            "dataset_id": "nvidia/Nemotron-Personas-Korea",
+        },
+    ).status_code == 200
+    assert client.post(
+        "/runtime/data-packs/pin",
+        json={"pack_id": "nemotron-kr-core", "pinned_version": "2026.06"},
+    ).status_code == 200
+
+    status = client.get("/runtime/local-status")
+    assert status.status_code == 200
+    pack = next(item for item in status.json()["packs"] if item["pack_id"] == "nemotron-kr-core")
+    history = pack["history"]
+    assert history
+
+    response = client.post(
+        "/runtime/data-packs/diff",
+        json={"pack_id": "nemotron-kr-core", "history_index": 0},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pack_id"] == "nemotron-kr-core"
+    assert isinstance(payload["changes"], list)

@@ -70,6 +70,7 @@ export function ReviewLabWorkspace({
   const [roleFilter, setRoleFilter] = useState("all");
   const [zoneFilter, setZoneFilter] = useState("all");
   const [countryFilter, setCountryFilter] = useState("all");
+  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -208,6 +209,12 @@ export function ReviewLabWorkspace({
       avgWorldview: average(worldview),
     };
   }, [filteredInterviewCandidates]);
+  const selectedBatchCandidates = useMemo(
+    () => filteredInterviewCandidates.filter((item) => selectedCompareIds.includes(String(item.cell_id ?? ""))),
+    [filteredInterviewCandidates, selectedCompareIds]
+  );
+  const batchRoleSummary = useMemo(() => summarizeBatchBy(selectedBatchCandidates, "role_label"), [selectedBatchCandidates]);
+  const batchZoneSummary = useMemo(() => summarizeBatchBy(selectedBatchCandidates, "zone_label"), [selectedBatchCandidates]);
   const selectedGraphNode =
     graphNodes.find((node) => String(node.id ?? "") === selectedGraphNodeId) ?? graphNodes[0] ?? null;
   const filteredGraphEdges = selectedGraphNode
@@ -351,6 +358,12 @@ export function ReviewLabWorkspace({
       setInterviewCellId(String(filteredInterviewCandidates[0]?.cell_id ?? ""));
     }
   }, [filteredInterviewCandidates, interviewCellId]);
+
+  useEffect(() => {
+    setSelectedCompareIds((prev) =>
+      prev.filter((item) => filteredInterviewCandidates.some((candidate) => String(candidate.cell_id ?? "") === item))
+    );
+  }, [filteredInterviewCandidates]);
 
   if (!worldId) {
     return (
@@ -667,18 +680,46 @@ export function ReviewLabWorkspace({
                 <MetricCard label="Avg Worldview" value={batchInterviewSummary.avgWorldview.toFixed(2)} />
               </div>
             ) : null}
+            {selectedBatchCandidates.length ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="session-thread-card">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Batch Compare · Roles</p>
+                  <div className="mt-2 grid gap-2">
+                    {batchRoleSummary.map((item) => (
+                      <p key={`role-${item.label}`} className="inspector-body">
+                        {item.label}: {item.count} personas · avg shift {item.avgShift.toFixed(2)} · avg zΔ {item.avgZDelta.toFixed(2)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="session-thread-card">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Batch Compare · Zones</p>
+                  <div className="mt-2 grid gap-2">
+                    {batchZoneSummary.map((item) => (
+                      <p key={`zone-${item.label}`} className="inspector-body">
+                        {item.label}: {item.count} personas · avg shift {item.avgShift.toFixed(2)} · avg worldview {item.avgWorldview.toFixed(2)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-2">
               {filteredInterviewCandidates.slice(0, 8).map((item, index) => (
-                <button
+                <div
                   key={`${index}-${String(item.cell_id ?? "")}`}
-                  type="button"
-                  className={`session-thread-card text-left ${String(item.cell_id ?? "") === interviewCellId ? "border-sky-300 bg-sky-50" : ""}`}
-                  onClick={() => setInterviewCellId(String(item.cell_id ?? ""))}
+                  className={`session-thread-card ${String(item.cell_id ?? "") === interviewCellId ? "border-sky-300 bg-sky-50" : ""}`}
                 >
                   <div className="session-thread-card__header">
-                    <p className="session-thread-card__title">
-                      {String(item.role_label ?? item.role_key ?? "agent")}
-                    </p>
+                    <button
+                      type="button"
+                      className="text-left"
+                      onClick={() => setInterviewCellId(String(item.cell_id ?? ""))}
+                    >
+                      <p className="session-thread-card__title">
+                        {String(item.role_label ?? item.role_key ?? "agent")}
+                      </p>
+                    </button>
                     <span className="session-thread-card__meta">
                       shift {Number(item.belief_shift_score ?? 0).toFixed(2)}
                     </span>
@@ -686,7 +727,22 @@ export function ReviewLabWorkspace({
                   <p className="session-thread-card__prompt">
                     {String(item.zone_label ?? item.zone_id ?? "zone")} · {String(item.persona_country ?? "n/a")} · zΔ {Number(item.z_delta ?? 0).toFixed(2)} · worldview {Number(item.worldview_shift ?? 0).toFixed(2)}
                   </p>
-                </button>
+                  <div className="session-thread-card__actions">
+                    <button
+                      type="button"
+                      className="app-button app-button--ghost"
+                      onClick={() =>
+                        setSelectedCompareIds((prev) =>
+                          prev.includes(String(item.cell_id ?? ""))
+                            ? prev.filter((value) => value !== String(item.cell_id ?? ""))
+                            : [...prev, String(item.cell_id ?? "")].slice(-4)
+                        )
+                      }
+                    >
+                      {selectedCompareIds.includes(String(item.cell_id ?? "")) ? "Remove from Batch" : "Add to Batch"}
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -1042,6 +1098,62 @@ export function ReviewLabWorkspace({
               같은 세션 안의 다른 world를 선택하면 diff report가 생성됩니다.
             </p>
           )}
+        </AppPanel>
+
+        <AppPanel title="Diff Graph Lane" subtitle="Top group and zone gaps as quick visual bars" bodyClassName="space-y-3">
+          {groupDriftRows.length ? (
+            <div className="grid gap-2">
+              {groupDriftRows.slice(0, 5).map((item, index) => {
+                const value =
+                  Math.abs(Number(item.cohesion_gap ?? 0)) +
+                  Math.abs(Number(item.tension_gap ?? 0)) +
+                  Math.abs(Number(item.split_risk_gap ?? 0));
+                return (
+                  <div key={`group-gap-${index}`} className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">{String(item.role_label ?? item.group_id ?? "group")}</p>
+                      <span className="session-thread-card__meta">impact {value.toFixed(2)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-200">
+                      <div
+                        className="h-2 rounded-full bg-sky-500"
+                        style={{ width: `${Math.min(100, value * 45)}%` }}
+                      />
+                    </div>
+                    <p className="session-thread-card__prompt">
+                      cohesion {Number(item.cohesion_gap ?? 0).toFixed(2)} · tension {Number(item.tension_gap ?? 0).toFixed(2)} · split {Number(item.split_risk_gap ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">비교 world를 선택하면 집단 gap graph가 표시됩니다.</p>
+          )}
+          {zoneDriftRows.length ? (
+            <div className="grid gap-2">
+              {zoneDriftRows.slice(0, 4).map((item, index) => {
+                const value = Math.abs(Number(item.avg_z_gap ?? 0)) + Math.abs(Number(item.avg_energy_gap ?? 0)) * 0.1;
+                return (
+                  <div key={`zone-gap-${index}`} className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">{String(item.zone_label ?? item.zone_id ?? "zone")}</p>
+                      <span className="session-thread-card__meta">impact {value.toFixed(2)}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-200">
+                      <div
+                        className="h-2 rounded-full bg-amber-500"
+                        style={{ width: `${Math.min(100, value * 32)}%` }}
+                      />
+                    </div>
+                    <p className="session-thread-card__prompt">
+                      avg z {Number(item.avg_z_gap ?? 0).toFixed(2)} · energy {Number(item.avg_energy_gap ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </AppPanel>
 
         <AppPanel title="Highlights" subtitle="Auto-generated key points" bodyClassName="space-y-3">
@@ -1660,6 +1772,32 @@ function uniqueSorted(values: string[]) {
 function average(values: number[]) {
   if (!values.length) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function summarizeBatchBy(items: Array<Record<string, unknown>>, key: string) {
+  const grouped = new Map<
+    string,
+    { count: number; shift: number; z: number; worldview: number }
+  >();
+  for (const item of items) {
+    const label = String(item[key] ?? "unknown");
+    const current = grouped.get(label) ?? { count: 0, shift: 0, z: 0, worldview: 0 };
+    current.count += 1;
+    current.shift += Number(item.belief_shift_score ?? 0);
+    current.z += Math.abs(Number(item.z_delta ?? 0));
+    current.worldview += Number(item.worldview_shift ?? 0);
+    grouped.set(label, current);
+  }
+  return Array.from(grouped.entries())
+    .map(([label, value]) => ({
+      label,
+      count: value.count,
+      avgShift: value.shift / Math.max(1, value.count),
+      avgZDelta: value.z / Math.max(1, value.count),
+      avgWorldview: value.worldview / Math.max(1, value.count),
+    }))
+    .sort((left, right) => right.avgShift - left.avgShift)
+    .slice(0, 4);
 }
 
 function GroundingPanel({

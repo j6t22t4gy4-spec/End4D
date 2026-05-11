@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.core.data_packs import (
+    diff_data_pack_history,
     install_data_pack,
     local_runtime_status,
     pin_data_pack,
@@ -151,6 +152,20 @@ class DataPackRollbackResponse(BaseModel):
     updated_at: str = ""
 
 
+class DataPackDiffRequest(BaseModel):
+    pack_id: str
+    history_index: int
+
+
+class DataPackDiffResponse(BaseModel):
+    pack_id: str
+    history_index: int
+    selected_action: str = ""
+    selected_at: str = ""
+    changes: List[Dict[str, Any]] = Field(default_factory=list)
+    verification_changes: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 class LocalRuntimeStatusResponse(BaseModel):
     runtime_profile: str
     state_dir: str
@@ -242,3 +257,8 @@ def verify_runtime_data_pack(req: DataPackVerifyRequest):
 @router.post("/data-packs/rollback", response_model=DataPackRollbackResponse)
 def rollback_runtime_data_pack(req: DataPackRollbackRequest):
     return DataPackRollbackResponse(**rollback_data_pack(req.pack_id, history_index=req.history_index))
+
+
+@router.post("/data-packs/diff", response_model=DataPackDiffResponse)
+def diff_runtime_data_pack(req: DataPackDiffRequest):
+    return DataPackDiffResponse(**diff_data_pack_history(req.pack_id, history_index=req.history_index))

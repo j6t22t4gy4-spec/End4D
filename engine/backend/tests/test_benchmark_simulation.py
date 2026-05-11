@@ -30,6 +30,10 @@ def test_summarize_case_aggregates_repeat_samples():
             steps_per_sec=10.0,
             cell_steps_per_sec=1000.0,
             peak_memory_mb=12.5,
+            review_payload_sec=0.02,
+            review_payload_kb=12.0,
+            review_annotation_count=4,
+            review_graph_edges=6,
         ),
         BenchmarkSample(
             label=case.label,
@@ -42,9 +46,14 @@ def test_summarize_case_aggregates_repeat_samples():
             steps_per_sec=5.0,
             cell_steps_per_sec=500.0,
             peak_memory_mb=15.5,
+            review_payload_sec=0.03,
+            review_payload_kb=14.0,
+            review_annotation_count=5,
+            review_graph_edges=8,
         ),
     ]
     summary = summarize_case(case, samples)
     assert summary["elapsed_sec_avg"] == 1.5
     assert summary["cell_steps_per_sec_max"] == 1000.0
     assert summary["peak_memory_mb_max"] == 15.5
+    assert summary["review_payload_kb_avg"] == 13.0

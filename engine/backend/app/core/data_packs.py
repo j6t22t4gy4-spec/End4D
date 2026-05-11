@@ -344,6 +344,62 @@ def rollback_data_pack(pack_id: str, *, history_index: int) -> Dict[str, Any]:
     }
 
 
+def diff_data_pack_history(pack_id: str, *, history_index: int) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+    history = list(pack.get("history") or [])
+    if history_index < 0 or history_index >= len(history):
+        raise ValueError("Invalid history_index")
+    history_item = dict(history[history_index] or {})
+    snapshot = dict(history_item.get("snapshot") or {})
+    if not snapshot:
+        raise ValueError("No snapshot stored for this history entry")
+    current_verification = dict(pack.get("verification") or {})
+    snapshot_verification = dict(snapshot.get("verification") or {})
+    fields = [
+        "version",
+        "dataset_id",
+        "relative_path",
+        "source_url",
+        "pinned",
+        "pinned_version",
+    ]
+    changes = []
+    for field in fields:
+        current = pack.get(field)
+        previous = snapshot.get(field)
+        if current != previous:
+            changes.append(
+                {
+                    "field": field,
+                    "current": current,
+                    "rollback": previous,
+                }
+            )
+    verification_changes = []
+    for field in ("schema_health", "ready_for_genesis", "country_consistency"):
+        current = current_verification.get(field)
+        previous = snapshot_verification.get(field)
+        if current != previous:
+            verification_changes.append(
+                {
+                    "field": field,
+                    "current": current,
+                    "rollback": previous,
+                }
+            )
+    return {
+        "pack_id": pack_id,
+        "history_index": history_index,
+        "selected_action": str(history_item.get("action") or ""),
+        "selected_at": str(history_item.get("at") or ""),
+        "changes": changes,
+        "verification_changes": verification_changes,
+    }
+
+
 def _fetch_manifest(source: str) -> Dict[str, Any]:
     if source.startswith("http://") or source.startswith("https://") or source.startswith("file://"):
         with urllib.request.urlopen(source, timeout=20) as response:

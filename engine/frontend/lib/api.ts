@@ -184,6 +184,15 @@ export type DataPackRollbackResponse = {
   updated_at: string;
 };
 
+export type DataPackDiffResponse = {
+  pack_id: string;
+  history_index: number;
+  selected_action: string;
+  selected_at: string;
+  changes: Array<Record<string, unknown>>;
+  verification_changes: Array<Record<string, unknown>>;
+};
+
 export type AgentGroupSummary = {
   group_id: string;
   role_key: string;
@@ -559,6 +568,19 @@ export async function rollbackRuntimeDataPack(
     body: JSON.stringify({ pack_id: packId, history_index: historyIndex }),
   });
   if (!res.ok) throw new Error(`rollbackRuntimeDataPack: ${res.status}`);
+  return res.json();
+}
+
+export async function diffRuntimeDataPack(
+  packId: string,
+  historyIndex: number
+): Promise<DataPackDiffResponse> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/diff`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_id: packId, history_index: historyIndex }),
+  });
+  if (!res.ok) throw new Error(`diffRuntimeDataPack: ${res.status}`);
   return res.json();
 }
 

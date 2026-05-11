@@ -20,6 +20,7 @@ import {
 } from "@/components/TimelineBookmarks";
 import {
   createWorld,
+  diffRuntimeDataPack,
   getLocalRuntimeStatus,
   getReviewSummary,
   getWorld,
@@ -32,6 +33,7 @@ import {
   syncDataPacks,
   type CreateWorldResult,
   type CellSnapshot,
+  type DataPackDiffResponse,
   type GodModePayload,
   type LocalRuntimeStatus,
   type ReviewSummaryResponse,
@@ -103,6 +105,7 @@ export default function GodView({
   const [pinVersion, setPinVersion] = useState("2026.05");
   const [packActionStatus, setPackActionStatus] = useState<string | null>(null);
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
+  const [packDiffPreview, setPackDiffPreview] = useState<DataPackDiffResponse | null>(null);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -136,18 +139,6 @@ export default function GodView({
     if (!selectedPack || selectedHistoryIndex == null || !Array.isArray(selectedPack.history)) return null;
     return (selectedPack.history[selectedHistoryIndex] as Record<string, unknown> | undefined) ?? null;
   }, [selectedHistoryIndex, selectedPack]);
-  const rollbackPreview = useMemo(() => {
-    const snapshot = (selectedHistoryEntry?.snapshot as Record<string, unknown> | undefined) ?? null;
-    if (!selectedPack || !snapshot) return [];
-    return [
-      ["version", String(selectedPack.version ?? ""), String(snapshot.version ?? "")],
-      ["dataset", String(selectedPack.dataset_id ?? ""), String(snapshot.dataset_id ?? "")],
-      ["path", String(selectedPack.relative_path ?? ""), String(snapshot.relative_path ?? "")],
-      ["pinned", String(selectedPack.pinned_version ?? selectedPack.pinned ?? ""), String(snapshot.pinned_version ?? snapshot.pinned ?? "")],
-      ["schema", String((selectedPack.verification as Record<string, unknown> | undefined)?.schema_health ?? ""), String((snapshot.verification as Record<string, unknown> | undefined)?.schema_health ?? "")],
-      ["ready", String((selectedPack.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? ""), String((snapshot.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "")],
-    ].filter(([, currentValue, previousValue]) => currentValue !== previousValue);
-  }, [selectedHistoryEntry, selectedPack]);
   const verificationHistory = useMemo(
     () =>
       Array.isArray(selectedPack?.history)
@@ -187,6 +178,7 @@ export default function GodView({
 
   useEffect(() => {
     setSelectedHistoryIndex(null);
+    setPackDiffPreview(null);
   }, [selectedPackId]);
 
   useEffect(() => {
@@ -819,7 +811,20 @@ export default function GodView({
                                     <button
                                       type="button"
                                       className="app-button app-button--ghost"
-                                      onClick={() => setSelectedHistoryIndex(historyIndex)}
+                                      onClick={async () => {
+                                        if (!selectedPack) return;
+                                        setPackActionStatus("loading diff preview…");
+                                        setSelectedHistoryIndex(historyIndex);
+                                        try {
+                                          const preview = await diffRuntimeDataPack(selectedPack.pack_id, historyIndex);
+                                          setPackDiffPreview(preview);
+                                          setPackActionStatus("diff preview ready");
+                                        } catch (reason) {
+                                          setPackActionStatus(
+                                            reason instanceof Error ? reason.message : "diff preview failed"
+                                          );
+                                        }
+                                      }}
                                     >
                                       Preview
                                     </button>
@@ -851,20 +856,20 @@ export default function GodView({
                       {selectedHistoryEntry ? (
                         <div className="grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
-                            Rollback Preview
+                            Version Diff Preview
                           </p>
                           <p className="text-sm text-slate-600">
                             selected history entry: {String(selectedHistoryEntry.action ?? "event")} · {String(selectedHistoryEntry.at ?? "")}
                           </p>
-                          {rollbackPreview.length ? (
+                          {packDiffPreview?.changes.length ? (
                             <div className="grid gap-2">
-                              {rollbackPreview.map(([label, currentValue, previousValue]) => (
-                                <div key={label} className="session-thread-card">
+                              {packDiffPreview.changes.map((item) => (
+                                <div key={String(item.field ?? "field")} className="session-thread-card">
                                   <div className="session-thread-card__header">
-                                    <p className="session-thread-card__title">{label}</p>
+                                    <p className="session-thread-card__title">{String(item.field ?? "field")}</p>
                                   </div>
                                   <p className="session-thread-card__prompt">
-                                    current: {currentValue || "n/a"} {"->"} rollback: {previousValue || "n/a"}
+                                    current: {String(item.current ?? "n/a")} {"->"} rollback: {String(item.rollback ?? "n/a")}
                                   </p>
                                 </div>
                               ))}
@@ -872,6 +877,23 @@ export default function GodView({
                           ) : (
                             <p className="text-xs text-slate-500">현재 상태와 달라지는 주요 필드가 없습니다.</p>
                           )}
+                          {packDiffPreview?.verification_changes.length ? (
+                            <div className="grid gap-2">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Verification Delta
+                              </p>
+                              {packDiffPreview.verification_changes.map((item) => (
+                                <div key={`verify-${String(item.field ?? "field")}`} className="session-thread-card">
+                                  <div className="session-thread-card__header">
+                                    <p className="session-thread-card__title">{String(item.field ?? "field")}</p>
+                                  </div>
+                                  <p className="session-thread-card__prompt">
+                                    current: {String(item.current ?? "n/a")} {"->"} rollback: {String(item.rollback ?? "n/a")}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                       {verificationHistory.length ? (
