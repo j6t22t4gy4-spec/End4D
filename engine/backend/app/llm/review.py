@@ -17,6 +17,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
+            ("mechanism_summary", _compact(payload.get("mechanism_summary") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
             ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
             ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
@@ -48,6 +49,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
             ("group_drift_deltas", _compact_list(diff_payload.get("group_drift_deltas") or [], limit=6)),
             ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=6)),
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
+            ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("notable_agent_delta", _compact(diff_payload.get("notable_agent_delta") or {})),
             ("coalition_shift_delta", _compact(diff_payload.get("coalition_shift_delta") or {})),
@@ -66,6 +68,7 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
+            ("mechanism_summary", _compact(payload.get("mechanism_summary") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
             ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=5)),
@@ -84,6 +87,7 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
             ("group_drift_deltas", _compact_list(diff_payload.get("group_drift_deltas") or [], limit=6)),
             ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=6)),
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
+            ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
@@ -196,6 +200,9 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     notable_agents = list(payload.get("notable_agents") or [])
     emergent = dict(payload.get("emergent_dynamics") or {})
     group_analysis = dict(payload.get("group_analysis") or {})
+    mechanism = dict(payload.get("mechanism_summary") or {})
+    primary_chain = dict(mechanism.get("primary_chain") or {})
+    causal_hypotheses = list(mechanism.get("causal_hypotheses") or [])
 
     headline = (
         f"{summary_stats.get('outcome', 'stable')} trajectory with "
@@ -215,6 +222,11 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         causal_analysis.append(
             f"{event.get('name', '주요 이벤트')}가 role/zone 표적을 가지며 belief drift를 촉발한 것으로 보입니다."
         )
+    if primary_chain:
+        causal_analysis.append(
+            f"{primary_chain.get('event_name', 'event')} -> {primary_chain.get('group_label', 'group')} -> "
+            f"{primary_chain.get('zone_label', 'zone')} 흐름이 이번 변화의 주된 인과 사슬입니다."
+        )
     causal_analysis.append(
         f"{top_group.get('role_label', '핵심 집단')}의 cohesion 변화 "
         f"{float(top_group.get('cohesion_delta', 0.0)):+.2f}와 tension 변화 "
@@ -232,11 +244,14 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             f"{float(emergent.get('block_divergence', 0.0)):.2f}/"
             f"{float(emergent.get('cross_zone_fracture', 0.0)):.2f}입니다."
         )
+    if causal_hypotheses:
+        causal_analysis.append(str(dict(causal_hypotheses[0]).get("summary") or ""))
 
     decision_implications = [
         "정책 이벤트의 대상 role과 zone이 실제로 어떤 신념 이동을 만들었는지 비교 실험이 필요합니다.",
-        "contest 신호가 있는 집단은 후속 intervention에서 불안정성이 커질 수 있습니다.",
+        "contest 또는 transition pressure가 큰 집단은 후속 intervention에서 불안정성이 커질 수 있습니다.",
         "fracture와 split risk가 큰 집단/지역은 별도 정책 주입 후 재실행이 필요합니다.",
+        "핵심 인과 사슬에 포함된 group/zone을 우선적으로 재주입 대상으로 삼는 것이 효율적입니다.",
     ]
 
     watch_items = list(payload.get("highlights") or [])[:4]
@@ -256,12 +271,14 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             "headline": _citation_ids(payload, "groups", limit=1),
             "key_events.0": _citation_ids(payload, "events", limit=1),
             "causal_analysis.0": _citation_ids(payload, "events", limit=1),
-            "causal_analysis.1": _citation_ids(payload, "groups", limit=1),
-            "causal_analysis.2": _citation_ids(payload, "agents", limit=1),
-            "causal_analysis.3": _citation_ids(payload, "groups", limit=1),
+            "causal_analysis.1": _citation_ids(payload, "groups", limit=1) + _citation_ids(payload, "zones", limit=1),
+            "causal_analysis.2": _citation_ids(payload, "groups", limit=1),
+            "causal_analysis.3": _citation_ids(payload, "agents", limit=1),
+            "causal_analysis.4": _citation_ids(payload, "groups", limit=1),
             "decision_implications.0": _citation_ids(payload, "events", limit=1),
             "decision_implications.1": _citation_ids(payload, "groups", limit=1),
             "decision_implications.2": _citation_ids(payload, "zones", limit=1),
+            "decision_implications.3": _citation_ids(payload, "events", limit=1) + _citation_ids(payload, "groups", limit=1),
         },
     }
 
@@ -289,6 +306,7 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
     zone_deltas = list(diff_payload.get("zone_z_delta") or [])
     top_group = dict(group_deltas[0] if group_deltas else {})
     top_zone = dict(zone_deltas[0] if zone_deltas else {})
+    mechanism_delta = dict(diff_payload.get("mechanism_delta") or {})
     key_deltas = [
         (
             f"cell delta moved from {int(base_stats.get('cell_delta', 0)):+d} "
@@ -321,6 +339,12 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
         causal.append(
             f"{top_zone.get('zone_label', '주요 zone')}에서 avg z gap {float(top_zone.get('avg_z_gap', 0.0)):+.2f}가 나타났습니다."
         )
+    if mechanism_delta:
+        top_chain = dict(mechanism_delta.get("target_primary_chain") or {})
+        causal.append(
+            f"target의 주된 메커니즘은 {top_chain.get('event_name', 'event')} -> "
+            f"{top_chain.get('group_label', 'group')} -> {top_chain.get('zone_label', 'zone')} 흐름으로 요약됩니다."
+        )
     return {
         "headline": f"{base_signal} baseline vs {target_signal} target",
         "executive_summary": (
@@ -333,6 +357,7 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             "두 world의 policy target 역할과 zone을 함께 확인해야 합니다.",
             "target world에서 drift가 큰 집단은 추가 intervention에 더 민감할 수 있습니다.",
             "가장 큰 zone z gap이 난 지역은 정책 커뮤니케이션 방식도 별도로 점검해야 합니다.",
+            "mechanism delta가 가장 큰 event/group/zone 조합을 중심으로 다음 what-if 실험을 설계하는 것이 좋습니다.",
         ],
         "citations": {
             "key_deltas.0": _citation_ids(diff_payload, "groups", limit=1),
@@ -341,8 +366,10 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             "causal_comparison.0": _citation_ids(diff_payload, "events", limit=1),
             "causal_comparison.1": _citation_ids(diff_payload, "groups", limit=1),
             "causal_comparison.2": _citation_ids(diff_payload, "zones", limit=1),
+            "causal_comparison.3": _citation_ids(diff_payload, "events", limit=1) + _citation_ids(diff_payload, "groups", limit=1),
             "decision_implications.0": _citation_ids(diff_payload, "zones", limit=1),
             "decision_implications.1": _citation_ids(diff_payload, "groups", limit=1),
+            "decision_implications.3": _citation_ids(diff_payload, "events", limit=1),
         },
     }
 

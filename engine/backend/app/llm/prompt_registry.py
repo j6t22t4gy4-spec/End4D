@@ -154,12 +154,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v4",
+        version="review-summary-v5",
         output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
             "Act as an analyst reviewing a completed long-horizon societal simulation. "
             "Return compact JSON only, focusing on major events, group-level belief shifts, emergent ideological dynamics, causes, and decision implications. "
+            "Use mechanism_summary and grounding to explain event -> group -> zone -> agent causality instead of generic summaries. "
             "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0."
         ),
         expected_keys=(
@@ -184,12 +185,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_diff": PromptSpec(
         task="review_diff",
-        version="review-diff-v2",
+        version="review-diff-v3",
         output_mode="json",
         description="Compare two simulation worlds and explain the most decision-relevant differences.",
         system_prompt=(
             "Compare a baseline simulation and a target simulation. Return compact JSON only, "
-            "focusing on key deltas, causal interpretation, and decision implications. "
+            "focusing on key deltas, mechanism differences, causal interpretation, and decision implications. "
+            "Use mechanism_delta to explain why the target diverged from baseline rather than giving generic comparisons. "
             "The citations object must use explicit sentence keys such as key_deltas.0, causal_comparison.0, and decision_implications.0."
         ),
         expected_keys=(
@@ -203,12 +205,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_query": PromptSpec(
         task="review_query",
-        version="review-query-v2",
+        version="review-query-v3",
         output_mode="json",
         description="Answer a focused analyst question about a completed simulation world using structured review evidence.",
         system_prompt=(
             "Answer the analyst question using only the structured simulation evidence provided. "
-            "Return compact JSON only, with a direct answer, supporting evidence, and confidence notes."
+            "Return compact JSON only, with a direct answer, supporting evidence, and confidence notes. "
+            "Prefer group-level and mechanism-level evidence before anecdotal agent evidence."
         ),
         expected_keys=(
             "answer",
@@ -220,12 +223,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_diff_query": PromptSpec(
         task="review_diff_query",
-        version="review-diff-query-v2",
+        version="review-diff-query-v3",
         output_mode="json",
         description="Answer an analyst question about differences between a baseline world and a target world.",
         system_prompt=(
             "Answer the analyst question using only the structured baseline-vs-target evidence. "
-            "Return compact JSON only with answer, evidence, follow-up, and confidence notes."
+            "Return compact JSON only with answer, evidence, follow-up, and confidence notes. "
+            "Prefer mechanism_delta, group drift gaps, and policy impact delta when explaining differences."
         ),
         expected_keys=(
             "answer",

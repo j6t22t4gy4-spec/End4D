@@ -106,6 +106,15 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         belief_drift=belief_drift,
         key_events=key_events,
     )
+    mechanism_summary = _mechanism_summary(
+        summary_stats=summary_stats,
+        key_events=key_events,
+        belief_drift=belief_drift,
+        zone_z_drift=zone_z_drift,
+        notable_agents=notable_agents,
+        group_analysis=group_analysis,
+        emergent_dynamics=emergent_dynamics,
+    )
     highlights = _build_highlights(
         summary_stats=summary_stats,
         belief_drift=belief_drift,
@@ -135,6 +144,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "belief_drift": belief_drift,
         "group_analysis": group_analysis,
         "emergent_dynamics": emergent_dynamics,
+        "mechanism_summary": mechanism_summary,
         "policy_impact": policy_impact,
         "key_events": key_events,
         "notable_agents": notable_agents,
@@ -458,6 +468,12 @@ def build_review_diff_payload(
             ),
         },
     }
+    mechanism_delta = _mechanism_delta(
+        base_payload=base_payload,
+        target_payload=target_payload,
+        group_drift_deltas=group_drift_deltas,
+        zone_z_delta=zone_z_delta,
+    )
 
     timeline_turning_point_delta = {
         "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
@@ -489,6 +505,7 @@ def build_review_diff_payload(
         "group_drift_deltas": group_drift_deltas[:8],
         "zone_z_delta": zone_z_delta[:8],
         "policy_impact_delta": policy_impact_delta,
+        "mechanism_delta": mechanism_delta,
         "timeline_turning_point_delta": timeline_turning_point_delta,
         "notable_agent_delta": notable_agent_delta,
         "coalition_shift_delta": coalition_shift_delta,
@@ -839,6 +856,88 @@ def _build_highlights(
     return lines[:6]
 
 
+def _mechanism_summary(
+    *,
+    summary_stats: dict[str, Any],
+    key_events: list[dict[str, Any]],
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+    notable_agents: list[dict[str, Any]],
+    group_analysis: dict[str, Any],
+    emergent_dynamics: dict[str, Any],
+) -> dict[str, Any]:
+    groups = list(belief_drift.get("groups") or [])
+    top_group = dict(groups[0] if groups else {})
+    top_event = dict(key_events[0] if key_events else {})
+    top_zone = dict(zone_z_drift[0] if zone_z_drift else {})
+    top_agent = dict(notable_agents[0] if notable_agents else {})
+    fracture_groups = list(group_analysis.get("fracture_groups") or [])
+    contested_groups = list(group_analysis.get("contested_groups") or [])
+
+    primary_chain = {
+        "event_name": str(top_event.get("name") or "no major event"),
+        "event_type": str(top_event.get("event_type") or "event"),
+        "target_roles": list(top_event.get("target_roles") or [])[:4],
+        "target_zones": list(top_event.get("target_zones") or [])[:4],
+        "group_label": str(top_group.get("role_label") or "group"),
+        "group_stance_transition": (
+            f"{top_group.get('stance_before', 'n/a')} -> {top_group.get('stance_after', 'n/a')}"
+            if top_group
+            else "n/a"
+        ),
+        "zone_label": str(top_zone.get("zone_label") or "zone"),
+        "agent_role": str(top_agent.get("role_label") or "agent"),
+    }
+
+    causal_hypotheses: list[dict[str, Any]] = []
+    if top_event and top_group:
+        causal_hypotheses.append(
+            {
+                "label": "policy-to-group drift",
+                "summary": (
+                    f"{top_event.get('name', 'event')} targeted "
+                    f"{', '.join(list(top_event.get('target_roles') or [])[:3]) or 'broad groups'}, "
+                    f"while {top_group.get('role_label', 'the lead group')} shifted "
+                    f"cohesion {float(top_group.get('cohesion_delta', 0.0)):+.2f} and "
+                    f"tension {float(top_group.get('tension_delta', 0.0)):+.2f}."
+                ),
+            }
+        )
+    if top_zone and top_group:
+        causal_hypotheses.append(
+            {
+                "label": "group-to-zone fracture",
+                "summary": (
+                    f"{top_group.get('role_label', 'Lead group')} change coincided with "
+                    f"{top_zone.get('zone_label', 'top zone')} z drift {float(top_zone.get('avg_z_delta', 0.0)):+.2f}, "
+                    f"suggesting regional spillover."
+                ),
+            }
+        )
+    if top_agent and top_group:
+        causal_hypotheses.append(
+            {
+                "label": "micro-to-macro reinforcement",
+                "summary": (
+                    f"{top_agent.get('role_label', 'A leading agent')} moved belief score "
+                    f"{float(top_agent.get('belief_shift_score', 0.0)):.2f}, reinforcing "
+                    f"{top_group.get('role_label', 'group-level')} drift."
+                ),
+            }
+        )
+
+    return {
+        "primary_chain": primary_chain,
+        "causal_hypotheses": causal_hypotheses[:4],
+        "pressure_points": {
+            "fracture_groups": [dict(item) for item in fracture_groups[:3]],
+            "contested_groups": [dict(item) for item in contested_groups[:3]],
+            "revolution_risk": str(emergent_dynamics.get("revolution_risk") or "low"),
+            "overall_signal": str(summary_stats.get("overall_signal") or "diffuse"),
+        },
+    }
+
+
 def _group_analysis_summary(
     belief_drift: dict[str, Any],
     zone_z_drift: list[dict[str, Any]],
@@ -892,6 +991,16 @@ def _group_analysis_summary(
             }
             for item in zone_z_drift[:4]
         ],
+        "transition_groups": [
+            {
+                "group_id": str(item.get("group_id") or ""),
+                "role_label": str(item.get("role_label") or "group"),
+                "stance_transition": f"{item.get('stance_before', 'n/a')} -> {item.get('stance_after', 'n/a')}",
+                "cohesion_delta": float(item.get("cohesion_delta", 0.0)),
+                "tension_delta": float(item.get("tension_delta", 0.0)),
+            }
+            for item in groups[:4]
+        ],
     }
 
 
@@ -940,6 +1049,45 @@ def _emergent_dynamics_summary(
         "ideology_blocks": ideology_blocks,
         "worldview_curve": worldview_curve,
         "recent_events": [str(item.get("name") or item.get("event_type") or "event") for item in key_events[:4]],
+        "transition_pressure": round(_clip01(avg_split * 0.4 + avg_divergence * 0.35 + avg_fracture * 0.25), 3),
+    }
+
+
+def _mechanism_delta(
+    *,
+    base_payload: dict[str, Any],
+    target_payload: dict[str, Any],
+    group_drift_deltas: list[dict[str, Any]],
+    zone_z_delta: list[dict[str, Any]],
+) -> dict[str, Any]:
+    base_mechanism = dict(base_payload.get("mechanism_summary") or {})
+    target_mechanism = dict(target_payload.get("mechanism_summary") or {})
+    top_group_gap = dict(group_drift_deltas[0] if group_drift_deltas else {})
+    top_zone_gap = dict(zone_z_delta[0] if zone_z_delta else {})
+    return {
+        "base_primary_chain": dict(base_mechanism.get("primary_chain") or {}),
+        "target_primary_chain": dict(target_mechanism.get("primary_chain") or {}),
+        "top_group_gap": {
+            "role_label": str(top_group_gap.get("role_label") or ""),
+            "stance_transition": (
+                f"{top_group_gap.get('stance_base', 'n/a')} -> {top_group_gap.get('stance_target', 'n/a')}"
+                if top_group_gap
+                else "n/a"
+            ),
+            "cohesion_gap": float(top_group_gap.get("cohesion_gap", 0.0)),
+            "tension_gap": float(top_group_gap.get("tension_gap", 0.0)),
+            "split_risk_gap": float(top_group_gap.get("split_risk_gap", 0.0)),
+        },
+        "top_zone_gap": {
+            "zone_label": str(top_zone_gap.get("zone_label") or ""),
+            "avg_z_gap": float(top_zone_gap.get("avg_z_gap", 0.0)),
+            "avg_energy_gap": float(top_zone_gap.get("avg_energy_gap", 0.0)),
+        },
+        "hypothesis_shift": [
+            str(item.get("summary") or "")
+            for item in list(target_mechanism.get("causal_hypotheses") or [])[:3]
+            if str(item.get("summary") or "").strip()
+        ],
     }
 
 
