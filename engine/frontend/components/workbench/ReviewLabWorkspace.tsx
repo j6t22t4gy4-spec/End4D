@@ -3,21 +3,40 @@
 import { useEffect, useState } from "react";
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
-import { getReviewSummary, type ReviewSummaryResponse } from "@/lib/api";
+import {
+  getReviewDiff,
+  getReviewSummary,
+  type ReviewDiffResponse,
+  type ReviewSummaryResponse,
+  type SessionSummary,
+} from "@/lib/api";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 
 type ReviewLabWorkspaceProps = {
   worldId: string | null;
+  sessions: SessionSummary[];
   onOpenView: (view: WorkbenchView) => void;
 };
 
 export function ReviewLabWorkspace({
   worldId,
+  sessions,
   onOpenView,
 }: ReviewLabWorkspaceProps) {
   const [data, setData] = useState<ReviewSummaryResponse | null>(null);
+  const [diff, setDiff] = useState<ReviewDiffResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [diffLoading, setDiffLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [baseWorldId, setBaseWorldId] = useState<string>("");
+
+  const currentSession = sessions.find((session) =>
+    session.worlds.some((item) => item.world_id === worldId)
+  );
+  const comparisonCandidates = (currentSession?.worlds ?? []).filter(
+    (item) => item.world_id !== worldId
+  );
 
   useEffect(() => {
     if (!worldId) {
@@ -46,6 +65,45 @@ export function ReviewLabWorkspace({
       cancelled = true;
     };
   }, [worldId]);
+
+  useEffect(() => {
+    if (!worldId) {
+      setBaseWorldId("");
+      return;
+    }
+    const currentWorld = currentSession?.worlds.find((item) => item.world_id === worldId);
+    const suggested = comparisonCandidates[0]?.world_id ?? "";
+    setBaseWorldId(currentWorld?.world_id === suggested ? "" : suggested);
+  }, [worldId, currentSession, comparisonCandidates]);
+
+  useEffect(() => {
+    if (!worldId || !baseWorldId) {
+      setDiff(null);
+      setDiffError(null);
+      return;
+    }
+    let cancelled = false;
+    setDiffLoading(true);
+    setDiffError(null);
+    getReviewDiff(worldId, baseWorldId)
+      .then((payload) => {
+        if (!cancelled) {
+          setDiff(payload);
+        }
+      })
+      .catch((reason: Error) => {
+        if (!cancelled) {
+          setDiff(null);
+          setDiffError(reason.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDiffLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseWorldId, worldId]);
 
   if (!worldId) {
     return (
@@ -111,6 +169,20 @@ export function ReviewLabWorkspace({
           ) : null}
         </div>
         <div className="grid gap-3">
+          {comparisonCandidates.length > 0 ? (
+            <select
+              className="app-input"
+              value={baseWorldId}
+              onChange={(event) => setBaseWorldId(event.target.value)}
+            >
+              <option value="">Select baseline world</option>
+              {comparisonCandidates.map((item) => (
+                <option key={item.world_id} value={item.world_id}>
+                  {item.world_id.slice(0, 8)} · {item.status}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <button
             type="button"
             className="app-button app-button--secondary"
@@ -129,6 +201,32 @@ export function ReviewLabWorkspace({
       </AppPanel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel title="Diff Report" subtitle="Baseline vs current world" bodyClassName="space-y-3">
+          {diffLoading ? <p className="text-sm text-slate-500">Diff report loading…</p> : null}
+          {diffError ? (
+            <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              비교 리포트를 불러오지 못했습니다: {diffError}
+            </p>
+          ) : null}
+          {diff ? (
+            <>
+              <div className="session-thread-card">
+                <p className="session-thread-card__title">{diff.headline}</p>
+                <p className="session-thread-card__prompt">{diff.summary}</p>
+              </div>
+              {diff.key_deltas.map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="inspector-body">{item}</p>
+                </div>
+              ))}
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">
+              같은 세션 안의 다른 world를 선택하면 diff report가 생성됩니다.
+            </p>
+          )}
+        </AppPanel>
+
         <AppPanel title="Highlights" subtitle="Auto-generated key points" bodyClassName="space-y-3">
           {data?.watch_items?.length ? (
             data.watch_items.map((item, index) => (
@@ -183,6 +281,18 @@ export function ReviewLabWorkspace({
           ) : (
             <p className="text-sm text-slate-500">원인 분석이 아직 없습니다.</p>
           )}
+          {diff?.causal_comparison?.length ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Diff Causality
+              </p>
+              {diff.causal_comparison.map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="inspector-body">{item}</p>
+                </div>
+              ))}
+            </>
+          ) : null}
         </AppPanel>
       </div>
 
@@ -197,6 +307,18 @@ export function ReviewLabWorkspace({
           ) : (
             <p className="text-sm text-slate-500">의사결정 시사점이 아직 없습니다.</p>
           )}
+          {diff?.decision_implications?.length ? (
+            <>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Diff Implications
+              </p>
+              {diff.decision_implications.map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="inspector-body">{item}</p>
+                </div>
+              ))}
+            </>
+          ) : null}
         </AppPanel>
 
         <AppPanel title="Review Provenance" subtitle="Prompt and model trace" bodyClassName="space-y-3">

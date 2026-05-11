@@ -25,9 +25,12 @@ from app.llm.prompt_engineering import (
 )
 from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
 from app.llm.review import (
+    build_review_diff_prompt,
     build_review_summary_prompt,
     build_timeline_annotation_prompt,
+    heuristic_review_diff,
     heuristic_review_summary,
+    parse_review_diff,
     heuristic_timeline_annotations,
     parse_review_summary,
     parse_timeline_annotations,
@@ -159,6 +162,31 @@ class LLMFacade:
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("timeline_annotation"),
             "prompt_meta": get_prompt_meta("timeline_annotation"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
+        }
+
+    def compare_reviews(
+        self,
+        *,
+        base_payload: Mapping[str, Any],
+        target_payload: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        prompt = build_review_diff_prompt(base_payload, target_payload)
+        texts, meta = self._run_task_with_meta([prompt], task="review_diff")
+        text = str(texts[0] if texts else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        summary = (
+            heuristic_review_diff(base_payload, target_payload)
+            if used_heuristic
+            else parse_review_diff(text, base_payload, target_payload)
+        )
+        return {
+            "diff": summary,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("review_diff"),
+            "prompt_meta": get_prompt_meta("review_diff"),
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),

@@ -234,6 +234,19 @@ export type ReviewSummaryResponse = {
   review_meta: Record<string, unknown>;
 };
 
+export type ReviewDiffResponse = {
+  base_world_id: string;
+  target_world_id: string;
+  headline: string;
+  summary: string;
+  diff_mode: string;
+  key_deltas: string[];
+  causal_comparison: string[];
+  decision_implications: string[];
+  compared_metrics: Record<string, unknown>;
+  review_meta: Record<string, unknown>;
+};
+
 export async function createWorld(body: {
   prompt: string;
   session_id?: string | null;
@@ -342,6 +355,18 @@ export async function getReviewSummary(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/summary`
   );
   if (!res.ok) throw new Error(`getReviewSummary: ${res.status}`);
+  return res.json();
+}
+
+export async function getReviewDiff(
+  worldId: string,
+  baseWorldId: string
+): Promise<ReviewDiffResponse> {
+  const q = new URLSearchParams({ base_world_id: baseWorldId });
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/diff?${q}`
+  );
+  if (!res.ok) throw new Error(`getReviewDiff: ${res.status}`);
   return res.json();
 }
 

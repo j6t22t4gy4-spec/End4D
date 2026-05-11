@@ -180,6 +180,23 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
         ),
         expected_keys=("annotations",),
     ),
+    "review_diff": PromptSpec(
+        task="review_diff",
+        version="review-diff-v1",
+        output_mode="json",
+        description="Compare two simulation worlds and explain the most decision-relevant differences.",
+        system_prompt=(
+            "Compare a baseline simulation and a target simulation. Return compact JSON only, "
+            "focusing on key deltas, causal interpretation, and decision implications."
+        ),
+        expected_keys=(
+            "headline",
+            "executive_summary",
+            "key_deltas",
+            "causal_comparison",
+            "decision_implications",
+        ),
+    ),
 }
 
 

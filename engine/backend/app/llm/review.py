@@ -35,6 +35,22 @@ def build_timeline_annotation_prompt(payload: Mapping[str, Any]) -> str:
     )
 
 
+def build_review_diff_prompt(base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> str:
+    return build_prompt_contract(
+        "review_diff",
+        [
+            ("base_summary_stats", _compact(base_payload.get("summary_stats") or {})),
+            ("target_summary_stats", _compact(target_payload.get("summary_stats") or {})),
+            ("base_belief_drift", _compact(base_payload.get("belief_drift") or {})),
+            ("target_belief_drift", _compact(target_payload.get("belief_drift") or {})),
+            ("base_policy_impact", _compact(base_payload.get("policy_impact") or {})),
+            ("target_policy_impact", _compact(target_payload.get("policy_impact") or {})),
+            ("base_highlights", " | ".join(str(item) for item in list(base_payload.get("highlights") or [])[:6])),
+            ("target_highlights", " | ".join(str(item) for item in list(target_payload.get("highlights") or [])[:6])),
+        ],
+    )
+
+
 def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     summary_stats = dict(payload.get("summary_stats") or {})
     belief_drift = dict(payload.get("belief_drift") or {})
@@ -106,6 +122,53 @@ def heuristic_timeline_annotations(payload: Mapping[str, Any]) -> list[dict[str,
     return annotations
 
 
+def heuristic_review_diff(base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> dict[str, Any]:
+    base_stats = dict(base_payload.get("summary_stats") or {})
+    target_stats = dict(target_payload.get("summary_stats") or {})
+    base_signal = str(base_stats.get("overall_signal") or "diffuse")
+    target_signal = str(target_stats.get("overall_signal") or "diffuse")
+    base_groups = list((base_payload.get("belief_drift") or {}).get("groups") or [])
+    target_groups = list((target_payload.get("belief_drift") or {}).get("groups") or [])
+    base_top = dict(base_groups[0] if base_groups else {})
+    target_top = dict(target_groups[0] if target_groups else {})
+    key_deltas = [
+        (
+            f"cell delta moved from {int(base_stats.get('cell_delta', 0)):+d} "
+            f"to {int(target_stats.get('cell_delta', 0)):+d}"
+        ),
+        (
+            f"energy delta moved from {float(base_stats.get('energy_delta', 0.0)):+.2f} "
+            f"to {float(target_stats.get('energy_delta', 0.0)):+.2f}"
+        ),
+        (
+            f"overall signal shifted from {base_signal} to {target_signal}"
+        ),
+    ]
+    causal = [
+        (
+            f"baseline의 핵심 집단은 {base_top.get('role_label', 'n/a')}였고, "
+            f"target에서는 {target_top.get('role_label', 'n/a')}가 더 큰 drift를 보였습니다."
+        ),
+        (
+            f"target의 cohesion/tension 변화는 "
+            f"{float(target_top.get('cohesion_delta', 0.0)):+.2f} / {float(target_top.get('tension_delta', 0.0)):+.2f}입니다."
+        ),
+    ]
+    return {
+        "headline": f"{base_signal} baseline vs {target_signal} target",
+        "executive_summary": (
+            f"baseline 대비 target은 세포/에너지/z 변화 양상이 다르며, "
+            f"주요 집단과 정책 영향 범위가 달라졌습니다."
+        ),
+        "key_deltas": key_deltas,
+        "causal_comparison": causal,
+        "decision_implications": [
+            "두 world의 policy target 역할과 zone을 함께 확인해야 합니다.",
+            "target world에서 drift가 큰 집단은 추가 intervention에 더 민감할 수 있습니다.",
+        ],
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -149,6 +212,27 @@ def parse_timeline_annotations(raw_text: str, payload: Mapping[str, Any]) -> lis
             }
         )
     return out or heuristic_timeline_annotations(payload)
+
+
+def parse_review_diff(raw_text: str, base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_review_diff(base_payload, target_payload)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_review_diff(base_payload, target_payload)
+    fallback = heuristic_review_diff(base_payload, target_payload)
+    return {
+        "headline": str(parsed.get("headline") or fallback["headline"]),
+        "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),
+        "key_deltas": _string_list(parsed.get("key_deltas"), fallback["key_deltas"]),
+        "causal_comparison": _string_list(parsed.get("causal_comparison"), fallback["causal_comparison"]),
+        "decision_implications": _string_list(
+            parsed.get("decision_implications"),
+            fallback["decision_implications"],
+        ),
+    }
 
 
 def _compact(mapping: Mapping[str, Any]) -> str:
