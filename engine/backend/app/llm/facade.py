@@ -14,6 +14,7 @@ from app.core.settings import (
     get_llm_cycle_prompt_budget,
     get_llm_model,
     get_llm_provider,
+    get_llm_runtime_profile,
     get_llm_strict_mode,
     get_llm_task_budget,
     get_llm_task_budgets,
@@ -437,6 +438,7 @@ class LLMFacade:
                 "agent_sample_size": get_llm_agent_sample_size(),
                 "dialogue_max_pairs": get_dialogue_max_pairs(),
                 "group_deliberation_max_groups": get_group_deliberation_max_groups(),
+                "density_profile": get_llm_runtime_profile(),
                 "task_budgets": get_llm_task_budgets(),
                 "task_priorities": get_llm_task_priorities(),
                 "scheduler": dict(self._scheduler),
@@ -566,6 +568,25 @@ class LLMFacade:
         if total <= 0:
             return 0
         ratio = remaining / total
+        profile = get_llm_runtime_profile()
+        if profile == "llm-first":
+            if ratio <= 0.04 and priority >= 4:
+                return 0
+            if ratio <= 0.10 and priority >= 3:
+                return max(0, min(requested, 1))
+            if ratio <= 0.20 and priority >= 4:
+                return max(1, min(requested, requested // 2))
+            return requested
+        if profile == "rules-first":
+            if ratio <= 0.12 and priority >= 2:
+                return 0
+            if ratio <= 0.25 and priority >= 1:
+                return max(0, min(requested, 1))
+            if ratio <= 0.40 and priority >= 3:
+                return max(0, min(requested, requested // 2))
+            if ratio <= 0.55 and priority >= 4:
+                return max(0, min(requested, requested // 2))
+            return requested
         if ratio <= 0.10 and priority >= 2:
             return 0
         if ratio <= 0.20 and priority >= 1:

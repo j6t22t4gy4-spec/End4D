@@ -7,18 +7,20 @@ from __future__ import annotations
 
 from typing import List
 
-from app.core.settings import get_llm_agent_sample_size
+from app.core.settings import (
+    get_llm_agent_sample_size,
+    get_worldview_memory_threshold,
+    get_worldview_refresh_interval,
+    get_worldview_t_threshold,
+)
 from app.llm.embeddings import embed_texts
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
-WORLDVIEW_MEMORY_THRESHOLD = 100
-WORLDVIEW_T_THRESHOLD = 200.0
-# 조건 충족 후에도 매 스텝 호출하지 않도록 간격
-WORLDVIEW_REFRESH_INTERVAL = 40
 def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
-    if t_int <= 0 or t_int % WORLDVIEW_REFRESH_INTERVAL != 0:
+    interval = get_worldview_refresh_interval()
+    if t_int <= 0 or t_int % interval != 0:
         return cells
 
     selected_cells: List[Cell] = []
@@ -38,9 +40,9 @@ def update_worldviews_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
         if i not in selected_indices:
             continue
         qualifies = (
-            float(current_t) >= WORLDVIEW_T_THRESHOLD
+            float(current_t) >= get_worldview_t_threshold()
             or len(c.long_memory) >= 8
-            or len(c.memory) >= WORLDVIEW_MEMORY_THRESHOLD
+            or len(c.memory) >= get_worldview_memory_threshold()
         )
         if qualifies:
             indices.append(i)

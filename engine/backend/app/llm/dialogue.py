@@ -59,11 +59,11 @@ def _select_dialogue_pairs(cells: List[Cell], *, radius: float, max_pairs: int) 
                     relationship_score(cell, other.cell_id)
                     + relationship_score(other, cell.cell_id)
                 ),
-                distance_4d(cell, other),
-                abs(
+                -abs(
                     float(cell.action_state.get("policy_sensitivity", 0.5))
                     - float(other.action_state.get("policy_sensitivity", 0.5))
                 ),
+                distance_4d(cell, other),
                 other.cell_id,
             )
         )

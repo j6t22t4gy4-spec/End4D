@@ -57,6 +57,8 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     monkeypatch.setenv("ORGANIC4D_LLM_PROVIDER", "ollama")
     monkeypatch.setenv("ORGANIC4D_LLM_MODEL", "llama3.1")
     monkeypatch.setenv("ORGANIC4D_LLM_BASE_URL", "http://127.0.0.1:11434")
+    monkeypatch.setenv("ORGANIC4D_LLM_RUNTIME_PROFILE", "llm-first")
+    monkeypatch.setenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "1200")
 
     response = client.get("/runtime/local-status")
     assert response.status_code == 200
@@ -67,6 +69,8 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["llm"]["model"] == "llama3.1"
     assert "task_budgets" in data["llm_runtime"]
     assert "task_priorities" in data["llm_runtime"]
+    assert data["llm_runtime"]["density_profile"] == "llm-first"
+    assert int(data["llm_runtime"]["cycle_prompt_budget"]) >= 640
     assert "health" in data["llm_runtime"]
     assert data["installed_pack_count"] == 1
     assert data["available_countries"] == ["KR"]

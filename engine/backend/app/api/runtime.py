@@ -116,6 +116,7 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     provider: str = "stub"
     model: str = "stub"
     strict_mode: str = "adaptive"
+    density_profile: str = "balanced"
     cycle_prompt_budget: int = 0
     agent_sample_size: int = 0
     dialogue_max_pairs: int = 0
@@ -308,6 +309,7 @@ def get_local_runtime_status():
             provider=str((status.get("llm_runtime") or {}).get("provider") or "stub"),
             model=str((status.get("llm_runtime") or {}).get("model") or "stub"),
             strict_mode=str((status.get("llm_runtime") or {}).get("strict_mode") or "adaptive"),
+            density_profile=str((status.get("llm_runtime") or {}).get("density_profile") or "balanced"),
             cycle_prompt_budget=int((status.get("llm_runtime") or {}).get("cycle_prompt_budget") or 0),
             agent_sample_size=int((status.get("llm_runtime") or {}).get("agent_sample_size") or 0),
             dialogue_max_pairs=int((status.get("llm_runtime") or {}).get("dialogue_max_pairs") or 0),

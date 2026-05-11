@@ -9,16 +9,17 @@ from __future__ import annotations
 
 from typing import List
 
-from app.core.settings import get_llm_agent_sample_size
+import numpy as np
+
+from app.core.settings import get_llm_agent_sample_size, get_thought_refresh_interval
 from app.llm.embeddings import embed_texts
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
-# ARCHITECTURE_CHECKLIST 4.3: 10~50 t
-THOUGHT_UPDATE_INTERVAL = 20
 def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
-    if t_int <= 0 or t_int % THOUGHT_UPDATE_INTERVAL != 0:
+    interval = get_thought_refresh_interval()
+    if t_int <= 0 or t_int % interval != 0:
         return cells
 
     selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
@@ -37,6 +38,7 @@ def _selected_indices(cells: List[Cell], t_int: int, limit: int) -> List[int]:
     ranked = sorted(
         range(len(cells)),
         key=lambda idx: (
+            -(0 if np.linalg.norm(cells[idx].thought_vec) > 0 else 1),
             -len(cells[idx].short_memory) - len(cells[idx].long_memory),
             -float(cells[idx].energy),
             f"{t_int}:{cells[idx].cell_id}",

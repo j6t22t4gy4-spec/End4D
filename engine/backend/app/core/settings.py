@@ -236,7 +236,7 @@ def get_llm_max_prompts_per_task() -> int:
     except ValueError:
         profile = get_llm_runtime_profile()
         if profile == "llm-first":
-            return 256
+            return 512
         if profile == "rules-first":
             return 32
         return 64
@@ -266,7 +266,7 @@ def get_llm_cycle_prompt_budget() -> int:
     except ValueError:
         profile = get_llm_runtime_profile()
         if profile == "llm-first":
-            return 640
+            return 1200
         if profile == "rules-first":
             return 96
         return 160
@@ -295,18 +295,106 @@ def get_llm_agent_sample_size() -> int:
     except ValueError:
         profile = get_llm_runtime_profile()
         if profile == "llm-first":
-            return 1024
+            return 2048
         if profile == "rules-first":
             return 96
         return 256
 
 
+def get_thought_refresh_interval() -> int:
+    raw = _get_runtime_llm_value("ORGANIC4D_THOUGHT_INTERVAL", "")
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 6
+    if profile == "rules-first":
+        return 24
+    return 20
+
+
+def get_action_refresh_interval() -> int:
+    raw = _get_runtime_llm_value("ORGANIC4D_ACTION_INTERVAL", "")
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 2
+    if profile == "rules-first":
+        return 12
+    return 10
+
+
+def get_worldview_refresh_interval() -> int:
+    raw = _get_runtime_llm_value("ORGANIC4D_WORLDVIEW_INTERVAL", "")
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 12
+    if profile == "rules-first":
+        return 48
+    return 40
+
+
+def get_worldview_memory_threshold() -> int:
+    raw = _get_runtime_llm_value("ORGANIC4D_WORLDVIEW_MEMORY_THRESHOLD", "")
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 48
+    return 100
+
+
+def get_worldview_t_threshold() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_WORLDVIEW_T_THRESHOLD", "")
+    if raw:
+        try:
+            return max(0.0, min(100000.0, float(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 80.0
+    return 200.0
+
+
+def get_group_representative_limit(group_count: int) -> int:
+    profile = get_llm_runtime_profile()
+    base_sample = get_llm_agent_sample_size()
+    if profile == "llm-first":
+        return max(8, min(64, base_sample // max(1, group_count)))
+    if profile == "rules-first":
+        return max(3, min(12, base_sample // max(2, group_count * 2)))
+    return max(4, min(24, base_sample // max(1, group_count)))
+
+
 def get_dialogue_interval() -> int:
-    raw = os.getenv("ORGANIC4D_DIALOGUE_INTERVAL", "25").strip()
-    try:
-        return max(1, min(10000, int(raw)))
-    except ValueError:
-        return 25
+    raw = os.getenv("ORGANIC4D_DIALOGUE_INTERVAL", "").strip()
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 6
+    if profile == "rules-first":
+        return 30
+    return 25
 
 
 def get_dialogue_max_pairs() -> int:
@@ -316,16 +404,23 @@ def get_dialogue_max_pairs() -> int:
     except ValueError:
         profile = get_llm_runtime_profile()
         if profile == "llm-first":
-            return 160
+            return 320
         return 64
 
 
 def get_group_deliberation_interval() -> int:
-    raw = os.getenv("ORGANIC4D_GROUP_DELIBERATION_INTERVAL", "50").strip()
-    try:
-        return max(1, min(10000, int(raw)))
-    except ValueError:
-        return 50
+    raw = os.getenv("ORGANIC4D_GROUP_DELIBERATION_INTERVAL", "").strip()
+    if raw:
+        try:
+            return max(1, min(10000, int(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 12
+    if profile == "rules-first":
+        return 60
+    return 50
 
 
 def get_group_deliberation_max_groups() -> int:
@@ -335,7 +430,7 @@ def get_group_deliberation_max_groups() -> int:
     except ValueError:
         profile = get_llm_runtime_profile()
         if profile == "llm-first":
-            return 24
+            return 40
         return 12
 
 

@@ -60,6 +60,27 @@ const IMPORTANT_LLM_TASKS = [
   "agent_interview_diff",
 ] as const;
 
+const LLM_RUNTIME_PROFILE_PRESETS: Record<string, { cycleBudget: string; agentSample: string; dialoguePairs: string; deliberationGroups: string }> = {
+  "rules-first": {
+    cycleBudget: "96",
+    agentSample: "96",
+    dialoguePairs: "64",
+    deliberationGroups: "12",
+  },
+  balanced: {
+    cycleBudget: "160",
+    agentSample: "256",
+    dialoguePairs: "64",
+    deliberationGroups: "12",
+  },
+  "llm-first": {
+    cycleBudget: "1200",
+    agentSample: "2048",
+    dialoguePairs: "320",
+    deliberationGroups: "40",
+  },
+};
+
 const LLM_PROVIDER_PRESETS = [
   {
     id: "openai",
@@ -946,7 +967,21 @@ export default function GodView({
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
                   {isKo ? "런타임 프로필" : "runtime profile"}
-                  <select className="app-input" value={llmRuntimeProfile} onChange={(event) => setLlmRuntimeProfile(event.target.value)}>
+                  <select
+                    className="app-input"
+                    value={llmRuntimeProfile}
+                    onChange={(event) => {
+                      const nextProfile = event.target.value;
+                      setLlmRuntimeProfile(nextProfile);
+                      const preset = LLM_RUNTIME_PROFILE_PRESETS[nextProfile];
+                      if (preset) {
+                        setLlmCycleBudget(preset.cycleBudget);
+                        setLlmAgentSampleSize(preset.agentSample);
+                        setLlmDialoguePairs(preset.dialoguePairs);
+                        setLlmDeliberationGroups(preset.deliberationGroups);
+                      }
+                    }}
+                  >
                     <option value="rules-first">Rules-first</option>
                     <option value="balanced">Balanced</option>
                     <option value="llm-first">LLM-first</option>

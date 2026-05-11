@@ -10,7 +10,7 @@ from app.core.relationship_state import average_relationship_metrics
 from app.core.settings import (
     get_group_deliberation_interval,
     get_group_deliberation_max_groups,
-    get_llm_agent_sample_size,
+    get_group_representative_limit,
 )
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
@@ -47,7 +47,7 @@ def apply_group_deliberation_if_due(
     generated = llm_facade.deliberate_groups(prompt_groups, current_t=current_t)
     out = [cell.copy() for cell in cells]
     index_by_id = {cell.cell_id: idx for idx, cell in enumerate(out)}
-    representative_limit = max(4, get_llm_agent_sample_size() // max(1, len(groups)))
+    representative_limit = get_group_representative_limit(len(groups))
 
     for (role, members), text in zip(groups.items(), generated):
         outcome = _parse_group_outcome(text, role)

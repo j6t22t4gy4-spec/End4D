@@ -5,16 +5,15 @@ import json
 from typing import Dict, List
 
 from app.core.memory_store import append_memory, behavior_event, memory_entry
-from app.core.settings import get_llm_agent_sample_size
+from app.core.settings import get_action_refresh_interval, get_llm_agent_sample_size, get_llm_runtime_profile
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
-
-ACTION_REFRESH_INTERVAL = 10
 
 
 def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
-    if t_int < 0 or t_int % ACTION_REFRESH_INTERVAL != 0:
+    interval = get_action_refresh_interval()
+    if t_int < 0 or t_int % interval != 0:
         return cells
 
     selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())
@@ -54,13 +53,18 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
 def _selected_indices(cells: List[Cell], t_int: int, limit: int) -> List[int]:
     if len(cells) <= limit:
         return list(range(len(cells)))
+    profile = get_llm_runtime_profile()
     ranked = sorted(
         range(len(cells)),
         key=lambda idx: (
+            -(0 if cells[idx].action_state else 1),
+            -len(cells[idx].short_memory) - len(cells[idx].behavior_log),
             -float(cells[idx].energy),
             f"{t_int}:{cells[idx].cell_id}",
         ),
     )
+    if profile == "llm-first":
+        return ranked[: min(len(ranked), limit)]
     return ranked[:limit]
 
 
