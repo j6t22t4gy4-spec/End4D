@@ -42,6 +42,7 @@ import {
   type RuntimeLlmTestResponse,
   verifyRuntimeDataPack,
 } from "@/lib/api";
+import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
 import { useSimulation } from "@/hooks/useSimulation";
 
 const PROMPT_PLACEHOLDER =
@@ -60,16 +61,20 @@ const IMPORTANT_LLM_TASKS = [
 ] as const;
 
 export default function GodView({
+  locale = "ko",
   initialWorldId = null,
   initialT = null,
   onOpenWorkbenchView,
   onWorldSelected,
 }: {
+  locale?: UiLocale;
   initialWorldId?: string | null;
   initialT?: number | null;
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
   onWorldSelected?: (worldId: string) => void;
 }) {
+  const strings = UI_STRINGS[locale];
+  const isKo = locale === "ko";
   const [stage, setStage] = useState<"setup" | "run">("setup");
   const [genesisPrompt, setGenesisPrompt] = useState("");
   const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
@@ -110,6 +115,7 @@ export default function GodView({
   const [bookmarks, setBookmarks] = useState<TimelineMarker[]>([]);
   const [eventMarkers, setEventMarkers] = useState<TimelineMarker[]>([]);
   const [layoutMode, setLayoutMode] = useState<"balanced" | "focus" | "wide-left">("balanced");
+  const [autoFitLayout, setAutoFitLayout] = useState(true);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryResponse | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState<LocalRuntimeStatus | null>(null);
@@ -203,6 +209,19 @@ export default function GodView({
       })),
     [llmRuntime, taskBudgetDraft, taskPriorityDraft]
   );
+
+  useEffect(() => {
+    if (!autoFitLayout) return;
+    const applyAutoFit = () => {
+      const width = window.innerWidth;
+      if (width >= 1720) setLayoutMode("wide-left");
+      else if (width >= 1380) setLayoutMode("balanced");
+      else setLayoutMode("focus");
+    };
+    applyAutoFit();
+    window.addEventListener("resize", applyAutoFit);
+    return () => window.removeEventListener("resize", applyAutoFit);
+  }, [autoFitLayout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -525,8 +544,8 @@ export default function GodView({
   return (
     <div className="godview-staged">
       <AppPanel
-        title="Simulation Workspace"
-        subtitle="Two-step setup and execution flow"
+        title={strings.simulationWorkspace}
+        subtitle={strings.twoStepFlow}
         bodyClassName="flex flex-wrap items-center justify-between gap-3"
       >
         <div className="godview-stage-switch">
@@ -535,7 +554,7 @@ export default function GodView({
             className={`godview-stage-switch__button ${stage === "setup" ? "is-active" : ""}`}
             onClick={() => setStage("setup")}
           >
-            01 Setup
+            01 {strings.setup}
           </button>
           <button
             type="button"
@@ -543,7 +562,7 @@ export default function GodView({
             onClick={() => setStage("run")}
             disabled={!worldId}
           >
-            02 Run
+            02 {strings.run}
           </button>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -552,14 +571,14 @@ export default function GodView({
             className="app-button app-button--secondary"
             onClick={() => onOpenWorkbenchView?.("data-packs")}
           >
-            Open Data Packs
+            {strings.openDataPacks}
           </button>
           <button
             type="button"
             className="app-button app-button--secondary"
             onClick={() => onOpenWorkbenchView?.("review-lab")}
           >
-            Open Review Lab
+            {strings.openReviewLab}
           </button>
         </div>
       </AppPanel>
@@ -921,6 +940,26 @@ export default function GodView({
                     mode={llmTestResult.mode} · fallback={String(llmTestResult.used_fallback)}
                     {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
                   </p>
+                </div>
+              ) : null}
+              {llmTestResult && !llmTestResult.ok ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+                  <p className="font-semibold">{isKo ? "연결 진단" : "Connection Diagnosis"}</p>
+                  <p className="mt-1">{llmTestResult.diagnosis}</p>
+                  <p className="mt-1">
+                    {llmTestResult.fallback_reason || (isKo ? "프로바이더 응답이 유효하지 않습니다." : "The provider response is invalid.")}
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {!llmApiKey && llmProvider !== "ollama" ? (
+                      <li>{isKo ? "선택한 프로바이더에 API 키가 없습니다." : "The selected provider is missing an API key."}</li>
+                    ) : null}
+                    {llmProvider === "ollama" && !llmBaseUrl ? (
+                      <li>{isKo ? "Ollama base URL을 입력하세요. 예: http://127.0.0.1:11434" : "Provide an Ollama base URL, for example http://127.0.0.1:11434"}</li>
+                    ) : null}
+                    {llmTestResult.suggestions.map((item, index) => (
+                      <li key={`${index}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
               <p className="text-xs text-slate-500">
@@ -1291,34 +1330,54 @@ export default function GodView({
                   className="app-button app-button--ghost"
                   onClick={() => setStage("setup")}
                 >
-                  Back to Setup
+                  {strings.backToSetup}
                 </button>
               }
             >
               <button
                 type="button"
-                className={`app-button ${layoutMode === "balanced" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => setLayoutMode("balanced")}
+                className={`app-button ${autoFitLayout ? "app-button--primary" : "app-button--secondary"}`}
+                onClick={() => setAutoFitLayout(true)}
               >
-                Balanced
+                {strings.autoFit}
               </button>
               <button
                 type="button"
-                className={`app-button ${layoutMode === "focus" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => setLayoutMode("focus")}
+                className={`app-button ${!autoFitLayout && layoutMode === "balanced" ? "app-button--primary" : "app-button--secondary"}`}
+                onClick={() => {
+                  setAutoFitLayout(false);
+                  setLayoutMode("balanced");
+                }}
               >
-                Focus Viz
+                {strings.balanced}
               </button>
               <button
                 type="button"
-                className={`app-button ${layoutMode === "wide-left" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => setLayoutMode("wide-left")}
+                className={`app-button ${!autoFitLayout && layoutMode === "focus" ? "app-button--primary" : "app-button--secondary"}`}
+                onClick={() => {
+                  setAutoFitLayout(false);
+                  setLayoutMode("focus");
+                }}
               >
-                Wide Controls
+                {strings.focusViz}
               </button>
+              <button
+                type="button"
+                className={`app-button ${!autoFitLayout && layoutMode === "wide-left" ? "app-button--primary" : "app-button--secondary"}`}
+                onClick={() => {
+                  setAutoFitLayout(false);
+                  setLayoutMode("wide-left");
+                }}
+              >
+                {strings.wideControls}
+              </button>
+              <span className="rounded-full bg-slate-100 px-3 py-2 text-xs text-slate-600">
+                {autoFitLayout ? (isKo ? "자동 맞춤 활성" : "Auto-fit enabled") : isKo ? "수동 레이아웃" : "Manual layout"}
+              </span>
             </AppPanel>
 
             <RunPanel
+              locale={locale}
               worldId={worldId}
               isRunning={isRunning}
               liveT={liveT}
@@ -1328,6 +1387,7 @@ export default function GodView({
             />
 
             <InjectPanel
+              locale={locale}
               worldId={worldId}
               suggestedT={currentT}
               simRunning={isRunning}
@@ -1456,6 +1516,7 @@ export default function GodView({
                 </div>
 
                 <SimulationInspectorPanel
+                  locale={locale}
                   selectedAgent={selectedAgent}
                   selectedZone={selectedZone}
                   selectedBand={selectedBand}
@@ -1514,6 +1575,7 @@ export default function GodView({
 
               <div className="grid min-h-0 gap-3">
                 <ScenarioTimeline
+                  locale={locale}
                   worldId={worldId}
                   refreshKey={chartRefreshKey}
                   annotations={reviewSummary?.timeline_annotations ?? []}
@@ -1581,6 +1643,7 @@ function splitRoles(value: string): string[] | undefined {
 }
 
 function RunPanel({
+  locale = "ko",
   worldId,
   isRunning,
   liveT,
@@ -1588,6 +1651,7 @@ function RunPanel({
   onRunStream,
   onRunSync,
 }: {
+  locale?: UiLocale;
   worldId: string | null;
   isRunning: boolean;
   liveT: number | null;
@@ -1595,10 +1659,12 @@ function RunPanel({
   onRunStream: () => Promise<void>;
   onRunSync: () => Promise<void>;
 }) {
+  const strings = UI_STRINGS[locale];
+  const isKo = locale === "ko";
   return (
     <AppPanel
-      title="Execution"
-      subtitle="Run locally on this machine"
+      title={isKo ? "실행" : "Execution"}
+      subtitle={isKo ? "이 머신에서 로컬로 실행" : "Run locally on this machine"}
       bodyClassName="space-y-3"
     >
       <div className="grid gap-2">
@@ -1608,7 +1674,7 @@ function RunPanel({
           onClick={() => void onRunStream()}
           className="app-button app-button--success"
         >
-          Run with stream
+          {strings.runWithStream}
         </button>
         <button
           type="button"
@@ -1616,18 +1682,18 @@ function RunPanel({
           onClick={() => void onRunSync()}
           className="app-button app-button--secondary"
         >
-          Run sync
+          {strings.runSync}
         </button>
       </div>
       <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
         {isRunning ? (
           <>
-            실행 중 · stream active
+            {isKo ? "실행 중 · stream active" : "Running · stream active"}
             {liveT != null ? ` · t ${liveT.toFixed(1)}` : ""}
             {liveCellCount != null ? ` · ${liveCellCount} cells` : ""}
           </>
         ) : (
-          "로컬 런타임이 준비되면 이 머신에서 바로 계산합니다."
+          strings.runtimeReadyLocal
         )}
       </div>
     </AppPanel>

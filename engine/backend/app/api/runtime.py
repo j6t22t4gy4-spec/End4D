@@ -266,6 +266,8 @@ class RuntimeLlmTestResponse(BaseModel):
     used_fallback: bool = False
     fallback_reason: str = ""
     preview: str = ""
+    diagnosis: str = ""
+    suggestions: List[str] = Field(default_factory=list)
 
 
 @router.get("/local-status", response_model=LocalRuntimeStatusResponse)
@@ -373,6 +375,12 @@ def test_runtime_llm_config():
             used_fallback=bool(meta.get("used_fallback")),
             fallback_reason=str(meta.get("fallback_reason") or ""),
             preview=preview[:240],
+            diagnosis="connected" if ok else "provider returned fallback or empty output",
+            suggestions=[] if ok else [
+                "Verify provider/model/base_url values",
+                "Check API key or local server availability",
+                "Retry after confirming runtime strict mode and budget settings",
+            ],
         )
     except Exception as exc:
         return RuntimeLlmTestResponse(
@@ -383,6 +391,12 @@ def test_runtime_llm_config():
             used_fallback=False,
             fallback_reason=str(exc),
             preview="",
+            diagnosis="provider request failed",
+            suggestions=[
+                "Check network reachability or local provider health",
+                "Confirm API key, base URL, and model name",
+                "Provider errors do not auto-fallback anymore; fix the connection and test again",
+            ],
         )
 
 

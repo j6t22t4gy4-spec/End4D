@@ -18,8 +18,10 @@ import {
 } from "recharts";
 import { getTimeline, type TimelineAnnotation, type TimelinePoint } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
+import { type UiLocale } from "@/lib/ui-language";
 
 type ScenarioTimelineProps = {
+  locale?: UiLocale;
   worldId: string | null;
   refreshKey: number;
   annotations?: TimelineAnnotation[];
@@ -28,12 +30,14 @@ type ScenarioTimelineProps = {
 };
 
 export function ScenarioTimeline({
+  locale = "ko",
   worldId,
   refreshKey,
   annotations = [],
   emergentCurve = [],
   onJumpToT,
 }: ScenarioTimelineProps) {
+  const isKo = locale === "ko";
   const [points, setPoints] = useState<TimelinePoint[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [mode, setMode] = useState<"both" | "cells" | "energy" | "events" | "worldview">("both");
@@ -96,18 +100,18 @@ export function ScenarioTimeline({
 
   return (
     <AppPanel
-      title="Timeline"
-      subtitle="Run trend, energy flow, and key event pressure"
+      title={isKo ? "타임라인" : "Timeline"}
+      subtitle={isKo ? "실행 추세, 에너지 흐름, 주요 이벤트 압력" : "Run trend, energy flow, and key event pressure"}
       bodyClassName="space-y-2"
       testId="scenario-timeline"
     >
       <div className="flex flex-wrap gap-2">
         {[
-          ["both", "Overview"],
-          ["cells", "Cells"],
-          ["energy", "Energy"],
-          ["events", "Events"],
-          ["worldview", "Worldview"],
+          ["both", isKo ? "개요" : "Overview"],
+          ["cells", isKo ? "세포" : "Cells"],
+          ["energy", isKo ? "에너지" : "Energy"],
+          ["events", isKo ? "이벤트" : "Events"],
+          ["worldview", isKo ? "세계관" : "Worldview"],
         ].map(([value, label]) => (
           <button
             key={value}
@@ -224,10 +228,12 @@ export function ScenarioTimeline({
           <div className="grid gap-2">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Analysis Notes
+                {isKo ? "분석 메모" : "Analysis Notes"}
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                `Overview`는 전체 추세, `Events`는 annotation이 집중된 시점, `Worldview`는 사회적 고도와 장기 emergent dynamics를 따로 읽기 위한 레이어입니다.
+                {isKo
+                  ? "`Overview`는 전체 추세, `Events`는 annotation이 집중된 시점, `Worldview`는 사회적 고도와 장기 emergent dynamics를 따로 읽기 위한 레이어입니다."
+                  : "`Overview` shows total trends, `Events` isolates annotation pressure, and `Worldview` tracks long-run social elevation dynamics."}
               </p>
             </div>
             {latestAnnotations.length ? (
@@ -248,7 +254,7 @@ export function ScenarioTimeline({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-500">아직 자동 annotation이 없습니다.</p>
+              <p className="text-xs text-slate-500">{isKo ? "아직 자동 annotation이 없습니다." : "No automatic annotations yet."}</p>
             )}
           </div>
         </div>

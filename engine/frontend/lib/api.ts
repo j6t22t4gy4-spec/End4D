@@ -230,6 +230,8 @@ export type RuntimeLlmTestResponse = {
   used_fallback: boolean;
   fallback_reason: string;
   preview: string;
+  diagnosis: string;
+  suggestions: string[];
 };
 
 export type DataPackVerifyResponse = {

@@ -158,6 +158,7 @@ export default function HomeWithCanvas() {
             {activeView === "simulation" ? (
               <GodView
                 key={`${selectedWorldId ?? "none"}:${selectedSnapshotT ?? "latest"}`}
+                locale={locale}
                 initialWorldId={selectedWorldId}
                 initialT={selectedSnapshotT}
                 onOpenWorkbenchView={setActiveView}

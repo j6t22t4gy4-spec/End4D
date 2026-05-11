@@ -9,6 +9,7 @@ import {
   type AgentInterviewResponse,
   type CellSnapshot,
 } from "@/lib/api";
+import { type UiLocale } from "@/lib/ui-language";
 
 export type SelectedZone = {
   zoneId: string;
@@ -31,6 +32,7 @@ export type SelectedBand = {
 };
 
 type SimulationInspectorPanelProps = {
+  locale?: UiLocale;
   selectedAgent: CellSnapshot | null;
   selectedZone: SelectedZone | null;
   selectedBand: SelectedBand | null;
@@ -48,6 +50,7 @@ type SimulationInspectorPanelProps = {
 };
 
 export function SimulationInspectorPanel({
+  locale = "ko",
   selectedAgent,
   selectedZone,
   selectedBand,
@@ -57,12 +60,13 @@ export function SimulationInspectorPanel({
   onOpenWorldAt,
   onClearSelection,
 }: SimulationInspectorPanelProps) {
+  const isKo = locale === "ko";
   const hasSelection = Boolean(selectedAgent || selectedZone || selectedBand);
 
   return (
     <AppPanel
-      title="Selection Details"
-      subtitle="Agent, zone, and elevation context"
+      title={isKo ? "선택 상세" : "Selection Details"}
+      subtitle={isKo ? "에이전트, 구역, 고도 맥락" : "Agent, zone, and elevation context"}
       bodyClassName="space-y-4"
       action={
         hasSelection ? (
@@ -71,7 +75,7 @@ export function SimulationInspectorPanel({
             className="app-button app-button--ghost"
             onClick={onClearSelection}
           >
-            Clear
+            {isKo ? "지우기" : "Clear"}
           </button>
         ) : undefined
       }
@@ -91,20 +95,21 @@ export function SimulationInspectorPanel({
 
       {!hasSelection ? (
         <div className="space-y-4">
-          <EmptyState />
-          <AgentDirectory agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+          <EmptyState locale={locale} />
+          <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
         </div>
       ) : (
         <div className="space-y-4">
           {selectedAgent ? (
             <AgentCard
+              locale={locale}
               agent={selectedAgent}
               worldId={worldSummary.worldId}
               currentT={worldSummary.currentT}
               onOpenWorldAt={onOpenWorldAt}
             />
           ) : null}
-          <AgentDirectory agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+          <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
           {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
           {selectedBand ? <BandCard band={selectedBand} /> : null}
         </div>
@@ -114,12 +119,15 @@ export function SimulationInspectorPanel({
 }
 
 function AgentDirectory({
+  locale = "ko",
   agentRoster,
   onSelectAgent,
 }: {
+  locale?: UiLocale;
   agentRoster: CellSnapshot[];
   onSelectAgent: (agent: CellSnapshot) => void;
 }) {
+  const isKo = locale === "ko";
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
@@ -154,14 +162,14 @@ function AgentDirectory({
   return (
     <section className="inspector-card">
       <InspectorHeading
-        title="Agent Directory"
-        subtitle="Query any persona agent in this snapshot"
+        title={isKo ? "에이전트 디렉터리" : "Agent Directory"}
+        subtitle={isKo ? "이 스냅샷의 어떤 페르소나에게도 질문할 수 있습니다" : "Query any persona agent in this snapshot"}
       />
       <input
         className="app-input"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="role, country, zone, id로 검색"
+        placeholder={isKo ? "role, country, zone, id로 검색" : "Search by role, country, zone, or id"}
       />
       <div className="grid gap-2">
         {filtered.map((agent) => (
@@ -186,33 +194,38 @@ function AgentDirectory({
           </button>
         ))}
         {!filtered.length ? (
-          <p className="text-sm text-slate-500">검색 결과가 없습니다.</p>
+          <p className="text-sm text-slate-500">{isKo ? "검색 결과가 없습니다." : "No search results."}</p>
         ) : null}
       </div>
     </section>
   );
 }
 
-function EmptyState() {
+function EmptyState({ locale = "ko" }: { locale?: UiLocale }) {
+  const isKo = locale === "ko";
   return (
     <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-4 py-5 text-sm leading-6 text-slate-600">
-      지도에서 agent, zone, contour band를 선택하면 이 패널에서 상세 맥락을 볼 수 있습니다.
-      비교 워크플로우를 위해 선택 결과를 우측으로 고정하는 구조입니다.
+      {isKo
+        ? "지도에서 agent, zone, contour band를 선택하면 이 패널에서 상세 맥락을 볼 수 있습니다. 비교 워크플로우를 위해 선택 결과를 우측으로 고정하는 구조입니다."
+        : "Select an agent, zone, or contour band on the map to inspect it here. The panel keeps that context pinned for comparison work."}
     </div>
   );
 }
 
 function AgentCard({
+  locale = "ko",
   agent,
   worldId,
   currentT,
   onOpenWorldAt,
 }: {
+  locale?: UiLocale;
   agent: CellSnapshot;
   worldId: string | null;
   currentT: number;
   onOpenWorldAt: (worldId: string, t?: number | null) => void;
 }) {
+  const isKo = locale === "ko";
   const strategy = String(agent.action_state?.strategy_summary ?? "n/a");
   const zMode = String(agent.action_state?.z_mode ?? "hybrid");
   const [question, setQuestion] = useState(
@@ -297,14 +310,14 @@ function AgentCard({
             className="app-button app-button--ghost"
             onClick={runDirectInterview}
           >
-            Ask Agent
+            {isKo ? "에이전트에게 묻기" : "Ask Agent"}
           </button>
           <button
             type="button"
             className="app-button app-button--ghost"
             onClick={runDiffInterview}
           >
-            Ask Change
+            {isKo ? "변화에 대해 묻기" : "Ask Change"}
           </button>
         </div>
         {loadingMode ? (

@@ -90,27 +90,49 @@ export function RuntimeDock({
           />
         </div>
         {runtime?.llm_runtime?.recent_runs?.length ? (
-          runtime.llm_runtime.recent_runs.slice(-6).reverse().map((run, index) => (
-            <article
-              key={`${run.task}-${index}`}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">{run.task}</p>
-                  <p className="truncate text-xs text-slate-500">
-                    {run.provider} · {run.model} · p{run.task_priority}
-                  </p>
+          <>
+            <div className="runtime-heatmap">
+              {Object.entries(runtime.llm_runtime.task_totals ?? {}).map(([task, totals]) => {
+                const intensity = Math.min(1, Math.max(0.12, (totals.prompt_count_sent || 0) / 24));
+                const hasFallback = (totals.fallback_calls || 0) > 0;
+                return (
+                  <div
+                    key={task}
+                    className="runtime-heatmap__cell"
+                    style={{
+                      background: hasFallback
+                        ? `linear-gradient(180deg, rgba(245, 158, 11, ${Math.min(0.9, intensity + 0.2)}), rgba(251, 191, 36, 0.18))`
+                        : `linear-gradient(180deg, rgba(15, 118, 110, ${Math.min(0.9, intensity + 0.18)}), rgba(45, 212, 191, 0.12))`,
+                    }}
+                  >
+                    <strong>{task}</strong>
+                    <span>{totals.prompt_count_sent}/{totals.prompt_count_in}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {runtime.llm_runtime.recent_runs.slice(-6).reverse().map((run, index) => (
+              <article
+                key={`${run.task}-${index}`}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{run.task}</p>
+                    <p className="truncate text-xs text-slate-500">
+                      {run.provider} · {run.model} · p{run.task_priority}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                    {run.prompt_count_sent}/{run.prompt_count_in}
+                  </span>
                 </div>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
-                  {run.prompt_count_sent}/{run.prompt_count_in}
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-slate-600">
-                {run.used_fallback ? `fallback · ${run.fallback_reason || "unknown"}` : "live llm"}
-              </p>
-            </article>
-          ))
+                <p className="mt-2 text-xs text-slate-600">
+                  {run.used_fallback ? `fallback · ${run.fallback_reason || "unknown"}` : "live llm"}
+                </p>
+              </article>
+            ))}
+          </>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
             {strings.noLlmActivity}

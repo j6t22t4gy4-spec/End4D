@@ -6,6 +6,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { injectEvent, type InjectBody } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
+import { type UiLocale } from "@/lib/ui-language";
 
 const EVENT_OPTIONS: { value: string; label: string; defaultPayload: string }[] =
   [
@@ -40,6 +41,7 @@ const EVENT_OPTIONS: { value: string; label: string; defaultPayload: string }[] 
   ];
 
 type InjectPanelProps = {
+  locale?: UiLocale;
   worldId: string | null;
   suggestedT: number;
   /** 시뮬 실행 중이면 비활성 */
@@ -54,12 +56,14 @@ type InjectPanelProps = {
 };
 
 export function InjectPanel({
+  locale = "ko",
   worldId,
   suggestedT,
   simRunning = false,
   preset = null,
   onInjected,
 }: InjectPanelProps) {
+  const isKo = locale === "ko";
   const [injectT, setInjectT] = useState(0);
   const [eventType, setEventType] = useState("nutrient_burst");
   const [payloadJson, setPayloadJson] = useState(
@@ -121,8 +125,8 @@ export function InjectPanel({
 
   return (
     <AppPanel
-      title="Policy Injection"
-      subtitle="Apply an event and recompute from that point"
+      title={isKo ? "정책 주입" : "Policy Injection"}
+      subtitle={isKo ? "이벤트를 주입하고 그 시점부터 다시 계산" : "Apply an event and recompute from that point"}
       className="space-y-0"
       bodyClassName="space-y-3"
       testId="inject-panel"
@@ -168,7 +172,7 @@ export function InjectPanel({
         onClick={handleSubmit}
         className="app-button app-button--warning"
       >
-        {busy ? "처리 중…" : "주입 실행"}
+        {busy ? (isKo ? "처리 중…" : "Applying…") : isKo ? "주입 실행" : "Run Injection"}
       </button>
       {preset ? (
         <p className="text-xs text-sky-700">

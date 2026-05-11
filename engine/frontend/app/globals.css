@@ -452,6 +452,35 @@ textarea {
   color: #475569;
 }
 
+.runtime-heatmap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.runtime-heatmap__cell {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.runtime-heatmap__cell strong {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.runtime-heatmap__cell span {
+  font-size: 12px;
+  color: #334155;
+}
+
 .simulation-map {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
