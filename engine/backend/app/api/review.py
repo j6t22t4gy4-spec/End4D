@@ -52,6 +52,7 @@ class ReviewSummaryResponse(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
     stance_groups: List[Dict[str, Any]] = Field(default_factory=list)
     group_analysis: Dict[str, Any] = Field(default_factory=dict)
+    group_tables: Dict[str, Any] = Field(default_factory=dict)
     emergent_dynamics: Dict[str, Any] = Field(default_factory=dict)
     mechanism_summary: Dict[str, Any] = Field(default_factory=dict)
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
@@ -147,6 +148,7 @@ def get_review_summary(world_id: str):
         metrics=dict(payload.get("summary_stats") or {}),
         stance_groups=[dict(item) for item in list((payload.get("belief_drift") or {}).get("groups") or [])],
         group_analysis=dict(payload.get("group_analysis") or {}),
+        group_tables=dict(payload.get("group_tables") or {}),
         emergent_dynamics=dict(payload.get("emergent_dynamics") or {}),
         mechanism_summary=dict(payload.get("mechanism_summary") or {}),
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
@@ -226,6 +228,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         "zone_z_delta": [dict(item) for item in list(diff_payload.get("zone_z_delta") or [])],
         "policy_impact_delta": dict(diff_payload.get("policy_impact_delta") or {}),
         "mechanism_delta": dict(diff_payload.get("mechanism_delta") or {}),
+        "group_table_delta": dict(diff_payload.get("group_table_delta") or {}),
         "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),
         "coalition_shift_delta": dict(diff_payload.get("coalition_shift_delta") or {}),
         "base_worldview_curve": list((base_payload.get("emergent_dynamics") or {}).get("worldview_curve") or []),

@@ -265,12 +265,74 @@ export function ReviewLabWorkspace({
     () => (data?.group_analysis ?? {}) as Record<string, unknown>,
     [data]
   );
+  const groupTables = useMemo(
+    () => (data?.group_tables ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const roleTableRows = useMemo(
+    () => (Array.isArray(groupTables.role_table) ? (groupTables.role_table as Array<Record<string, unknown>>) : []),
+    [groupTables]
+  );
+  const personaCountryRows = useMemo(
+    () =>
+      Array.isArray(groupTables.persona_country_table)
+        ? (groupTables.persona_country_table as Array<Record<string, unknown>>)
+        : [],
+    [groupTables]
+  );
+  const zoneTableRows = useMemo(
+    () => (Array.isArray(groupTables.zone_table) ? (groupTables.zone_table as Array<Record<string, unknown>>) : []),
+    [groupTables]
+  );
   const causalChains = useMemo(
     () =>
       Array.isArray(data?.causal_chains)
         ? (data?.causal_chains as Array<Record<string, unknown>>)
         : [],
     [data]
+  );
+  const sessionGroupTables = useMemo(
+    () => (sessionReview?.group_tables ?? {}) as Record<string, unknown>,
+    [sessionReview]
+  );
+  const sessionRoleRows = useMemo(
+    () =>
+      Array.isArray(sessionGroupTables.role_table)
+        ? (sessionGroupTables.role_table as Array<Record<string, unknown>>)
+        : [],
+    [sessionGroupTables]
+  );
+  const sessionPersonaRows = useMemo(
+    () =>
+      Array.isArray(sessionGroupTables.persona_country_table)
+        ? (sessionGroupTables.persona_country_table as Array<Record<string, unknown>>)
+        : [],
+    [sessionGroupTables]
+  );
+  const sessionZoneRows = useMemo(
+    () =>
+      Array.isArray(sessionGroupTables.zone_table)
+        ? (sessionGroupTables.zone_table as Array<Record<string, unknown>>)
+        : [],
+    [sessionGroupTables]
+  );
+  const diffGroupTableDelta = useMemo(
+    () => (diffMetrics.group_table_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
+  const diffPersonaRows = useMemo(
+    () =>
+      Array.isArray(diffGroupTableDelta.persona_country_delta)
+        ? (diffGroupTableDelta.persona_country_delta as Array<Record<string, unknown>>)
+        : [],
+    [diffGroupTableDelta]
+  );
+  const diffZoneTableRows = useMemo(
+    () =>
+      Array.isArray(diffGroupTableDelta.zone_table_delta)
+        ? (diffGroupTableDelta.zone_table_delta as Array<Record<string, unknown>>)
+        : [],
+    [diffGroupTableDelta]
   );
 
   const createBranchAt = async (targetWorldId: string, t: number | null | undefined, sourceLabel: string) => {
@@ -678,6 +740,49 @@ export function ReviewLabWorkspace({
               ))}
             </div>
           </div>
+        </div>
+      </AppPanel>
+
+      <AppPanel
+        title={isKo ? "그룹 테이블" : "Group Tables"}
+        subtitle={isKo ? "역할, 국가 페르소나, 구역 기준 표준 집단 요약" : "Standardized collective summary by role, persona country, and zone"}
+        bodyClassName="space-y-3"
+      >
+        <div className="grid gap-4 xl:grid-cols-3">
+          <CompactGroupTable
+            title={isKo ? "역할" : "Roles"}
+            emptyLabel={isKo ? "역할 집단 테이블이 아직 없습니다." : "No role table yet."}
+            rows={roleTableRows}
+            columns={[
+              { key: "role_label", label: isKo ? "역할" : "Role" },
+              { key: "stance_after", label: isKo ? "입장" : "Stance" },
+              { key: "cohesion_after", label: isKo ? "응집" : "Cohesion", numeric: true },
+              { key: "tension_after", label: isKo ? "긴장" : "Tension", numeric: true },
+              { key: "cross_zone_fracture", label: isKo ? "균열" : "Fracture", numeric: true },
+            ]}
+          />
+          <CompactGroupTable
+            title={isKo ? "국가 페르소나" : "Persona Countries"}
+            emptyLabel={isKo ? "국가 페르소나 테이블이 아직 없습니다." : "No persona-country table yet."}
+            rows={personaCountryRows}
+            columns={[
+              { key: "persona_country", label: isKo ? "국가" : "Country" },
+              { key: "count", label: isKo ? "수" : "Count", numeric: true },
+              { key: "avg_belief_shift", label: isKo ? "평균 이동" : "Avg Shift", numeric: true },
+              { key: "avg_z_delta", label: isKo ? "평균 zΔ" : "Avg zΔ", numeric: true },
+            ]}
+          />
+          <CompactGroupTable
+            title={isKo ? "구역" : "Zones"}
+            emptyLabel={isKo ? "구역 테이블이 아직 없습니다." : "No zone table yet."}
+            rows={zoneTableRows}
+            columns={[
+              { key: "zone_label", label: isKo ? "구역" : "Zone" },
+              { key: "avg_z_delta", label: isKo ? "평균 zΔ" : "Avg zΔ", numeric: true },
+              { key: "avg_energy_after", label: isKo ? "에너지" : "Energy", numeric: true },
+              { key: "cell_count_after", label: isKo ? "셀 수" : "Cells", numeric: true },
+            ]}
+          />
         </div>
       </AppPanel>
 
@@ -1642,6 +1747,52 @@ export function ReviewLabWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel
+          title={isKo ? "디프 그룹 테이블" : "Diff Group Tables"}
+          subtitle={isKo ? "baseline과 target의 역할, 국가 페르소나, 구역 차이" : "Role, persona-country, and zone deltas between baseline and target"}
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <div className="grid gap-4 xl:grid-cols-3">
+              <CompactGroupTable
+                title={isKo ? "역할 차이" : "Role Gaps"}
+                emptyLabel={isKo ? "역할 차이가 아직 없습니다." : "No role gaps yet."}
+                rows={groupDriftRows}
+                columns={[
+                  { key: "role_label", label: isKo ? "역할" : "Role" },
+                  { key: "cohesion_gap", label: isKo ? "응집Δ" : "CohesionΔ", numeric: true },
+                  { key: "tension_gap", label: isKo ? "긴장Δ" : "TensionΔ", numeric: true },
+                  { key: "split_risk_gap", label: isKo ? "분열Δ" : "SplitΔ", numeric: true },
+                ]}
+              />
+              <CompactGroupTable
+                title={isKo ? "국가 페르소나 차이" : "Persona Country Gaps"}
+                emptyLabel={isKo ? "국가 페르소나 차이가 아직 없습니다." : "No persona-country gaps yet."}
+                rows={diffPersonaRows}
+                columns={[
+                  { key: "persona_country", label: isKo ? "국가" : "Country" },
+                  { key: "avg_belief_shift_gap", label: isKo ? "이동Δ" : "ShiftΔ", numeric: true },
+                  { key: "avg_z_delta_gap", label: isKo ? "zΔ" : "zΔ", numeric: true },
+                  { key: "count_gap", label: isKo ? "수Δ" : "CountΔ", numeric: true },
+                ]}
+              />
+              <CompactGroupTable
+                title={isKo ? "구역 차이" : "Zone Gaps"}
+                emptyLabel={isKo ? "구역 차이가 아직 없습니다." : "No zone gaps yet."}
+                rows={diffZoneTableRows}
+                columns={[
+                  { key: "zone_label", label: isKo ? "구역" : "Zone" },
+                  { key: "avg_z_gap", label: isKo ? "평균 zΔ" : "Avg zΔ", numeric: true },
+                  { key: "avg_energy_gap", label: isKo ? "에너지Δ" : "EnergyΔ", numeric: true },
+                  { key: "cell_count_gap", label: isKo ? "셀Δ" : "CellsΔ", numeric: true },
+                ]}
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 그룹 테이블 차이를 볼 수 있습니다." : "Generate a diff report to inspect group-table deltas."}</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
           title="Side-by-Side Worldview Lane"
           subtitle="Baseline and target emergent curves in one comparison lane"
           bodyClassName="space-y-3"
@@ -2146,6 +2297,59 @@ function summarizeBatchBy(items: Array<Record<string, unknown>>, key: string) {
     }))
     .sort((left, right) => right.avgShift - left.avgShift)
     .slice(0, 4);
+}
+
+type CompactColumn = { key: string; label: string; numeric?: boolean };
+
+function CompactGroupTable({
+  title,
+  emptyLabel,
+  rows,
+  columns,
+}: {
+  title: string;
+  emptyLabel: string;
+  rows: Array<Record<string, unknown>>;
+  columns: CompactColumn[];
+}) {
+  return (
+    <div className="session-thread-card">
+      <div className="session-thread-card__header">
+        <p className="session-thread-card__title">{title}</p>
+        <span className="session-thread-card__meta">{rows.length}</span>
+      </div>
+      {rows.length ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-xs text-slate-600">
+            <thead>
+              <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                {columns.map((column) => (
+                  <th key={column.key} className="px-2 py-2">{column.label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 6).map((row, index) => (
+                <tr key={`${index}-${String(row[columns[0]?.key ?? 'row'] ?? index)}`} className="border-b border-slate-100">
+                  {columns.map((column) => {
+                    const raw = row[column.key];
+                    const value = column.numeric ? Number(raw ?? 0).toFixed(2) : String(raw ?? 'n/a');
+                    return (
+                      <td key={column.key} className="px-2 py-2">
+                        {value}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">{emptyLabel}</p>
+      )}
+    </div>
+  );
 }
 
 function GroundingPanel({

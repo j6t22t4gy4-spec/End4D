@@ -101,6 +101,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     }
     policy_impact = _policy_impact_summary(key_events, belief_drift["groups"], zone_z_drift)
     group_analysis = _group_analysis_summary(belief_drift, zone_z_drift)
+    group_tables = _group_tables_summary(belief_drift, zone_z_drift, notable_agents)
     emergent_dynamics = _emergent_dynamics_summary(
         timeline_points=timeline_points,
         belief_drift=belief_drift,
@@ -143,6 +144,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "summary_stats": summary_stats,
         "belief_drift": belief_drift,
         "group_analysis": group_analysis,
+        "group_tables": group_tables,
         "emergent_dynamics": emergent_dynamics,
         "mechanism_summary": mechanism_summary,
         "policy_impact": policy_impact,
@@ -256,6 +258,7 @@ def build_session_review_payload(
         "strongest_worlds": ranked_worlds[:5],
         "ranked_worlds": ranked_worlds[:8],
         "recommended_pairs": recommended_pairs[:5],
+        "group_tables": _session_group_tables(world_payloads),
         "grounding": {
             "worlds": [
                 {
@@ -506,6 +509,12 @@ def build_review_diff_payload(
         "zone_z_delta": zone_z_delta[:8],
         "policy_impact_delta": policy_impact_delta,
         "mechanism_delta": mechanism_delta,
+        "group_table_delta": _group_table_delta(
+            group_drift_deltas=group_drift_deltas,
+            zone_z_delta=zone_z_delta,
+            base_payload=base_payload,
+            target_payload=target_payload,
+        ),
         "timeline_turning_point_delta": timeline_turning_point_delta,
         "notable_agent_delta": notable_agent_delta,
         "coalition_shift_delta": coalition_shift_delta,
@@ -1001,6 +1010,168 @@ def _group_analysis_summary(
             }
             for item in groups[:4]
         ],
+    }
+
+
+def _group_tables_summary(
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+    notable_agents: list[dict[str, Any]],
+) -> dict[str, Any]:
+    groups = list(belief_drift.get("groups") or [])
+    role_table = [
+        {
+            "group_id": str(item.get("group_id") or ""),
+            "role_label": str(item.get("role_label") or "group"),
+            "stance_after": str(item.get("stance_after") or "diffuse"),
+            "cohesion_after": round(float(item.get("cohesion_after", 0.0)), 3),
+            "tension_after": round(float(item.get("tension_after", 0.0)), 3),
+            "polarization_after": round(float(item.get("polarization_after", 0.0)), 3),
+            "split_risk": round(float(item.get("sub_coalition_split_risk", 0.0)), 3),
+            "block_divergence": round(float(item.get("ideology_block_divergence", 0.0)), 3),
+            "cross_zone_fracture": round(float(item.get("cross_zone_group_fracture", 0.0)), 3),
+            "cell_delta": int(item.get("cell_delta", 0)),
+            "coalition_signal": str(item.get("coalition_signal") or ""),
+        }
+        for item in groups[:MAX_REVIEW_GROUPS]
+    ]
+    persona_buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "shift": 0.0, "z": 0.0, "worldview": 0.0})
+    for item in notable_agents[:MAX_REVIEW_AGENTS]:
+        country = str(item.get("persona_country") or "unknown") or "unknown"
+        bucket = persona_buckets[country]
+        bucket["count"] += 1.0
+        bucket["shift"] += float(item.get("belief_shift_score", 0.0))
+        bucket["z"] += abs(float(item.get("z_delta", 0.0)))
+        bucket["worldview"] += float(item.get("worldview_shift", 0.0))
+    persona_country_table = [
+        {
+            "persona_country": country,
+            "count": int(values["count"]),
+            "avg_belief_shift": round(values["shift"] / max(values["count"], 1.0), 3),
+            "avg_z_delta": round(values["z"] / max(values["count"], 1.0), 3),
+            "avg_worldview_shift": round(values["worldview"] / max(values["count"], 1.0), 3),
+        }
+        for country, values in persona_buckets.items()
+    ]
+    persona_country_table.sort(key=lambda item: (item["avg_belief_shift"], item["avg_z_delta"]), reverse=True)
+    zone_table = [
+        {
+            "zone_id": str(item.get("zone_id") or ""),
+            "zone_label": str(item.get("zone_label") or "zone"),
+            "avg_z_delta": round(float(item.get("avg_z_delta", 0.0)), 3),
+            "avg_energy_after": round(float(item.get("avg_energy_after", 0.0)), 3),
+            "cell_count_after": int(item.get("cell_count_after", 0)),
+        }
+        for item in zone_z_drift[:MAX_REVIEW_ZONES]
+    ]
+    return {
+        "role_table": role_table,
+        "persona_country_table": persona_country_table[:6],
+        "zone_table": zone_table[:6],
+    }
+
+
+def _group_table_delta(
+    *,
+    group_drift_deltas: list[dict[str, Any]],
+    zone_z_delta: list[dict[str, Any]],
+    base_payload: dict[str, Any],
+    target_payload: dict[str, Any],
+) -> dict[str, Any]:
+    base_persona = {
+        str(item.get("persona_country") or "unknown"): dict(item)
+        for item in list((base_payload.get("group_tables") or {}).get("persona_country_table") or [])
+    }
+    target_persona = {
+        str(item.get("persona_country") or "unknown"): dict(item)
+        for item in list((target_payload.get("group_tables") or {}).get("persona_country_table") or [])
+    }
+    persona_country_delta = []
+    for country, target_row in target_persona.items():
+        base_row = dict(base_persona.get(country) or {})
+        persona_country_delta.append(
+            {
+                "persona_country": country,
+                "count_gap": int(target_row.get("count", 0)) - int(base_row.get("count", 0)),
+                "avg_belief_shift_gap": round(float(target_row.get("avg_belief_shift", 0.0)) - float(base_row.get("avg_belief_shift", 0.0)), 3),
+                "avg_z_delta_gap": round(float(target_row.get("avg_z_delta", 0.0)) - float(base_row.get("avg_z_delta", 0.0)), 3),
+                "avg_worldview_shift_gap": round(float(target_row.get("avg_worldview_shift", 0.0)) - float(base_row.get("avg_worldview_shift", 0.0)), 3),
+            }
+        )
+    persona_country_delta.sort(key=lambda item: abs(float(item["avg_belief_shift_gap"])) + abs(float(item["avg_z_delta_gap"])), reverse=True)
+    return {
+        "role_table_delta": [dict(item) for item in group_drift_deltas[:8]],
+        "persona_country_delta": persona_country_delta[:6],
+        "zone_table_delta": [dict(item) for item in zone_z_delta[:6]],
+    }
+
+
+def _session_group_tables(world_payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    role_buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "cohesion": 0.0, "tension": 0.0, "fracture": 0.0, "split": 0.0})
+    persona_buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "shift": 0.0, "z": 0.0, "worldview": 0.0})
+    zone_buckets: dict[str, dict[str, float]] = defaultdict(lambda: {"count": 0.0, "z": 0.0, "energy": 0.0, "cells": 0.0})
+    for payload in world_payloads:
+        tables = dict(payload.get("group_tables") or {})
+        for row in list(tables.get("role_table") or []):
+            label = str(row.get("role_label") or "group")
+            bucket = role_buckets[label]
+            bucket["count"] += 1.0
+            bucket["cohesion"] += float(row.get("cohesion_after", 0.0))
+            bucket["tension"] += float(row.get("tension_after", 0.0))
+            bucket["fracture"] += float(row.get("cross_zone_fracture", 0.0))
+            bucket["split"] += float(row.get("split_risk", 0.0))
+        for row in list(tables.get("persona_country_table") or []):
+            label = str(row.get("persona_country") or "unknown")
+            bucket = persona_buckets[label]
+            bucket["count"] += 1.0
+            bucket["shift"] += float(row.get("avg_belief_shift", 0.0))
+            bucket["z"] += float(row.get("avg_z_delta", 0.0))
+            bucket["worldview"] += float(row.get("avg_worldview_shift", 0.0))
+        for row in list(tables.get("zone_table") or []):
+            label = str(row.get("zone_label") or row.get("zone_id") or "zone")
+            bucket = zone_buckets[label]
+            bucket["count"] += 1.0
+            bucket["z"] += abs(float(row.get("avg_z_delta", 0.0)))
+            bucket["energy"] += float(row.get("avg_energy_after", 0.0))
+            bucket["cells"] += float(row.get("cell_count_after", 0.0))
+    role_table = [
+        {
+            "role_label": label,
+            "avg_cohesion": round(v["cohesion"] / max(v["count"], 1.0), 3),
+            "avg_tension": round(v["tension"] / max(v["count"], 1.0), 3),
+            "avg_fracture": round(v["fracture"] / max(v["count"], 1.0), 3),
+            "avg_split_risk": round(v["split"] / max(v["count"], 1.0), 3),
+            "world_coverage": int(v["count"]),
+        }
+        for label, v in role_buckets.items()
+    ]
+    role_table.sort(key=lambda item: item["avg_fracture"] + item["avg_tension"], reverse=True)
+    persona_country_table = [
+        {
+            "persona_country": label,
+            "avg_belief_shift": round(v["shift"] / max(v["count"], 1.0), 3),
+            "avg_z_delta": round(v["z"] / max(v["count"], 1.0), 3),
+            "avg_worldview_shift": round(v["worldview"] / max(v["count"], 1.0), 3),
+            "world_coverage": int(v["count"]),
+        }
+        for label, v in persona_buckets.items()
+    ]
+    persona_country_table.sort(key=lambda item: item["avg_belief_shift"], reverse=True)
+    zone_table = [
+        {
+            "zone_label": label,
+            "avg_z_delta": round(v["z"] / max(v["count"], 1.0), 3),
+            "avg_energy": round(v["energy"] / max(v["count"], 1.0), 3),
+            "avg_cells": round(v["cells"] / max(v["count"], 1.0), 3),
+            "world_coverage": int(v["count"]),
+        }
+        for label, v in zone_buckets.items()
+    ]
+    zone_table.sort(key=lambda item: item["avg_z_delta"], reverse=True)
+    return {
+        "role_table": role_table[:6],
+        "persona_country_table": persona_country_table[:6],
+        "zone_table": zone_table[:6],
     }
 
 

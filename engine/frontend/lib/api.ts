@@ -420,6 +420,7 @@ export type ReviewSummaryResponse = {
   metrics: Record<string, unknown>;
   stance_groups: Array<Record<string, unknown>>;
   group_analysis: Record<string, unknown>;
+  group_tables: Record<string, unknown>;
   emergent_dynamics: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
@@ -485,6 +486,7 @@ export type SessionReviewResponse = {
   decision_implications: string[];
   objective_explanation: string;
   metrics: Record<string, unknown>;
+  group_tables: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
   ranked_worlds: Array<Record<string, unknown>>;
   recommended_pairs: Array<Record<string, unknown>>;
