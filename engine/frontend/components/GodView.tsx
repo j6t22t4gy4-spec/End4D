@@ -20,6 +20,7 @@ import {
 } from "@/components/TimelineBookmarks";
 import {
   createWorld,
+  getReviewSummary,
   getWorld,
   listSnapshotTimes,
   getSnapshotAtT,
@@ -27,6 +28,7 @@ import {
   type CreateWorldResult,
   type CellSnapshot,
   type GodModePayload,
+  type ReviewSummaryResponse,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
@@ -81,6 +83,8 @@ export default function GodView({
   const [bookmarks, setBookmarks] = useState<TimelineMarker[]>([]);
   const [eventMarkers, setEventMarkers] = useState<TimelineMarker[]>([]);
   const [layoutMode, setLayoutMode] = useState<"balanced" | "focus" | "wide-left">("balanced");
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummaryResponse | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -106,6 +110,35 @@ export default function GodView({
   );
   const availableKey = availableT.join(",");
   const err = createError || actionError || streamError;
+
+  useEffect(() => {
+    if (!worldId) {
+      setReviewSummary(null);
+      setReviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setReviewLoading(true);
+    getReviewSummary(worldId)
+      .then((payload) => {
+        if (!cancelled) {
+          setReviewSummary(payload);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReviewSummary(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setReviewLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [worldId, chartRefreshKey]);
 
   const handleCreateWorld = useCallback(async () => {
     setCreateError(null);
@@ -298,6 +331,19 @@ export default function GodView({
   const removeBookmark = useCallback((key: string) => {
     setBookmarks((prev) => prev.filter((item) => item.key !== key));
   }, []);
+
+  const reviewMarkers = useMemo(
+    () =>
+      (reviewSummary?.timeline_annotations ?? []).map((item, index) => ({
+        key: `review-${index}-${item.t}`,
+        t: item.t,
+        label: item.label,
+        kind: "annotation" as const,
+        severity: item.severity,
+        reason: item.reason,
+      })),
+    [reviewSummary]
+  );
 
   useEffect(() => {
     if (!initialWorldId) return;
@@ -669,6 +715,27 @@ export default function GodView({
 
                 <div className="grid gap-3 content-start">
                   {lastGenesis ? <GenesisMeta lastGenesis={lastGenesis} /> : null}
+                  {reviewSummary ? (
+                    <AppPanel
+                      title="Review Snapshot"
+                      subtitle={reviewLoading ? "Refreshing analyst summary…" : reviewSummary.headline}
+                      bodyClassName="space-y-3"
+                    >
+                      <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
+                      {reviewSummary.causal_analysis.slice(0, 2).map((item, index) => (
+                        <div key={`${index}-${item}`} className="session-thread-card">
+                          <p className="session-thread-card__prompt">{item}</p>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="app-button app-button--ghost"
+                        onClick={() => onOpenWorkbenchView?.("review-lab")}
+                      >
+                        Open Full Review
+                      </button>
+                    </AppPanel>
+                  ) : null}
                 </div>
 
                 <SimulationInspectorPanel
@@ -705,7 +772,7 @@ export default function GodView({
                   t={currentT}
                   tMin={tSliderMin}
                   tMax={Math.max(tSliderMin + 1, tSliderMax)}
-                  markers={timelineMarkers}
+                  markers={[...timelineMarkers, ...reviewMarkers]}
                   bookmarks={bookmarks}
                   onJump={setCurrentT}
                   onAddBookmark={addBookmark}
@@ -723,7 +790,12 @@ export default function GodView({
                 </div>
               </AppPanel>
 
-              <ScenarioTimeline worldId={worldId} refreshKey={chartRefreshKey} />
+              <ScenarioTimeline
+                worldId={worldId}
+                refreshKey={chartRefreshKey}
+                annotations={reviewSummary?.timeline_annotations ?? []}
+                onJumpToT={setCurrentT}
+              />
             </div>
           </div>
         </div>

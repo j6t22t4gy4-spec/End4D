@@ -29,6 +29,7 @@ from app.llm.review import (
     build_timeline_annotation_prompt,
     heuristic_review_summary,
     heuristic_timeline_annotations,
+    parse_review_summary,
     parse_timeline_annotations,
 )
 from app.models.cell import Cell
@@ -125,21 +126,28 @@ class LLMFacade:
 
     def summarize_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         prompt = build_review_summary_prompt(payload)
-        out = self._run_task([prompt], task="review_summary")
-        text = str(out[0] if out else "").strip()
+        texts, meta = self._run_task_with_meta([prompt], task="review_summary")
+        text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
-        summary = heuristic_review_summary(payload) if used_heuristic else text
+        summary = (
+            heuristic_review_summary(payload)
+            if used_heuristic
+            else parse_review_summary(text, payload)
+        )
         return {
             "summary": summary,
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("review_summary"),
             "prompt_meta": get_prompt_meta("review_summary"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
         }
 
     def annotate_timeline(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         prompt = build_timeline_annotation_prompt(payload)
-        out = self._run_task([prompt], task="timeline_annotation")
-        text = str(out[0] if out else "").strip()
+        texts, meta = self._run_task_with_meta([prompt], task="timeline_annotation")
+        text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
         annotations = (
             heuristic_timeline_annotations(payload)
@@ -151,6 +159,9 @@ class LLMFacade:
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("timeline_annotation"),
             "prompt_meta": get_prompt_meta("timeline_annotation"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
         }
 
     def snapshot_stats(self) -> dict[str, Any]:
@@ -181,9 +192,19 @@ class LLMFacade:
             }
 
     def _run_task(self, prompts: Iterable[str], *, task: str) -> list[str]:
+        texts, _ = self._run_task_with_meta(prompts, task=task)
+        return texts
+
+    def _run_task_with_meta(self, prompts: Iterable[str], *, task: str) -> tuple[list[str], dict[str, Any]]:
         items = [str(prompt) for prompt in prompts]
         if not items:
-            return []
+            return [], {
+                "task": task,
+                "provider": get_llm_provider(),
+                "model": get_llm_model(),
+                "prompt_count_in": 0,
+                "prompt_count_sent": 0,
+            }
         task_budget = get_llm_task_budget(task)
         scheduler = self._reserve_prompts(task=task, requested=len(items), task_budget=task_budget)
         active_budget = int(scheduler["allowed"])
@@ -223,7 +244,7 @@ class LLMFacade:
                 reasons.append("adaptive_priority_skip")
             meta["fallback_reason"] = "|".join(dict.fromkeys(reasons))
         self._record_run(meta)
-        return texts
+        return texts, meta
 
     def _reserve_prompts(self, *, task: str, requested: int, task_budget: int) -> dict[str, Any]:
         with self._lock:

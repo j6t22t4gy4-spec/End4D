@@ -154,12 +154,20 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v1",
-        output_mode="text",
+        version="review-summary-v2",
+        output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
-            "Write a compact analyst summary of what happened in the simulation, why it matters, "
-            "and which group-level signals deserve attention."
+            "Act as an analyst reviewing a completed long-horizon societal simulation. "
+            "Return compact JSON only, focusing on major events, belief shifts, causes, and decision implications."
+        ),
+        expected_keys=(
+            "headline",
+            "executive_summary",
+            "key_events",
+            "causal_analysis",
+            "decision_implications",
+            "watch_items",
         ),
     ),
     "timeline_annotation": PromptSpec(

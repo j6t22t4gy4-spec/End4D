@@ -23,15 +23,35 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("Snapshot data incomplete")
 
     timeline_points = [_timeline_point(store.get(t)) for t in available_t if store.get(t) is not None]
-    stance_groups = _build_stance_groups(latest)
-    zone_z = _zone_z_summary(latest)
-    top_z_agents = _top_agent_z_shift(first, latest)
+    first_groups = _group_snapshot(first)
+    latest_groups = _group_snapshot(latest)
+    belief_drift = _belief_drift_summary(first_groups, latest_groups)
+    zone_z_drift = _zone_z_drift(first, latest)
+    notable_agents = _notable_agents(first, latest)
+    key_events = [_event_summary(event) for event in list(world.nutrients or [])[-8:]]
+    summary_stats = {
+        "initial_cell_count": len(first.cells),
+        "final_cell_count": len(latest.cells),
+        "cell_delta": len(latest.cells) - len(first.cells),
+        "initial_total_energy": _total_energy(first.cells),
+        "final_total_energy": _total_energy(latest.cells),
+        "energy_delta": _total_energy(latest.cells) - _total_energy(first.cells),
+        "initial_avg_z": _avg_z(first.cells),
+        "final_avg_z": _avg_z(latest.cells),
+        "z_delta": _avg_z(latest.cells) - _avg_z(first.cells),
+        "first_t": float(first.t),
+        "last_t": float(latest.t),
+        "points_count": len(timeline_points),
+        "overall_signal": belief_drift["overall_signal"],
+        "outcome": _classify_outcome(timeline_points),
+    }
+    policy_impact = _policy_impact_summary(key_events, belief_drift["groups"], zone_z_drift)
     highlights = _build_highlights(
-        first=first,
-        latest=latest,
-        stance_groups=stance_groups,
-        zone_z=zone_z,
-        top_z_agents=top_z_agents,
+        summary_stats=summary_stats,
+        belief_drift=belief_drift,
+        zone_z_drift=zone_z_drift,
+        notable_agents=notable_agents,
+        key_events=key_events,
     )
 
     return {
@@ -41,7 +61,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             "last_t": float(latest.t),
             "points_count": len(timeline_points),
             "points": timeline_points,
-            "outcome": _classify_outcome(timeline_points),
+            "outcome": summary_stats["outcome"],
         },
         "world_meta": {
             "genesis_prompt": str(entry.get("genesis_prompt") or ""),
@@ -51,39 +71,33 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             "role_catalog": list(entry.get("role_catalog") or []),
             "engine_params": dict(entry.get("engine_params") or {}),
         },
-        "policy_events": [_event_summary(event) for event in list(world.nutrients or [])[-8:]],
-        "coalitions": {
+        "summary_stats": summary_stats,
+        "belief_drift": belief_drift,
+        "policy_impact": policy_impact,
+        "key_events": key_events,
+        "notable_agents": notable_agents,
+        "zone_z_drift": zone_z_drift,
+        "coalition_shift": {
             "active": dict(entry.get("coalition_state") or {}),
             "history_tail": [dict(item) for item in list(entry.get("coalition_history") or [])[-8:]],
         },
-        "metrics": {
-            "initial_cell_count": len(first.cells),
-            "final_cell_count": len(latest.cells),
-            "cell_delta": len(latest.cells) - len(first.cells),
-            "initial_total_energy": _total_energy(first.cells),
-            "final_total_energy": _total_energy(latest.cells),
-            "energy_delta": _total_energy(latest.cells) - _total_energy(first.cells),
-            "initial_avg_z": _avg_z(first.cells),
-            "final_avg_z": _avg_z(latest.cells),
-            "z_delta": _avg_z(latest.cells) - _avg_z(first.cells),
-        },
-        "stance_summary": {
-            "overall_signal": _overall_signal(stance_groups),
-            "groups": stance_groups,
-        },
-        "zone_z_summary": zone_z,
-        "top_z_movers": top_z_agents,
         "highlights": highlights,
-        "annotation_candidates": build_timeline_annotation_candidates(timeline_points),
+        "annotation_candidates": build_timeline_annotation_candidates(timeline_points, key_events=key_events),
+        "legacy_metrics": summary_stats,
     }
 
 
-def build_timeline_annotation_candidates(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_timeline_annotation_candidates(
+    points: list[dict[str, Any]],
+    *,
+    key_events: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     if len(points) < 2:
         return []
     deltas: list[dict[str, Any]] = []
     max_cell_delta = max(abs(points[i]["cell_count"] - points[i - 1]["cell_count"]) for i in range(1, len(points))) or 1
     max_energy_delta = max(abs(points[i]["total_energy"] - points[i - 1]["total_energy"]) for i in range(1, len(points))) or 1.0
+    event_index = {float(item["t"]): item for item in list(key_events or [])}
     for i in range(1, len(points)):
         prev = points[i - 1]
         current = points[i]
@@ -97,16 +111,22 @@ def build_timeline_annotation_candidates(points: list[dict[str, Any]]) -> list[d
             label = "contraction shock"
         elif abs(energy_delta) >= abs(cell_delta):
             label = "energy inflection"
+        matched_event = event_index.get(float(current["t"]))
+        reason = f"cells {cell_delta:+d}, energy {energy_delta:+.2f}"
+        if matched_event:
+            label = f"policy: {matched_event['name']}"
+            reason = f"{reason}; event={matched_event['event_type']}"
+            score += 0.35
         deltas.append(
             {
                 "t": float(current["t"]),
                 "score": round(float(score), 3),
                 "label": label,
-                "reason": f"cells {cell_delta:+d}, energy {energy_delta:+.2f}",
+                "reason": reason,
             }
         )
     deltas.sort(key=lambda item: (-item["score"], item["t"]))
-    return deltas[:5]
+    return deltas[:6]
 
 
 def _timeline_point(snapshot: Snapshot | None) -> dict[str, Any]:
@@ -120,14 +140,14 @@ def _timeline_point(snapshot: Snapshot | None) -> dict[str, Any]:
     }
 
 
-def _build_stance_groups(snapshot: Snapshot) -> list[dict[str, Any]]:
+def _group_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
     grouped: dict[str, list[Cell]] = defaultdict(list)
     for cell in snapshot.cells:
         role_key = (cell.role_key or "agent").strip() or "agent"
         role_label = (cell.role_label or role_key).strip() or role_key
         grouped[f"{role_key}:{role_label}"].append(cell)
 
-    groups: list[dict[str, Any]] = []
+    out: dict[str, dict[str, Any]] = {}
     for group_id, cells in grouped.items():
         role_label = (cells[0].role_label or cells[0].role_key or "agent").strip() or "agent"
         qualities = [
@@ -157,33 +177,81 @@ def _build_stance_groups(snapshot: Snapshot) -> list[dict[str, Any]]:
             stance = "contested"
         elif cohesion >= 0.5:
             stance = "emergent"
+        out[group_id] = {
+            "group_id": group_id,
+            "role_label": role_label,
+            "cell_count": len(cells),
+            "avg_energy": round(sum(float(cell.energy) for cell in cells) / max(len(cells), 1), 3),
+            "avg_z": round(_avg_z(cells), 3),
+            "cohesion_score": round(cohesion, 3),
+            "tension_score": round(tension, 3),
+            "stance": stance,
+            "worldview_norm": round(
+                float(np.mean([np.linalg.norm(cell.worldview_vec) for cell in cells])) if cells else 0.0,
+                3,
+            ),
+        }
+    return out
+
+
+def _belief_drift_summary(
+    first_groups: dict[str, dict[str, Any]],
+    latest_groups: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    groups: list[dict[str, Any]] = []
+    for group_id, latest in latest_groups.items():
+        first = dict(first_groups.get(group_id) or {})
         groups.append(
             {
                 "group_id": group_id,
-                "role_label": role_label,
-                "cell_count": len(cells),
-                "avg_energy": round(sum(float(cell.energy) for cell in cells) / max(len(cells), 1), 3),
-                "avg_z": round(_avg_z(cells), 3),
-                "cohesion_score": round(cohesion, 3),
-                "tension_score": round(tension, 3),
-                "stance": stance,
+                "role_label": latest["role_label"],
+                "stance_before": first.get("stance", "not_present"),
+                "stance_after": latest["stance"],
+                "cohesion_before": float(first.get("cohesion_score", 0.0)),
+                "cohesion_after": float(latest.get("cohesion_score", 0.0)),
+                "cohesion_delta": round(float(latest.get("cohesion_score", 0.0)) - float(first.get("cohesion_score", 0.0)), 3),
+                "tension_before": float(first.get("tension_score", 0.0)),
+                "tension_after": float(latest.get("tension_score", 0.0)),
+                "tension_delta": round(float(latest.get("tension_score", 0.0)) - float(first.get("tension_score", 0.0)), 3),
+                "avg_z_delta": round(float(latest.get("avg_z", 0.0)) - float(first.get("avg_z", 0.0)), 3),
+                "cell_delta": int(latest.get("cell_count", 0)) - int(first.get("cell_count", 0)),
+                "worldview_norm_delta": round(
+                    float(latest.get("worldview_norm", 0.0)) - float(first.get("worldview_norm", 0.0)),
+                    3,
+                ),
             }
         )
-    groups.sort(key=lambda item: (-item["cell_count"], item["role_label"]))
-    return groups
+    groups.sort(key=lambda item: (-abs(float(item["cohesion_delta"])) - abs(float(item["tension_delta"])), item["role_label"]))
+    overall_signal = "diffuse"
+    if any(group["stance_after"] == "contested" for group in groups):
+        overall_signal = "contested"
+    elif any(group["stance_after"] == "cohesive" for group in groups):
+        overall_signal = "clustered"
+    return {"overall_signal": overall_signal, "groups": groups[:8]}
 
 
-def _overall_signal(groups: list[dict[str, Any]]) -> str:
-    if not groups:
-        return "no_signal"
-    if any(group["stance"] == "contested" for group in groups):
-        return "contested"
-    if any(group["stance"] == "cohesive" for group in groups):
-        return "clustered"
-    return "diffuse"
+def _zone_z_drift(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
+    first_index = _zone_snapshot(first)
+    latest_index = _zone_snapshot(latest)
+    rows: list[dict[str, Any]] = []
+    for zone_id, latest_row in latest_index.items():
+        first_row = first_index.get(zone_id, {})
+        rows.append(
+            {
+                "zone_id": zone_id,
+                "zone_label": latest_row["zone_label"],
+                "avg_z_before": float(first_row.get("avg_z", 0.0)),
+                "avg_z_after": float(latest_row.get("avg_z", 0.0)),
+                "avg_z_delta": round(float(latest_row.get("avg_z", 0.0)) - float(first_row.get("avg_z", 0.0)), 3),
+                "avg_energy_after": float(latest_row.get("avg_energy", 0.0)),
+                "cell_count_after": int(latest_row.get("cell_count", 0)),
+            }
+        )
+    rows.sort(key=lambda item: abs(float(item["avg_z_delta"])), reverse=True)
+    return rows[:8]
 
 
-def _zone_z_summary(snapshot: Snapshot) -> list[dict[str, Any]]:
+def _zone_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
     zones: dict[str, dict[str, Any]] = {}
     for cell in snapshot.cells:
         zone_id = str(getattr(cell, "zone_id", "") or "unassigned")
@@ -195,70 +263,104 @@ def _zone_z_summary(snapshot: Snapshot) -> list[dict[str, Any]]:
         bucket["z"].append(float(getattr(cell, "z", 0.0)))
         bucket["energy"].append(float(cell.energy))
         bucket["count"] += 1
-    rows = []
-    for payload in zones.values():
-        rows.append(
-            {
-                "zone_id": payload["zone_id"],
-                "zone_label": payload["zone_label"],
-                "cell_count": int(payload["count"]),
-                "avg_z": round(float(np.mean(payload["z"])) if payload["z"] else 0.0, 3),
-                "avg_energy": round(float(np.mean(payload["energy"])) if payload["energy"] else 0.0, 3),
-            }
-        )
-    rows.sort(key=lambda item: (-item["avg_z"], item["zone_label"]))
-    return rows[:8]
+    out: dict[str, dict[str, Any]] = {}
+    for zone_id, payload in zones.items():
+        out[zone_id] = {
+            "zone_id": payload["zone_id"],
+            "zone_label": payload["zone_label"],
+            "cell_count": int(payload["count"]),
+            "avg_z": round(float(np.mean(payload["z"])) if payload["z"] else 0.0, 3),
+            "avg_energy": round(float(np.mean(payload["energy"])) if payload["energy"] else 0.0, 3),
+        }
+    return out
 
 
-def _top_agent_z_shift(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
+def _notable_agents(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
     first_index = {cell.cell_id: cell for cell in first.cells}
     movers: list[dict[str, Any]] = []
     for cell in latest.cells:
         prev = first_index.get(cell.cell_id)
         if prev is None:
             continue
-        delta = float(getattr(cell, "z", 0.0)) - float(getattr(prev, "z", 0.0))
+        z_delta = float(getattr(cell, "z", 0.0)) - float(getattr(prev, "z", 0.0))
+        worldview_shift = float(np.linalg.norm(cell.worldview_vec - prev.worldview_vec))
+        thought_shift = float(np.linalg.norm(cell.thought_vec - prev.thought_vec))
+        score = abs(z_delta) + worldview_shift * 0.2 + thought_shift * 0.1
         movers.append(
             {
                 "cell_id": cell.cell_id,
                 "role_label": str(cell.role_label or cell.role_key or "agent"),
                 "persona_country": str(cell.persona_country or ""),
-                "z_delta": round(delta, 3),
-                "final_z": round(float(getattr(cell, "z", 0.0)), 3),
+                "zone_label": str(cell.zone_label or cell.zone_id or ""),
+                "z_delta": round(z_delta, 3),
+                "worldview_shift": round(worldview_shift, 3),
+                "thought_shift": round(thought_shift, 3),
+                "belief_shift_score": round(score, 3),
             }
         )
-    movers.sort(key=lambda item: abs(float(item["z_delta"])), reverse=True)
-    return movers[:5]
+    movers.sort(key=lambda item: float(item["belief_shift_score"]), reverse=True)
+    return movers[:8]
+
+
+def _policy_impact_summary(
+    key_events: list[dict[str, Any]],
+    drift_groups: list[dict[str, Any]],
+    zone_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    affected_roles = []
+    affected_zones = []
+    for event in key_events:
+        affected_roles.extend(list(event.get("target_roles") or []))
+        affected_zones.extend(list(event.get("target_zones") or []))
+    strongest_group = drift_groups[0] if drift_groups else {}
+    strongest_zone = zone_rows[0] if zone_rows else {}
+    return {
+        "event_count": len(key_events),
+        "dominant_target_roles": list(dict.fromkeys(str(role) for role in affected_roles if str(role).strip()))[:5],
+        "dominant_target_zones": list(dict.fromkeys(str(zone) for zone in affected_zones if str(zone).strip()))[:5],
+        "largest_group_shift": {
+            "role_label": strongest_group.get("role_label", ""),
+            "cohesion_delta": strongest_group.get("cohesion_delta", 0.0),
+            "tension_delta": strongest_group.get("tension_delta", 0.0),
+        },
+        "largest_zone_z_shift": {
+            "zone_label": strongest_zone.get("zone_label", ""),
+            "avg_z_delta": strongest_zone.get("avg_z_delta", 0.0),
+        },
+    }
 
 
 def _build_highlights(
     *,
-    first: Snapshot,
-    latest: Snapshot,
-    stance_groups: list[dict[str, Any]],
-    zone_z: list[dict[str, Any]],
-    top_z_agents: list[dict[str, Any]],
+    summary_stats: dict[str, Any],
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+    notable_agents: list[dict[str, Any]],
+    key_events: list[dict[str, Any]],
 ) -> list[str]:
+    groups = list(belief_drift.get("groups") or [])
     lines = [
-        f"cells moved from {len(first.cells)} to {len(latest.cells)} across t={float(first.t):.0f}→{float(latest.t):.0f}",
-        f"social elevation average shifted by {_avg_z(latest.cells) - _avg_z(first.cells):+.2f}",
+        f"cells moved from {summary_stats['initial_cell_count']} to {summary_stats['final_cell_count']}",
+        f"energy changed by {float(summary_stats['energy_delta']):+.2f} and z by {float(summary_stats['z_delta']):+.2f}",
     ]
-    if stance_groups:
-        top = stance_groups[0]
+    if groups:
+        top = groups[0]
         lines.append(
-            f"largest group is {top['role_label']} with stance={top['stance']} cohesion={top['cohesion_score']:.2f}"
+            f"{top['role_label']} shifted from {top['stance_before']} to {top['stance_after']} "
+            f"(cohesion {float(top['cohesion_delta']):+.2f}, tension {float(top['tension_delta']):+.2f})"
         )
-    contested = next((group for group in stance_groups if group["stance"] == "contested"), None)
-    if contested:
+    if zone_z_drift:
         lines.append(
-            f"contested pressure is strongest in {contested['role_label']} tension={contested['tension_score']:.2f}"
+            f"{zone_z_drift[0]['zone_label']} shows the largest z drift {float(zone_z_drift[0]['avg_z_delta']):+.2f}"
         )
-    if zone_z:
-        lines.append(f"highest elevation zone is {zone_z[0]['zone_label']} avg_z={zone_z[0]['avg_z']:.2f}")
-    if top_z_agents:
-        mover = top_z_agents[0]
-        lines.append(f"largest individual elevation shift is {mover['role_label']} {mover['z_delta']:+.2f}")
-    return lines[:5]
+    if notable_agents:
+        lines.append(
+            f"{notable_agents[0]['role_label']} shows the strongest individual belief shift score "
+            f"{float(notable_agents[0]['belief_shift_score']):.2f}"
+        )
+    if key_events:
+        lines.append(f"{key_events[0]['name']} is the most recent policy/event intervention")
+    return lines[:6]
 
 
 def _event_summary(event: Any) -> dict[str, Any]:
@@ -267,9 +369,11 @@ def _event_summary(event: Any) -> dict[str, Any]:
         "t": float(getattr(event, "t", 0.0)),
         "event_type": str(getattr(event, "event_type", "")),
         "name": str(payload.get("name") or payload.get("summary") or payload.get("label") or "event"),
+        "summary": str(payload.get("summary") or payload.get("name") or "event"),
         "target_roles": list(payload.get("target_roles") or []),
         "target_zones": list(payload.get("target_zones") or []),
         "duration_steps": int(payload.get("duration_steps") or 0),
+        "impact_scope": str(payload.get("scope") or "local"),
     }
 
 

@@ -12,16 +12,24 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceDot,
 } from "recharts";
-import { getTimeline, type TimelinePoint } from "@/lib/api";
+import { getTimeline, type TimelineAnnotation, type TimelinePoint } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 
 type ScenarioTimelineProps = {
   worldId: string | null;
   refreshKey: number;
+  annotations?: TimelineAnnotation[];
+  onJumpToT?: (t: number) => void;
 };
 
-export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps) {
+export function ScenarioTimeline({
+  worldId,
+  refreshKey,
+  annotations = [],
+  onJumpToT,
+}: ScenarioTimelineProps) {
   const [points, setPoints] = useState<TimelinePoint[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
@@ -88,6 +96,22 @@ export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps)
                 }}
               />
               <Legend />
+              {annotations.map((item) => {
+                const matched = chartData.find((point) => point.t === item.t) ?? chartData[0];
+                return (
+                  <ReferenceDot
+                    key={`${item.t}-${item.label}`}
+                    x={item.t}
+                    y={matched?.cells ?? 0}
+                    r={5}
+                    fill={annotationColor(item.severity)}
+                    stroke="#ffffff"
+                    strokeWidth={1.5}
+                    ifOverflow="extendDomain"
+                    onClick={() => onJumpToT?.(item.t)}
+                  />
+                );
+              })}
               <Line
                 type="monotone"
                 dataKey="cells"
@@ -110,4 +134,10 @@ export function ScenarioTimeline({ worldId, refreshKey }: ScenarioTimelineProps)
       )}
     </AppPanel>
   );
+}
+
+function annotationColor(severity: string) {
+  if (severity === "high") return "#dc2626";
+  if (severity === "medium") return "#ea580c";
+  return "#0284c7";
 }

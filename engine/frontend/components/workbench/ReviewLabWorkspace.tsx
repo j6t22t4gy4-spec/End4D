@@ -94,6 +94,12 @@ export function ReviewLabWorkspace({
           ) : null}
           {data ? (
             <>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Headline
+                </p>
+                <p className="text-base font-semibold text-slate-900">{data.headline}</p>
+              </div>
               <p className="text-sm leading-7 text-slate-700">{data.summary}</p>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <MetricCard label="Outcome" value={String(data.outcome)} />
@@ -124,8 +130,8 @@ export function ReviewLabWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel title="Highlights" subtitle="Auto-generated key points" bodyClassName="space-y-3">
-          {data?.highlights?.length ? (
-            data.highlights.map((item, index) => (
+          {data?.watch_items?.length ? (
+            data.watch_items.map((item, index) => (
               <div key={`${index}-${item}`} className="session-thread-card">
                 <p className="inspector-body">{item}</p>
               </div>
@@ -151,6 +157,69 @@ export function ReviewLabWorkspace({
           ) : (
             <p className="text-sm text-slate-500">주요 시점 어노테이션이 아직 없습니다.</p>
           )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel title="Key Events" subtitle="Major events flagged by review" bodyClassName="space-y-3">
+          {data?.key_events?.length ? (
+            data.key_events.map((item, index) => (
+              <div key={`${index}-${item}`} className="session-thread-card">
+                <p className="inspector-body">{item}</p>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">주요 사건이 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel title="Causal Analysis" subtitle="Why the drift mattered" bodyClassName="space-y-3">
+          {data?.causal_analysis?.length ? (
+            data.causal_analysis.map((item, index) => (
+              <div key={`${index}-${item}`} className="session-thread-card">
+                <p className="inspector-body">{item}</p>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">원인 분석이 아직 없습니다.</p>
+          )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel title="Decision Implications" subtitle="What to watch next" bodyClassName="space-y-3">
+          {data?.decision_implications?.length ? (
+            data.decision_implications.map((item, index) => (
+              <div key={`${index}-${item}`} className="session-thread-card">
+                <p className="inspector-body">{item}</p>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">의사결정 시사점이 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel title="Review Provenance" subtitle="Prompt and model trace" bodyClassName="space-y-3">
+          {data ? (
+            <div className="grid gap-3">
+              <MetricCard
+                label="Summary Prompt"
+                value={String((data.review_meta.summary as Record<string, unknown>)?.prompt_version ?? "n/a")}
+              />
+              <MetricCard
+                label="Summary Model"
+                value={String((data.review_meta.summary as Record<string, unknown>)?.model ?? "n/a")}
+              />
+              <MetricCard
+                label="Annotation Prompt"
+                value={String((data.review_meta.timeline_annotation as Record<string, unknown>)?.prompt_version ?? "n/a")}
+              />
+              <MetricCard
+                label="Annotation Model"
+                value={String((data.review_meta.timeline_annotation as Record<string, unknown>)?.model ?? "n/a")}
+              />
+            </div>
+          ) : null}
         </AppPanel>
       </div>
     </div>

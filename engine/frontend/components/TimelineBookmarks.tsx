@@ -4,7 +4,9 @@ type TimelineMarker = {
   key: string;
   t: number;
   label: string;
-  kind: "frame" | "inject" | "bookmark";
+  kind: "frame" | "inject" | "bookmark" | "annotation";
+  severity?: string;
+  reason?: string;
 };
 
 type TimelineBookmarksProps = {
@@ -42,7 +44,7 @@ export function TimelineBookmarks({
               className={`timeline-bookmarks__marker timeline-bookmarks__marker--${marker.kind}`}
               style={{ left }}
               onClick={() => onJump(marker.t)}
-              title={`${marker.label} · t=${marker.t}`}
+              title={`${marker.label} · t=${marker.t}${marker.reason ? ` · ${marker.reason}` : ""}`}
             />
           );
         })}
@@ -61,7 +63,7 @@ export function TimelineBookmarks({
           Bookmark current t
         </button>
         <span className="text-xs text-slate-500">
-          inject / bookmark / frame markers
+          inject / bookmark / frame / review markers
         </span>
       </div>
 

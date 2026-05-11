@@ -12,11 +12,12 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
         "review_summary",
         [
             ("world_meta", _compact(payload.get("world_meta") or {})),
-            ("timeline", _compact(payload.get("timeline") or {})),
-            ("metrics", _compact(payload.get("metrics") or {})),
-            ("stance_summary", _compact(payload.get("stance_summary") or {})),
-            ("zone_z_summary", _compact_list(payload.get("zone_z_summary") or [], limit=4)),
-            ("policy_events", _compact_list(payload.get("policy_events") or [], limit=4)),
+            ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("policy_impact", _compact(payload.get("policy_impact") or {})),
+            ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
+            ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
+            ("zone_z_drift", _compact_list(payload.get("zone_z_drift") or [], limit=5)),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
         ],
     )
@@ -26,40 +27,69 @@ def build_timeline_annotation_prompt(payload: Mapping[str, Any]) -> str:
     return build_prompt_contract(
         "timeline_annotation",
         [
-            ("timeline", _compact(payload.get("timeline") or {})),
-            (
-                "annotation_candidates",
-                _compact_list(payload.get("annotation_candidates") or [], limit=6),
-            ),
+            ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
+            ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=6)),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
         ],
     )
 
 
-def heuristic_review_summary(payload: Mapping[str, Any]) -> str:
-    metrics = dict(payload.get("metrics") or {})
-    timeline = dict(payload.get("timeline") or {})
-    stance = dict(payload.get("stance_summary") or {})
-    groups = list(stance.get("groups") or [])
-    top_group = groups[0] if groups else {}
-    events = list(payload.get("policy_events") or [])
-    parts = [
-        (
-            f"t={timeline.get('first_t', 0)}에서 t={timeline.get('last_t', 0)}까지 진행된 시뮬레이션에서 "
-            f"세포 수는 {metrics.get('initial_cell_count', 0)}에서 {metrics.get('final_cell_count', 0)}로 변했고 "
-            f"총 에너지는 {metrics.get('energy_delta', 0):+.2f} 변화했습니다."
-        ),
-        (
-            f"집단 신호는 {stance.get('overall_signal', 'diffuse')} 상태이며, "
-            f"가장 큰 역할 집단은 {top_group.get('role_label', 'n/a')}이고 "
-            f"stance={top_group.get('stance', 'n/a')} cohesion={float(top_group.get('cohesion_score', 0.0)):.2f}입니다."
-        ),
-        (
-            f"사회적 고도 z 평균은 {metrics.get('z_delta', 0):+.2f} 이동했고, "
-            f"주요 정책 이벤트는 {len(events)}건 기록되었습니다."
-        ),
+def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
+    summary_stats = dict(payload.get("summary_stats") or {})
+    belief_drift = dict(payload.get("belief_drift") or {})
+    top_group = dict((belief_drift.get("groups") or [{}])[0] or {})
+    key_events = list(payload.get("key_events") or [])
+    notable_agents = list(payload.get("notable_agents") or [])
+
+    headline = (
+        f"{summary_stats.get('outcome', 'stable')} trajectory with "
+        f"{summary_stats.get('overall_signal', 'diffuse')} group signal"
+    )
+    executive_summary = (
+        f"세포 수는 {summary_stats.get('initial_cell_count', 0)}에서 "
+        f"{summary_stats.get('final_cell_count', 0)}로 변했고, 총 에너지는 "
+        f"{float(summary_stats.get('energy_delta', 0.0)):+.2f} 이동했습니다. "
+        f"집단 신호는 {summary_stats.get('overall_signal', 'diffuse')}이며 "
+        f"가장 큰 역할 집단은 {top_group.get('role_label', 'n/a')}입니다."
+    )
+
+    causal_analysis = []
+    if key_events:
+        event = key_events[0]
+        causal_analysis.append(
+            f"{event.get('name', '주요 이벤트')}가 role/zone 표적을 가지며 belief drift를 촉발한 것으로 보입니다."
+        )
+    causal_analysis.append(
+        f"{top_group.get('role_label', '핵심 집단')}의 cohesion 변화 "
+        f"{float(top_group.get('cohesion_delta', 0.0)):+.2f}와 tension 변화 "
+        f"{float(top_group.get('tension_delta', 0.0)):+.2f}가 전체 시그널에 영향을 줬습니다."
+    )
+    if notable_agents:
+        mover = notable_agents[0]
+        causal_analysis.append(
+            f"{mover.get('role_label', 'agent')}에서 worldview/z 변화가 크게 나타나 미시적 전환 신호가 확인됩니다."
+        )
+
+    decision_implications = [
+        "정책 이벤트의 대상 role과 zone이 실제로 어떤 신념 이동을 만들었는지 비교 실험이 필요합니다.",
+        "contest 신호가 있는 집단은 후속 intervention에서 불안정성이 커질 수 있습니다.",
     ]
-    return " ".join(part for part in parts if part).strip()
+
+    watch_items = list(payload.get("highlights") or [])[:4]
+    key_event_lines = [
+        f"t={event.get('t', 0)} {event.get('name', 'event')} ({event.get('event_type', 'event')})"
+        for event in key_events[:4]
+    ]
+
+    return {
+        "headline": headline,
+        "executive_summary": executive_summary,
+        "key_events": key_event_lines,
+        "causal_analysis": causal_analysis[:4],
+        "decision_implications": decision_implications[:4],
+        "watch_items": watch_items,
+    }
 
 
 def heuristic_timeline_annotations(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -74,6 +104,29 @@ def heuristic_timeline_annotations(payload: Mapping[str, Any]) -> list[dict[str,
             }
         )
     return annotations
+
+
+def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_review_summary(payload)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_review_summary(payload)
+
+    fallback = heuristic_review_summary(payload)
+    return {
+        "headline": str(parsed.get("headline") or fallback["headline"]),
+        "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),
+        "key_events": _string_list(parsed.get("key_events"), fallback["key_events"]),
+        "causal_analysis": _string_list(parsed.get("causal_analysis"), fallback["causal_analysis"]),
+        "decision_implications": _string_list(
+            parsed.get("decision_implications"),
+            fallback["decision_implications"],
+        ),
+        "watch_items": _string_list(parsed.get("watch_items"), fallback["watch_items"]),
+    }
 
 
 def parse_timeline_annotations(raw_text: str, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -99,12 +152,19 @@ def parse_timeline_annotations(raw_text: str, payload: Mapping[str, Any]) -> lis
 
 
 def _compact(mapping: Mapping[str, Any]) -> str:
-    return "; ".join(f"{key}={value}" for key, value in mapping.items())[:1600]
+    return "; ".join(f"{key}={value}" for key, value in mapping.items())[:1800]
 
 
 def _compact_list(items: list[Any], *, limit: int) -> str:
     sliced = items[:limit]
-    return " | ".join(_compact(item) if isinstance(item, Mapping) else str(item) for item in sliced)[:1600]
+    return " | ".join(_compact(item) if isinstance(item, Mapping) else str(item) for item in sliced)[:1800]
+
+
+def _string_list(value: Any, fallback: list[str]) -> list[str]:
+    if not isinstance(value, list):
+        return list(fallback)
+    cleaned = [str(item).strip() for item in value if str(item).strip()]
+    return cleaned[:6] or list(fallback)
 
 
 def _severity(score: float) -> str:

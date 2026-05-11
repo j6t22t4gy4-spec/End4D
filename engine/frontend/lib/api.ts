@@ -214,8 +214,13 @@ export type TimelineAnnotation = {
 
 export type ReviewSummaryResponse = {
   world_id: string;
+  headline: string;
   summary: string;
   summary_mode: string;
+  key_events: string[];
+  causal_analysis: string[];
+  decision_implications: string[];
+  watch_items: string[];
   highlights: string[];
   overall_signal: string;
   outcome: string;
