@@ -6,7 +6,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.review_payloads import build_review_diff_payload, build_world_review_payload
+from app.core.review_payloads import (
+    build_cached_world_review_payload,
+    build_review_diff_payload,
+)
 from app.core.store import world_store
 from app.llm.facade import llm_facade
 
@@ -112,7 +115,7 @@ def get_review_summary(world_id: str):
     if entry is None:
         raise HTTPException(status_code=404, detail="World not found")
     try:
-        payload = build_world_review_payload(entry)
+        payload = build_cached_world_review_payload(entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -189,8 +192,8 @@ def get_review_diff(world_id: str, base_world_id: str):
     if base_entry is None:
         raise HTTPException(status_code=404, detail="Base world not found")
     try:
-        target_payload = build_world_review_payload(target_entry)
-        base_payload = build_world_review_payload(base_entry)
+        target_payload = build_cached_world_review_payload(target_entry)
+        base_payload = build_cached_world_review_payload(base_entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -241,7 +244,7 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
     if entry is None:
         raise HTTPException(status_code=404, detail="World not found")
     try:
-        payload = build_world_review_payload(entry)
+        payload = build_cached_world_review_payload(entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     query = llm_facade.query_review(payload, question=body.question)
@@ -293,8 +296,8 @@ def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQu
     if base_entry is None:
         raise HTTPException(status_code=404, detail="Base world not found")
     try:
-        target_payload = build_world_review_payload(target_entry)
-        base_payload = build_world_review_payload(base_entry)
+        target_payload = build_cached_world_review_payload(target_entry)
+        base_payload = build_cached_world_review_payload(base_entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     diff_payload = build_review_diff_payload(base_payload=base_payload, target_payload=target_payload)

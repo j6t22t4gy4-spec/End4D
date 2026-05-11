@@ -159,7 +159,8 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
         description="Executive summary for a completed simulation world.",
         system_prompt=(
             "Act as an analyst reviewing a completed long-horizon societal simulation. "
-            "Return compact JSON only, focusing on major events, belief shifts, causes, and decision implications."
+            "Return compact JSON only, focusing on major events, belief shifts, causes, and decision implications. "
+            "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0."
         ),
         expected_keys=(
             "headline",
@@ -188,7 +189,8 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
         description="Compare two simulation worlds and explain the most decision-relevant differences.",
         system_prompt=(
             "Compare a baseline simulation and a target simulation. Return compact JSON only, "
-            "focusing on key deltas, causal interpretation, and decision implications."
+            "focusing on key deltas, causal interpretation, and decision implications. "
+            "The citations object must use explicit sentence keys such as key_deltas.0, causal_comparison.0, and decision_implications.0."
         ),
         expected_keys=(
             "headline",
@@ -239,13 +241,15 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
         output_mode="json",
         description="Summarize a session containing multiple world runs and identify the most decision-relevant contrasts.",
         system_prompt=(
-            "Summarize a session of multiple simulation worlds. Return compact JSON only with a headline, summary, key findings, and recommended next comparisons."
+            "Summarize a session of multiple simulation worlds. Return compact JSON only with a headline, summary, key findings, decision implications, "
+            "and a citations object using explicit sentence keys such as key_findings.0 and decision_implications.0."
         ),
         expected_keys=(
             "headline",
             "executive_summary",
             "key_findings",
             "decision_implications",
+            "objective_explanation",
             "citations",
         ),
     ),

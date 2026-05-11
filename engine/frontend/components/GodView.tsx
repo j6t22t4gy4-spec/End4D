@@ -20,15 +20,21 @@ import {
 } from "@/components/TimelineBookmarks";
 import {
   createWorld,
+  getLocalRuntimeStatus,
   getReviewSummary,
   getWorld,
+  installRuntimeDataPack,
   listSnapshotTimes,
+  pinRuntimeDataPack,
   getSnapshotAtT,
   sampleCellsForVisualization,
+  syncDataPacks,
   type CreateWorldResult,
   type CellSnapshot,
   type GodModePayload,
+  type LocalRuntimeStatus,
   type ReviewSummaryResponse,
+  verifyRuntimeDataPack,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
 
@@ -88,6 +94,13 @@ export default function GodView({
   const [layoutMode, setLayoutMode] = useState<"balanced" | "focus" | "wide-left">("balanced");
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryResponse | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [runtimeStatus, setRuntimeStatus] = useState<LocalRuntimeStatus | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [selectedPackId, setSelectedPackId] = useState("nemotron-kr-core");
+  const [installSourcePath, setInstallSourcePath] = useState("");
+  const [pinVersion, setPinVersion] = useState("2026.05");
+  const [packActionStatus, setPackActionStatus] = useState<string | null>(null);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -113,6 +126,36 @@ export default function GodView({
   );
   const availableKey = availableT.join(",");
   const err = createError || actionError || streamError;
+  const selectedPack = useMemo(
+    () => runtimeStatus?.packs.find((pack) => pack.pack_id === selectedPackId) ?? runtimeStatus?.packs[0] ?? null,
+    [runtimeStatus, selectedPackId]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setRuntimeLoading(true);
+    setRuntimeError(null);
+    getLocalRuntimeStatus()
+      .then((payload) => {
+        if (!cancelled) {
+          setRuntimeStatus(payload);
+          if (!selectedPackId && payload.packs[0]?.pack_id) {
+            setSelectedPackId(payload.packs[0].pack_id);
+          }
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setRuntimeError(reason instanceof Error ? reason.message : "runtime status error");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRuntimeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [personaRefreshKey]);
 
   useEffect(() => {
     if (!worldId) {
@@ -570,6 +613,160 @@ export default function GodView({
             </AppPanel>
 
             <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
+
+            <AppPanel
+              title="Data Pack Lifecycle"
+              subtitle="Prepare persona packs before long-run simulation"
+              bodyClassName="space-y-3"
+            >
+              {runtimeLoading ? <p className="text-sm text-slate-500">Runtime status loading…</p> : null}
+              {runtimeError ? (
+                <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  runtime/data-pack 상태를 읽지 못했습니다: {runtimeError}
+                </p>
+              ) : null}
+              {runtimeStatus ? (
+                <>
+                  <div className="grid gap-2 md:grid-cols-[220px_minmax(0,1fr)]">
+                    <select
+                      className="app-input"
+                      value={selectedPack?.pack_id ?? ""}
+                      onChange={(event) => setSelectedPackId(event.target.value)}
+                    >
+                      {runtimeStatus.packs.map((pack) => (
+                        <option key={pack.pack_id} value={pack.pack_id}>
+                          {pack.pack_id} · {pack.country} · {pack.version}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <MetricChip label="installed" value={selectedPack?.installed ? "yes" : "no"} />
+                      <MetricChip
+                        label="pinned"
+                        value={selectedPack?.pinned ? String(selectedPack?.pinned_version || "yes") : "no"}
+                      />
+                      <MetricChip
+                        label="genesis ready"
+                        value={String((selectedPack?.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "unknown")}
+                      />
+                    </div>
+                  </div>
+                  {selectedPack ? (
+                    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                      <p className="text-sm leading-6 text-slate-600">
+                        {selectedPack.dataset_id || selectedPack.description}
+                      </p>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <MetricChip
+                          label="schema"
+                          value={String((selectedPack.verification as Record<string, unknown> | undefined)?.schema_health ?? "unknown")}
+                        />
+                        <MetricChip
+                          label="country consistency"
+                          value={String((selectedPack.verification as Record<string, unknown> | undefined)?.country_consistency ?? "n/a")}
+                        />
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="flex flex-col gap-1 text-xs text-slate-500">
+                          install source path
+                          <input
+                            value={installSourcePath}
+                            onChange={(event) => setInstallSourcePath(event.target.value)}
+                            className="app-input"
+                            placeholder="/absolute/path/to/personas.jsonl"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-xs text-slate-500">
+                          pin version
+                          <input
+                            value={pinVersion}
+                            onChange={(event) => setPinVersion(event.target.value)}
+                            className="app-input"
+                            placeholder="2026.05"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={async () => {
+                            setPackActionStatus("syncing manifest…");
+                            try {
+                              await syncDataPacks();
+                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              setPackActionStatus("manifest synced");
+                            } catch (reason) {
+                              setPackActionStatus(reason instanceof Error ? reason.message : "sync failed");
+                            }
+                          }}
+                        >
+                          Sync Manifest
+                        </button>
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={async () => {
+                            if (!selectedPack) return;
+                            setPackActionStatus("verifying pack…");
+                            try {
+                              await verifyRuntimeDataPack(selectedPack.pack_id);
+                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              setPackActionStatus("verification complete");
+                            } catch (reason) {
+                              setPackActionStatus(reason instanceof Error ? reason.message : "verify failed");
+                            }
+                          }}
+                        >
+                          Verify
+                        </button>
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={async () => {
+                            if (!selectedPack || !pinVersion.trim()) return;
+                            setPackActionStatus("pinning pack…");
+                            try {
+                              await pinRuntimeDataPack(selectedPack.pack_id, pinVersion.trim());
+                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              setPackActionStatus("pin updated");
+                            } catch (reason) {
+                              setPackActionStatus(reason instanceof Error ? reason.message : "pin failed");
+                            }
+                          }}
+                        >
+                          Pin Version
+                        </button>
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={async () => {
+                            if (!selectedPack || !installSourcePath.trim()) return;
+                            setPackActionStatus("installing pack…");
+                            try {
+                              await installRuntimeDataPack({
+                                pack_id: selectedPack.pack_id,
+                                source_path: installSourcePath.trim(),
+                                version: pinVersion.trim() || selectedPack.version,
+                                dataset_id: selectedPack.dataset_id,
+                                source_url: selectedPack.source_url,
+                              });
+                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              setPackActionStatus("install complete");
+                            } catch (reason) {
+                              setPackActionStatus(reason instanceof Error ? reason.message : "install failed");
+                            }
+                          }}
+                        >
+                          Install / Refresh
+                        </button>
+                      </div>
+                      {packActionStatus ? <p className="text-xs text-slate-500">{packActionStatus}</p> : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </AppPanel>
           </div>
 
           <div className="grid min-h-0 gap-4">

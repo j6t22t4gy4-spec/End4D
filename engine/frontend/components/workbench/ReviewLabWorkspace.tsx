@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
   getReviewDiff,
   getReviewSummary,
   getSessionReview,
+  postAgentInterviewWorldDiff,
   postSessionReviewQuery,
   postReviewDiffQuery,
   postReviewQuery,
+  type AgentInterviewResponse,
   type ReviewDiffResponse,
   type ReviewDiffQueryResponse,
   type ReviewGroundingItem,
@@ -57,6 +59,13 @@ export function ReviewLabWorkspace({
   const [sessionQueryData, setSessionQueryData] = useState<SessionReviewQueryResponse | null>(null);
   const [sessionQueryLoading, setSessionQueryLoading] = useState(false);
   const [sessionQueryError, setSessionQueryError] = useState<string | null>(null);
+  const [interviewCellId, setInterviewCellId] = useState("");
+  const [interviewQuestion, setInterviewQuestion] = useState(
+    "baseline world와 비교했을 때 지금 너의 입장은 어떻게 달라졌어?"
+  );
+  const [interviewData, setInterviewData] = useState<AgentInterviewResponse | null>(null);
+  const [interviewLoading, setInterviewLoading] = useState(false);
+  const [interviewError, setInterviewError] = useState<string | null>(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string>("");
 
   const currentSession = sessions.find((session) =>
@@ -68,47 +77,93 @@ export function ReviewLabWorkspace({
   const recommendedBaselineId = currentSession
     ? recommendBaselineWorldId(currentSession, worldId)
     : "";
-  const diffMetrics = (diff?.compared_metrics ?? {}) as Record<string, unknown>;
-  const groupDriftRows = Array.isArray(diffMetrics.group_drift_deltas)
-    ? (diffMetrics.group_drift_deltas as Array<Record<string, unknown>>)
-    : [];
-  const zoneDriftRows = Array.isArray(diffMetrics.zone_z_delta)
-    ? (diffMetrics.zone_z_delta as Array<Record<string, unknown>>)
-    : [];
-  const turningPoints = (diffMetrics.timeline_turning_point_delta ?? {}) as Record<string, unknown>;
-  const baseTurningPoints = Array.isArray(turningPoints.base)
-    ? (turningPoints.base as Array<Record<string, unknown>>)
-    : [];
-  const targetTurningPoints = Array.isArray(turningPoints.target)
-    ? (turningPoints.target as Array<Record<string, unknown>>)
-    : [];
-  const policyImpactDelta = (diffMetrics.policy_impact_delta ?? {}) as Record<string, unknown>;
-  const sharedRoles = Array.isArray(policyImpactDelta.shared_roles)
-    ? (policyImpactDelta.shared_roles as string[])
-    : [];
-  const targetOnlyRoles = Array.isArray(policyImpactDelta.target_only_roles)
-    ? (policyImpactDelta.target_only_roles as string[])
-    : [];
-  const baseOnlyRoles = Array.isArray(policyImpactDelta.base_only_roles)
-    ? (policyImpactDelta.base_only_roles as string[])
-    : [];
-  const sharedZones = Array.isArray(policyImpactDelta.shared_zones)
-    ? (policyImpactDelta.shared_zones as string[])
-    : [];
-  const targetOnlyZones = Array.isArray(policyImpactDelta.target_only_zones)
-    ? (policyImpactDelta.target_only_zones as string[])
-    : [];
-  const baseOnlyZones = Array.isArray(policyImpactDelta.base_only_zones)
-    ? (policyImpactDelta.base_only_zones as string[])
-    : [];
-  const largestGroupShiftGap = (policyImpactDelta.largest_group_shift_gap ?? {}) as Record<string, unknown>;
-  const largestZoneShiftGap = (policyImpactDelta.largest_zone_shift_gap ?? {}) as Record<string, unknown>;
-  const graphNodes = Array.isArray(data?.belief_graph?.nodes)
-    ? (data?.belief_graph?.nodes as Array<Record<string, unknown>>)
-    : [];
-  const graphEdges = Array.isArray(data?.belief_graph?.edges)
-    ? (data?.belief_graph?.edges as Array<Record<string, unknown>>)
-    : [];
+  const diffMetrics = useMemo(() => (diff?.compared_metrics ?? {}) as Record<string, unknown>, [diff]);
+  const groupDriftRows = useMemo(
+    () =>
+      Array.isArray(diffMetrics.group_drift_deltas)
+        ? (diffMetrics.group_drift_deltas as Array<Record<string, unknown>>)
+        : [],
+    [diffMetrics]
+  );
+  const zoneDriftRows = useMemo(
+    () =>
+      Array.isArray(diffMetrics.zone_z_delta)
+        ? (diffMetrics.zone_z_delta as Array<Record<string, unknown>>)
+        : [],
+    [diffMetrics]
+  );
+  const turningPoints = useMemo(
+    () => (diffMetrics.timeline_turning_point_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
+  const baseTurningPoints = useMemo(
+    () => (Array.isArray(turningPoints.base) ? (turningPoints.base as Array<Record<string, unknown>>) : []),
+    [turningPoints]
+  );
+  const targetTurningPoints = useMemo(
+    () => (Array.isArray(turningPoints.target) ? (turningPoints.target as Array<Record<string, unknown>>) : []),
+    [turningPoints]
+  );
+  const policyImpactDelta = useMemo(
+    () => (diffMetrics.policy_impact_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
+  const sharedRoles = useMemo(
+    () => (Array.isArray(policyImpactDelta.shared_roles) ? (policyImpactDelta.shared_roles as string[]) : []),
+    [policyImpactDelta]
+  );
+  const targetOnlyRoles = useMemo(
+    () => (Array.isArray(policyImpactDelta.target_only_roles) ? (policyImpactDelta.target_only_roles as string[]) : []),
+    [policyImpactDelta]
+  );
+  const baseOnlyRoles = useMemo(
+    () => (Array.isArray(policyImpactDelta.base_only_roles) ? (policyImpactDelta.base_only_roles as string[]) : []),
+    [policyImpactDelta]
+  );
+  const sharedZones = useMemo(
+    () => (Array.isArray(policyImpactDelta.shared_zones) ? (policyImpactDelta.shared_zones as string[]) : []),
+    [policyImpactDelta]
+  );
+  const targetOnlyZones = useMemo(
+    () => (Array.isArray(policyImpactDelta.target_only_zones) ? (policyImpactDelta.target_only_zones as string[]) : []),
+    [policyImpactDelta]
+  );
+  const baseOnlyZones = useMemo(
+    () => (Array.isArray(policyImpactDelta.base_only_zones) ? (policyImpactDelta.base_only_zones as string[]) : []),
+    [policyImpactDelta]
+  );
+  const largestGroupShiftGap = useMemo(
+    () => (policyImpactDelta.largest_group_shift_gap ?? {}) as Record<string, unknown>,
+    [policyImpactDelta]
+  );
+  const largestZoneShiftGap = useMemo(
+    () => (policyImpactDelta.largest_zone_shift_gap ?? {}) as Record<string, unknown>,
+    [policyImpactDelta]
+  );
+  const graphNodes = useMemo(
+    () =>
+      Array.isArray(data?.belief_graph?.nodes)
+        ? (data?.belief_graph?.nodes as Array<Record<string, unknown>>)
+        : [],
+    [data]
+  );
+  const graphEdges = useMemo(
+    () =>
+      Array.isArray(data?.belief_graph?.edges)
+        ? (data?.belief_graph?.edges as Array<Record<string, unknown>>)
+        : [],
+    [data]
+  );
+  const flattenedReviewGrounding = useMemo(() => flattenGrounding(data?.grounding ?? {}), [data]);
+  const interviewCandidates = useMemo(
+    () =>
+      Array.isArray(data?.top_z_movers)
+        ? (data?.top_z_movers as Array<Record<string, unknown>>).filter(
+            (item) => String(item.cell_id ?? "").trim().length > 0
+          )
+        : [],
+    [data]
+  );
   const selectedGraphNode =
     graphNodes.find((node) => String(node.id ?? "") === selectedGraphNodeId) ?? graphNodes[0] ?? null;
   const filteredGraphEdges = selectedGraphNode
@@ -119,7 +174,7 @@ export function ReviewLabWorkspace({
       )
     : graphEdges;
   const selectedNodeGrounding = selectedGraphNode
-    ? flattenGrounding(data?.grounding ?? {}).find(
+    ? flattenedReviewGrounding.find(
         (item) =>
           item.group_id != null && String(item.group_id) === String(selectedGraphNode.group_id ?? selectedGraphNode.id ?? "")
       ) ?? null
@@ -239,6 +294,16 @@ export function ReviewLabWorkspace({
       setSelectedGraphNodeId(String(graphNodes[0].id ?? ""));
     }
   }, [graphNodes, selectedGraphNodeId]);
+
+  useEffect(() => {
+    if (!interviewCandidates.length) {
+      setInterviewCellId("");
+      return;
+    }
+    if (!interviewCellId || !interviewCandidates.some((item) => String(item.cell_id ?? "") === interviewCellId)) {
+      setInterviewCellId(String(interviewCandidates[0]?.cell_id ?? ""));
+    }
+  }, [interviewCandidates, interviewCellId]);
 
   if (!worldId) {
     return (
@@ -431,6 +496,92 @@ export function ReviewLabWorkspace({
       </AppPanel>
 
       <AppPanel
+        title="Persona Interview Diff"
+        subtitle="Compare one persona agent across baseline and target worlds"
+        bodyClassName="space-y-3"
+      >
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <textarea
+            className="app-input min-h-[84px]"
+            value={interviewQuestion}
+            onChange={(event) => setInterviewQuestion(event.target.value)}
+            placeholder="예: baseline world와 비교했을 때 지금 너의 입장은 어떻게 달라졌어?"
+          />
+          <select
+            className="app-input"
+            value={interviewCellId}
+            onChange={(event) => setInterviewCellId(event.target.value)}
+            disabled={!interviewCandidates.length}
+          >
+            <option value="">Select agent/persona</option>
+            {interviewCandidates.map((item) => (
+              <option key={String(item.cell_id ?? "")} value={String(item.cell_id ?? "")}>
+                {String(item.role_label ?? item.role_key ?? "agent")} · {String(item.zone_label ?? item.zone_id ?? "zone")}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="session-thread-card__actions">
+          <button
+            type="button"
+            className="app-button app-button--ghost"
+            onClick={() => {
+              if (!worldId || !baseWorldId || !interviewCellId || !interviewQuestion.trim()) return;
+              setInterviewLoading(true);
+              setInterviewError(null);
+              postAgentInterviewWorldDiff(worldId, baseWorldId, interviewCellId, {
+                question: interviewQuestion.trim(),
+              })
+                .then((payload) => setInterviewData(payload))
+                .catch((reason: Error) => setInterviewError(reason.message))
+                .finally(() => setInterviewLoading(false));
+            }}
+          >
+            Ask Persona Across Worlds
+          </button>
+        </div>
+        {interviewLoading ? <p className="text-sm text-slate-500">Persona diff interview loading…</p> : null}
+        {interviewError ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            persona diff interview를 처리하지 못했습니다: {interviewError}
+          </p>
+        ) : null}
+        {interviewData ? (
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+            <div className="space-y-3">
+              <div className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">Agent World-Diff Answer</p>
+                  <span className="session-thread-card__meta">{interviewData.mode}</span>
+                </div>
+                <p className="session-thread-card__prompt">{interviewData.answer}</p>
+              </div>
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                <div className="mt-2 grid gap-2">
+                  {interviewData.evidence.map((item, index) => (
+                    <p key={`${index}-${item}`} className="inspector-body">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <GroundingPanel
+              title="Interview Grounding"
+              items={flattenGrounding(interviewData.grounding)}
+              onOpenWorldAt={onOpenWorldAt}
+              worldId={worldId}
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            current world의 notable agent를 고른 뒤 baseline world와 1:1 인터뷰 비교를 실행할 수 있습니다.
+          </p>
+        )}
+      </AppPanel>
+
+      <AppPanel
         title="Session Review"
         subtitle="Multi-world analyst summary"
         bodyClassName="space-y-3"
@@ -471,6 +622,12 @@ export function ReviewLabWorkspace({
                 현재 세션 랭킹 기준: <span className="font-medium text-slate-700">{String(sessionReview.metrics.objective ?? sessionObjective)}</span>
               </p>
             </div>
+            {sessionReview.objective_explanation ? (
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Objective Explanation</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">{sessionReview.objective_explanation}</p>
+              </div>
+            ) : null}
             {sessionReview.ranked_worlds?.length ? (
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="space-y-3">

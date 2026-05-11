@@ -484,6 +484,7 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
     strongest = list(payload.get("strongest_worlds") or [])
     top = dict(strongest[0] if strongest else {})
     stats = dict(payload.get("summary_stats") or {})
+    objective_explanation = str(payload.get("objective_explanation") or "")
     return {
         "headline": f"Session with {int(stats.get('world_count', 0))} worlds and avg split risk {float(stats.get('avg_split_risk', 0.0)):.2f}",
         "executive_summary": (
@@ -500,7 +501,13 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
             "같은 세션 내 strongest world와 baseline world를 붙여보면 정책 민감도 차이가 더 잘 드러납니다.",
             "fracture score가 높은 world는 후속 intervention 실험의 우선 후보입니다.",
         ],
-        "citations": {"key_findings": _citation_ids(payload, "worlds", limit=2)},
+        "objective_explanation": objective_explanation,
+        "citations": {
+            "key_findings.0": _citation_ids(payload, "worlds", limit=1),
+            "key_findings.1": _citation_ids(payload, "worlds", limit=1),
+            "decision_implications.0": _citation_ids(payload, "worlds", limit=1),
+            "decision_implications.1": _citation_ids(payload, "worlds", limit=1),
+        },
     }
 
 
@@ -708,6 +715,7 @@ def parse_session_review(raw_text: str, payload: Mapping[str, Any]) -> dict[str,
         "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),
         "key_findings": _string_list(parsed.get("key_findings"), fallback["key_findings"]),
         "decision_implications": _string_list(parsed.get("decision_implications"), fallback["decision_implications"]),
+        "objective_explanation": str(parsed.get("objective_explanation") or fallback.get("objective_explanation") or ""),
         "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
     }
 

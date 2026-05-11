@@ -184,3 +184,39 @@ def test_agent_interview_diff_returns_change_grounded_answer():
     assert isinstance(payload["grounding"], dict)
     assert isinstance(payload["citations"], list)
     assert payload["interview_meta"]["query"]["base_t"] == times[0]
+
+
+def test_agent_world_interview_diff_returns_cross_world_answer():
+    base = client.post(
+        "/worlds",
+        json={"prompt": "기준 world에서 개인 신념과 사회적 고도 분포를 본다"},
+    )
+    assert base.status_code == 200
+    base_world_id = base.json()["world_id"]
+    assert client.post(f"/worlds/{base_world_id}/run", json={"stream": False}).status_code == 200
+
+    target = client.post(
+        "/worlds",
+        json={"prompt": "정책 주입 후 target world에서 같은 persona의 태도 변화를 본다"},
+    )
+    assert target.status_code == 200
+    target_world_id = target.json()["world_id"]
+    assert client.post(f"/worlds/{target_world_id}/run", json={"stream": False}).status_code == 200
+
+    snapshot = client.get(f"/worlds/{target_world_id}/snapshots")
+    assert snapshot.status_code == 200
+    latest_t = snapshot.json()["available_t"][-1]
+    latest = client.get(f"/worlds/{target_world_id}/snapshots", params={"t": latest_t})
+    assert latest.status_code == 200
+    cell_id = latest.json()["cells"][0]["cell_id"]
+
+    response = client.post(
+        f"/worlds/{target_world_id}/agents/{cell_id}/world-diff-query",
+        params={"base_world_id": base_world_id},
+        json={"question": "baseline world와 비교했을 때 지금 무엇이 달라졌어?"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["world_id"] == target_world_id
+    assert payload["answer"]
+    assert payload["interview_meta"]["query"]["base_world_id"] == base_world_id

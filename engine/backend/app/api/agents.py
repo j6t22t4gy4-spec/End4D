@@ -73,6 +73,12 @@ class AgentInterviewDiffRequest(BaseModel):
     base_t: Optional[float] = None
 
 
+class AgentInterviewWorldDiffRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    t: Optional[float] = None
+    base_t: Optional[float] = None
+
+
 class AgentInterviewGroundingItem(BaseModel):
     anchor_id: str
     kind: str
@@ -258,6 +264,34 @@ def _build_agent_diff_grounding(*, world_id: str, current_cell: Cell, base_cell:
             if str(item.get("summary") or "").strip()
         ],
     }
+
+
+def _build_agent_world_diff_grounding(
+    *,
+    target_world_id: str,
+    base_world_id: str,
+    current_cell: Cell,
+    base_cell: Cell,
+) -> dict[str, list[dict[str, Any]]]:
+    grounding = _build_agent_diff_grounding(
+        world_id=target_world_id,
+        current_cell=current_cell,
+        base_cell=base_cell,
+    )
+    grounding["world_compare"] = [
+        {
+            "anchor_id": f"world-compare:{base_world_id}:{target_world_id}:{current_cell.cell_id}",
+            "kind": "world_compare",
+            "label": f"{base_world_id[:8]} -> {target_world_id[:8]}",
+            "reason": (
+                f"base energy={base_cell.energy:.2f}, z={base_cell.z:.2f}; "
+                f"target energy={current_cell.energy:.2f}, z={current_cell.z:.2f}"
+            ),
+            "cell_id": current_cell.cell_id,
+            "world_id": target_world_id,
+        }
+    ]
+    return grounding
 
 
 def _citation_items(grounding: dict[str, list[dict[str, Any]]], anchor_ids: list[str]) -> list[AgentInterviewGroundingItem]:
@@ -526,6 +560,65 @@ def post_agent_interview_diff(world_id: str, cell_id: str, body: AgentInterviewD
                 "fallback_reason": str(interview.get("fallback_reason") or ""),
                 "base_t": float(base_cell.t),
                 "current_t": float(current_cell.t),
+            }
+        },
+    )
+
+
+@router.post("/{world_id}/agents/{cell_id}/world-diff-query", response_model=AgentInterviewResponse)
+def post_agent_world_interview_diff(
+    world_id: str,
+    cell_id: str,
+    base_world_id: str,
+    body: AgentInterviewWorldDiffRequest,
+):
+    target_entry = world_store.get(world_id)
+    if target_entry is None:
+        raise HTTPException(status_code=404, detail="Target world not found")
+    base_entry = world_store.get(base_world_id)
+    if base_entry is None:
+        raise HTTPException(status_code=404, detail="Base world not found")
+    current_snap = _resolve_snapshot(target_entry, body.t)
+    base_snap = _resolve_snapshot(base_entry, body.base_t)
+    current_cell = _find_cell(current_snap, cell_id)
+    base_cell = _find_diff_base_cell(base_snap, current_cell)
+    grounding = _build_agent_world_diff_grounding(
+        target_world_id=world_id,
+        base_world_id=base_world_id,
+        current_cell=current_cell,
+        base_cell=base_cell,
+    )
+    interview = llm_facade.interview_agent_diff(
+        current_cell=current_cell,
+        base_cell=base_cell,
+        question=body.question,
+        grounding=grounding,
+    )
+    answer = dict(interview.get("query") or {})
+    return AgentInterviewResponse(
+        world_id=world_id,
+        cell_id=cell_id,
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(interview.get("mode") or "heuristic"),
+        grounding={
+            key: [AgentInterviewGroundingItem(**dict(item)) for item in list(values or [])]
+            for key, values in grounding.items()
+        },
+        citations=_citation_items(grounding, [str(item) for item in list(answer.get("citations") or [])]),
+        interview_meta={
+            "query": {
+                "prompt_version": str(interview.get("prompt_version") or ""),
+                "prompt_meta": dict(interview.get("prompt_meta") or {}),
+                "provider": str(interview.get("provider") or ""),
+                "model": str(interview.get("model") or ""),
+                "fallback_reason": str(interview.get("fallback_reason") or ""),
+                "base_t": float(base_cell.t),
+                "current_t": float(current_cell.t),
+                "base_world_id": base_world_id,
+                "target_world_id": world_id,
             }
         },
     )

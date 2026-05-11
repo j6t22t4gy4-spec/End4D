@@ -133,3 +133,4 @@ def test_session_review_accepts_objective_query():
     payload = review.json()
     assert payload["metrics"]["objective"] == "cohesion"
     assert isinstance(payload["ranked_worlds"], list)
+    assert payload["objective_explanation"]

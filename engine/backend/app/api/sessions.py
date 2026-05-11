@@ -50,6 +50,7 @@ class SessionReviewResponse(BaseModel):
     review_mode: str
     key_findings: List[str] = Field(default_factory=list)
     decision_implications: List[str] = Field(default_factory=list)
+    objective_explanation: str = ""
     metrics: Dict[str, Any] = Field(default_factory=dict)
     strongest_worlds: List[Dict[str, Any]] = Field(default_factory=list)
     ranked_worlds: List[Dict[str, Any]] = Field(default_factory=list)
@@ -147,6 +148,11 @@ def get_session_review(
         review_mode=str(summary["mode"]),
         key_findings=[str(item) for item in list(summary["summary"].get("key_findings") or [])],
         decision_implications=[str(item) for item in list(summary["summary"].get("decision_implications") or [])],
+        objective_explanation=str(
+            (summary.get("summary") or {}).get("objective_explanation")
+            or payload.get("objective_explanation")
+            or ""
+        ),
         metrics=dict(payload.get("summary_stats") or {}),
         strongest_worlds=[dict(item) for item in list(payload.get("strongest_worlds") or [])],
         ranked_worlds=[dict(item) for item in list(payload.get("ranked_worlds") or [])],

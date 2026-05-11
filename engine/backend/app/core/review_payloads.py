@@ -10,6 +10,23 @@ from app.models.cell import Cell
 from app.models.world import Snapshot
 
 
+def build_cached_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    store = entry["snapshot_store"]
+    available_t = list(store.list_t())
+    key = (
+        tuple(available_t[-3:]),
+        len(available_t),
+        len(list(entry["world"].nutrients or [])),
+        len(list(entry.get("coalition_history") or [])),
+    )
+    cache = dict(entry.get("_review_payload_cache") or {})
+    if cache.get("key") == key and isinstance(cache.get("payload"), dict):
+        return dict(cache["payload"])
+    payload = build_world_review_payload(entry)
+    entry["_review_payload_cache"] = {"key": key, "payload": payload}
+    return payload
+
+
 def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     world = entry["world"]
     store = entry["snapshot_store"]
@@ -105,7 +122,7 @@ def build_session_review_payload(
     *,
     objective: str = "balanced",
 ) -> dict[str, Any]:
-    world_payloads = [build_world_review_payload(entry) for entry in world_entries if entry]
+    world_payloads = [build_cached_world_review_payload(entry) for entry in world_entries if entry]
     if not world_payloads:
         raise ValueError("No completed worlds available for session review")
     outcomes = [str((payload.get("summary_stats") or {}).get("outcome") or "stable") for payload in world_payloads]
@@ -157,6 +174,15 @@ def build_session_review_payload(
             "avg_block_divergence": round(float(np.mean(block_divergences)) if block_divergences else 0.0, 3),
             "avg_cross_zone_fracture": round(float(np.mean(fracture_scores)) if fracture_scores else 0.0, 3),
         },
+        "objective_explanation": _objective_explanation(
+            objective=objective,
+            strongest=ranked_worlds[:3],
+            summary_stats={
+                "avg_split_risk": round(float(np.mean(split_risks)) if split_risks else 0.0, 3),
+                "avg_block_divergence": round(float(np.mean(block_divergences)) if block_divergences else 0.0, 3),
+                "avg_cross_zone_fracture": round(float(np.mean(fracture_scores)) if fracture_scores else 0.0, 3),
+            },
+        ),
         "strongest_worlds": ranked_worlds[:5],
         "ranked_worlds": ranked_worlds[:8],
         "recommended_pairs": recommended_pairs[:5],
@@ -190,6 +216,37 @@ def _session_objective_score(payload: dict[str, Any], objective: str) -> float:
     if objective == "fracture":
         return cross_zone_fracture * 0.5 + split_risk * 0.3 + block_divergence * 0.2
     return split_risk + block_divergence + cross_zone_fracture
+
+
+def _objective_explanation(
+    *,
+    objective: str,
+    strongest: list[dict[str, Any]],
+    summary_stats: dict[str, float],
+) -> str:
+    leader = dict(strongest[0] if strongest else {})
+    world_id = str(leader.get("world_id") or "n/a")
+    if objective == "stability":
+        return (
+            f"`{world_id}`가 split risk와 cross-zone fracture를 가장 잘 억제해 안정성 기준에서 상위에 올랐습니다. "
+            f"세션 평균 split risk는 {float(summary_stats.get('avg_split_risk', 0.0)):.2f}입니다."
+        )
+    if objective == "cohesion":
+        return (
+            f"`{world_id}`가 높은 응집과 낮은 분열 신호를 동시에 보여 cohesion 기준에서 우선 추천됩니다. "
+            f"세션 평균 fracture는 {float(summary_stats.get('avg_cross_zone_fracture', 0.0)):.2f}입니다."
+        )
+    if objective == "polarization":
+        return (
+            f"`{world_id}`가 가장 강한 polarization/block divergence 신호를 보여, 극화 분석 기준에서 가장 해석 가치가 큽니다."
+        )
+    if objective == "fracture":
+        return (
+            f"`{world_id}`가 cross-zone fracture와 split risk가 가장 높아, 사회적 균열을 추적하는 기준에서 최우선 비교 대상으로 잡힙니다."
+        )
+    return (
+        f"`{world_id}`가 split risk, block divergence, cross-zone fracture를 종합했을 때 가장 두드러져 balanced 기준의 대표 world로 선정되었습니다."
+    )
 
 
 def build_review_diff_payload(

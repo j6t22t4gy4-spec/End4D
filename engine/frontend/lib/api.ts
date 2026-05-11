@@ -158,6 +158,23 @@ export type DataPackVerifyResponse = {
   ready_for_genesis: boolean;
 };
 
+export type DataPackInstallResponse = {
+  pack_id: string;
+  installed: boolean;
+  exists: boolean;
+  row_count_estimate: number;
+  sample_error: string;
+  validated_at: string;
+  version: string;
+};
+
+export type DataPackPinResponse = {
+  pack_id: string;
+  pinned: boolean;
+  pinned_version: string;
+  pinned_at: string;
+};
+
 export type AgentGroupSummary = {
   group_id: string;
   role_key: string;
@@ -334,6 +351,7 @@ export type SessionReviewResponse = {
   review_mode: string;
   key_findings: string[];
   decision_implications: string[];
+  objective_explanation: string;
   metrics: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
   ranked_worlds: Array<Record<string, unknown>>;
@@ -440,6 +458,25 @@ export async function postAgentInterviewDiff(
   return res.json();
 }
 
+export async function postAgentInterviewWorldDiff(
+  worldId: string,
+  baseWorldId: string,
+  cellId: string,
+  body: { question: string; t?: number | null; base_t?: number | null }
+): Promise<AgentInterviewResponse> {
+  const q = new URLSearchParams({ base_world_id: baseWorldId });
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/${encodeURIComponent(cellId)}/world-diff-query?${q}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) throw new Error(`postAgentInterviewWorldDiff: ${res.status}`);
+  return res.json();
+}
+
 export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
   const res = await fetch(`${API_BASE}/runtime/local-status`);
   if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
@@ -471,6 +508,35 @@ export async function verifyRuntimeDataPack(
     body: JSON.stringify({ pack_id: packId }),
   });
   if (!res.ok) throw new Error(`verifyRuntimeDataPack: ${res.status}`);
+  return res.json();
+}
+
+export async function installRuntimeDataPack(body: {
+  pack_id: string;
+  source_path: string;
+  version?: string;
+  dataset_id?: string;
+  source_url?: string;
+}): Promise<DataPackInstallResponse> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`installRuntimeDataPack: ${res.status}`);
+  return res.json();
+}
+
+export async function pinRuntimeDataPack(
+  packId: string,
+  pinnedVersion: string
+): Promise<DataPackPinResponse> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/pin`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_id: packId, pinned_version: pinnedVersion }),
+  });
+  if (!res.ok) throw new Error(`pinRuntimeDataPack: ${res.status}`);
   return res.json();
 }
 
