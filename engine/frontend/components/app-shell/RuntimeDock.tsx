@@ -116,7 +116,21 @@ export function RuntimeDock({
             label="Provider Pressure"
             value={String(runtime?.llm_runtime?.optimizer?.provider_error_pressure ?? 0)}
           />
+          <InfoRow
+            label="Repairs"
+            value={String(runtime?.llm_runtime?.repair_summary?.total_repairs ?? 0)}
+          />
         </div>
+        {runtime?.llm_runtime?.repair_summary?.top_reasons?.length ? (
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-900">
+            <p className="font-semibold">Repair Signals</p>
+            <p className="mt-1">
+              {runtime.llm_runtime.repair_summary.top_reasons
+                .map((item) => `${item.reason}(${item.count})`)
+                .join(" · ")}
+            </p>
+          </div>
+        ) : null}
         {runtime?.llm_runtime?.degraded_tasks?.length ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
             <p className="font-semibold">{strings.degradedTasks}</p>
@@ -204,6 +218,38 @@ export function RuntimeDock({
                     {item.top_fallback_reasons?.length ? (
                       <p className="mt-2 text-[11px] text-slate-500">
                         {item.top_fallback_reasons.map((reason) => `${reason.reason}(${reason.count})`).join(" · ")}
+                      </p>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
+            {runtime.llm_runtime.repair_summary?.task_repairs?.length ? (
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Review Repairs
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Which review tasks needed citation repair most often.
+                  </p>
+                </div>
+                {runtime.llm_runtime.repair_summary.task_repairs.map((item) => (
+                  <article
+                    key={`repair-${item.task}`}
+                    className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{item.task}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          repairs {item.repair_count}
+                        </p>
+                      </div>
+                    </div>
+                    {item.top_reasons?.length ? (
+                      <p className="mt-2 text-[11px] text-slate-600">
+                        {item.top_reasons.map((reason) => `${reason.reason}(${reason.count})`).join(" · ")}
                       </p>
                     ) : null}
                   </article>

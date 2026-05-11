@@ -115,6 +115,18 @@ class RuntimeLlmTaskInsightResponse(BaseModel):
     top_fallback_reasons: List[RuntimeLlmReasonCountResponse] = Field(default_factory=list)
 
 
+class RuntimeLlmRepairTaskResponse(BaseModel):
+    task: str
+    repair_count: int = 0
+    top_reasons: List[RuntimeLlmReasonCountResponse] = Field(default_factory=list)
+
+
+class RuntimeLlmRepairSummaryResponse(BaseModel):
+    total_repairs: int = 0
+    task_repairs: List[RuntimeLlmRepairTaskResponse] = Field(default_factory=list)
+    top_reasons: List[RuntimeLlmReasonCountResponse] = Field(default_factory=list)
+
+
 class RuntimeLlmRuntimeResponse(BaseModel):
     provider: str = "stub"
     model: str = "stub"
@@ -135,6 +147,7 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     degraded_tasks: List[str] = Field(default_factory=list)
     fallback_reason_counts: Dict[str, int] = Field(default_factory=dict)
     recommended_actions: List[str] = Field(default_factory=list)
+    repair_summary: RuntimeLlmRepairSummaryResponse = Field(default_factory=RuntimeLlmRepairSummaryResponse)
     optimizer: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -339,6 +352,24 @@ def get_local_runtime_status():
             degraded_tasks=list((status.get("llm_runtime") or {}).get("degraded_tasks") or []),
             fallback_reason_counts=dict((status.get("llm_runtime") or {}).get("fallback_reason_counts") or {}),
             recommended_actions=list((status.get("llm_runtime") or {}).get("recommended_actions") or []),
+            repair_summary=RuntimeLlmRepairSummaryResponse(
+                total_repairs=int(((status.get("llm_runtime") or {}).get("repair_summary") or {}).get("total_repairs") or 0),
+                task_repairs=[
+                    RuntimeLlmRepairTaskResponse(
+                        task=str((item or {}).get("task") or ""),
+                        repair_count=int((item or {}).get("repair_count") or 0),
+                        top_reasons=[
+                            RuntimeLlmReasonCountResponse(**dict(reason or {}))
+                            for reason in list((item or {}).get("top_reasons") or [])
+                        ],
+                    )
+                    for item in list(((status.get("llm_runtime") or {}).get("repair_summary") or {}).get("task_repairs") or [])
+                ],
+                top_reasons=[
+                    RuntimeLlmReasonCountResponse(**dict(item or {}))
+                    for item in list(((status.get("llm_runtime") or {}).get("repair_summary") or {}).get("top_reasons") or [])
+                ],
+            ),
             optimizer=dict((status.get("llm_runtime") or {}).get("optimizer") or {}),
         ),
         installed_pack_count=int(status.get("installed_pack_count") or 0),

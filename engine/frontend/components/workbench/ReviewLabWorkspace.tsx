@@ -2622,6 +2622,65 @@ export function ReviewLabWorkspace({
             </div>
           ) : null}
         </AppPanel>
+
+        <AppPanel title="Repair Signals" subtitle="Citation repair visibility" bodyClassName="space-y-3">
+          {data ? (
+            <div className="grid gap-3">
+              <MetricCard
+                label="Summary Repair"
+                value={String(Boolean((data.review_meta.summary as Record<string, unknown>)?.repair_used))}
+              />
+              <MetricCard
+                label="Summary Repair Count"
+                value={String((data.review_meta.summary as Record<string, unknown>)?.repair_count ?? 0)}
+              />
+              <MetricCard
+                label="Summary Repair Reason"
+                value={String((data.review_meta.summary as Record<string, unknown>)?.repair_reason ?? "none")}
+              />
+              {diff ? (
+                <>
+                  <MetricCard
+                    label="Diff Repair"
+                    value={String(Boolean((diff.review_meta.diff as Record<string, unknown>)?.repair_used))}
+                  />
+                  <MetricCard
+                    label="Diff Repair Count"
+                    value={String((diff.review_meta.diff as Record<string, unknown>)?.repair_count ?? 0)}
+                  />
+                  <MetricCard
+                    label="Diff Repair Reason"
+                    value={String((diff.review_meta.diff as Record<string, unknown>)?.repair_reason ?? "none")}
+                  />
+                </>
+              ) : null}
+              {queryData ? (
+                <>
+                  <MetricCard
+                    label="Query Repair"
+                    value={String(Boolean((queryData.review_meta.query as Record<string, unknown>)?.repair_used))}
+                  />
+                  <MetricCard
+                    label="Query Repair Reason"
+                    value={String((queryData.review_meta.query as Record<string, unknown>)?.repair_reason ?? "none")}
+                  />
+                </>
+              ) : null}
+              {sessionReview ? (
+                <>
+                  <MetricCard
+                    label="Session Repair"
+                    value={String(Boolean((sessionReview.review_meta.summary as Record<string, unknown>)?.repair_used))}
+                  />
+                  <MetricCard
+                    label="Session Repair Reason"
+                    value={String((sessionReview.review_meta.summary as Record<string, unknown>)?.repair_reason ?? "none")}
+                  />
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </AppPanel>
       </div>
     </div>
   );

@@ -192,6 +192,18 @@ export type RuntimeLlmTaskInsight = {
   top_fallback_reasons: Array<{ reason: string; count: number }>;
 };
 
+export type RuntimeLlmRepairTask = {
+  task: string;
+  repair_count: number;
+  top_reasons: Array<{ reason: string; count: number }>;
+};
+
+export type RuntimeLlmRepairSummary = {
+  total_repairs: number;
+  task_repairs: RuntimeLlmRepairTask[];
+  top_reasons: Array<{ reason: string; count: number }>;
+};
+
 export type RuntimeLlmRuntime = {
   provider: string;
   model: string;
@@ -211,6 +223,7 @@ export type RuntimeLlmRuntime = {
   degraded_tasks: string[];
   fallback_reason_counts: Record<string, number>;
   recommended_actions: string[];
+  repair_summary: RuntimeLlmRepairSummary;
   optimizer: Record<string, unknown>;
 };
 

@@ -77,6 +77,7 @@ class LLMFacade:
         self._lock = Lock()
         self._recent_runs: deque[dict[str, Any]] = deque(maxlen=32)
         self._task_totals: dict[str, dict[str, int]] = {}
+        self._repair_totals: dict[str, dict[str, Any]] = {}
         self._scheduler: dict[str, Any] = {
             "cycle_key": "default",
             "cycle_budget_total": get_llm_cycle_prompt_budget(),
@@ -514,8 +515,12 @@ class LLMFacade:
             required_keys=required_keys,
         )
         if repaired_ok:
-            return raw_text, {"used": True, "count": 1, "reason": repaired_reason or reason}
-        return repaired_text, {"used": True, "count": 1, "reason": reason}
+            result = {"used": True, "count": 1, "reason": repaired_reason or reason}
+            self._record_repair(task_name, result)
+            return raw_text, result
+        result = {"used": True, "count": 1, "reason": reason}
+        self._record_repair(task_name, result)
+        return repaired_text, result
 
     def snapshot_stats(self) -> dict[str, Any]:
         with self._lock:
@@ -579,6 +584,7 @@ class LLMFacade:
                 stability_score=stability_score,
             )
             optimizer = self._recent_runtime_signal()
+            repair_summary = self._build_repair_summary()
             return {
                 "provider": provider,
                 "model": get_llm_model(),
@@ -604,6 +610,7 @@ class LLMFacade:
                 "degraded_tasks": degraded_tasks,
                 "fallback_reason_counts": fallback_reason_counts,
                 "recommended_actions": recommended_actions,
+                "repair_summary": repair_summary,
                 "optimizer": {
                     "stability_score": round(float(optimizer.get("stability_score", stability_score)), 4),
                     "fallback_streak": int(optimizer.get("fallback_streak", fallback_streak)),
@@ -630,6 +637,7 @@ class LLMFacade:
         with self._lock:
             self._recent_runs.clear()
             self._task_totals.clear()
+            self._repair_totals.clear()
             total = get_llm_cycle_prompt_budget()
             self._scheduler = {
                 "cycle_key": "default",
@@ -637,6 +645,60 @@ class LLMFacade:
                 "cycle_budget_remaining": total,
                 "context": {},
             }
+
+    def _record_repair(self, task: str, repair: Mapping[str, Any]) -> None:
+        if not bool(repair.get("used")):
+            return
+        reason = str(repair.get("reason") or "unknown")
+        count = max(1, int(repair.get("count") or 1))
+        with self._lock:
+            task_row = self._repair_totals.setdefault(
+                str(task),
+                {
+                    "repair_count": 0,
+                    "reasons": {},
+                },
+            )
+            task_row["repair_count"] = int(task_row.get("repair_count", 0)) + count
+            reasons = dict(task_row.get("reasons") or {})
+            reasons[reason] = int(reasons.get(reason, 0)) + 1
+            task_row["reasons"] = reasons
+
+    def _build_repair_summary(self) -> dict[str, Any]:
+        total_repairs = 0
+        top_reasons: dict[str, int] = {}
+        task_repairs: list[dict[str, Any]] = []
+        for task, row in self._repair_totals.items():
+            repair_count = int(row.get("repair_count", 0))
+            reasons = dict(row.get("reasons") or {})
+            total_repairs += repair_count
+            for reason, count in reasons.items():
+                top_reasons[str(reason)] = int(top_reasons.get(str(reason), 0)) + int(count)
+            task_repairs.append(
+                {
+                    "task": str(task),
+                    "repair_count": repair_count,
+                    "top_reasons": [
+                        {"reason": str(reason), "count": int(count)}
+                        for reason, count in sorted(
+                            reasons.items(),
+                            key=lambda item: (-int(item[1]), str(item[0])),
+                        )[:3]
+                    ],
+                }
+            )
+        task_repairs.sort(key=lambda item: (-int(item["repair_count"]), str(item["task"])))
+        return {
+            "total_repairs": int(total_repairs),
+            "task_repairs": task_repairs,
+            "top_reasons": [
+                {"reason": str(reason), "count": int(count)}
+                for reason, count in sorted(
+                    top_reasons.items(),
+                    key=lambda item: (-int(item[1]), str(item[0])),
+                )[:5]
+            ],
+        }
 
     def _run_task(self, prompts: Iterable[str], *, task: str) -> list[str]:
         texts, _ = self._run_task_with_meta(prompts, task=task)
