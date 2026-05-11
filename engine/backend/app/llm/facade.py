@@ -25,24 +25,27 @@ from app.llm.prompt_engineering import (
 )
 from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
 from app.llm.review import (
-    build_session_review_prompt,
     build_review_diff_prompt,
     build_review_diff_query_prompt,
     build_review_query_prompt,
     build_review_summary_prompt,
+    build_session_review_prompt,
+    build_session_review_query_prompt,
     build_timeline_annotation_prompt,
     heuristic_review_diff,
     heuristic_review_diff_query,
     heuristic_review_query,
     heuristic_review_summary,
     heuristic_session_review,
+    heuristic_session_review_query,
     parse_review_diff,
     parse_review_diff_query,
     parse_review_query,
-    heuristic_timeline_annotations,
     parse_review_summary,
     parse_session_review,
+    parse_session_review_query,
     parse_timeline_annotations,
+    heuristic_timeline_annotations,
 )
 from app.models.cell import Cell
 
@@ -265,6 +268,31 @@ class LLMFacade:
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("session_review"),
             "prompt_meta": get_prompt_meta("session_review"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
+        }
+
+    def query_session_review(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        question: str,
+    ) -> dict[str, Any]:
+        prompt = build_session_review_query_prompt(payload, question)
+        texts, meta = self._run_task_with_meta([prompt], task="session_review_query")
+        text = str(texts[0] if texts else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        answer = (
+            heuristic_session_review_query(payload, question)
+            if used_heuristic
+            else parse_session_review_query(text, payload, question)
+        )
+        return {
+            "query": answer,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("session_review_query"),
+            "prompt_meta": get_prompt_meta("session_review_query"),
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),

@@ -82,3 +82,31 @@ def test_session_review_returns_multi_world_summary():
     assert payload["summary"]
     assert int(payload["metrics"]["world_count"]) >= 2
     assert isinstance(payload["strongest_worlds"], list)
+    assert "citations" in payload
+
+
+def test_session_review_query_returns_answer_and_grounding():
+    created = client.post("/sessions", json={"title": "Session analyst thread"})
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    for prompt in [
+        "정책 실험 A로 집단 분열과 지역 격차를 본다",
+        "정책 실험 B로 사회적 고도와 응집도 변화를 본다",
+    ]:
+        world_res = client.post("/worlds", json={"prompt": prompt, "session_id": session_id})
+        assert world_res.status_code == 200
+        world_id = world_res.json()["world_id"]
+        assert client.post(f"/worlds/{world_id}/run", json={"stream": False}).status_code == 200
+
+    response = client.post(
+        f"/sessions/{session_id}/review/query",
+        json={"question": "이 세션에서 가장 불안정했던 정책 실험은 무엇이고 왜 그런가?"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == session_id
+    assert payload["answer"]
+    assert isinstance(payload["evidence"], list)
+    assert "grounding" in payload
+    assert isinstance(payload["citations"], list)

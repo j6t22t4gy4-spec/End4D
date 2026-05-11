@@ -87,6 +87,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             belief_drift=belief_drift,
             zone_z_drift=zone_z_drift,
             notable_agents=notable_agents,
+            world_id=str(world.world_id),
         ),
         "coalition_shift": {
             "active": dict(entry.get("coalition_state") or {}),
@@ -650,22 +651,26 @@ def _build_grounding(
     belief_drift: dict[str, Any],
     zone_z_drift: list[dict[str, Any]],
     notable_agents: list[dict[str, Any]],
+    world_id: str,
 ) -> dict[str, Any]:
     groups = list(belief_drift.get("groups") or [])
     return {
         "events": [
             {
+                "anchor_id": f"event:{world_id}:{int(float(item.get('t', 0.0)))}:{idx}",
                 "kind": "event",
                 "label": str(item.get("name") or "event"),
                 "t": float(item.get("t", 0.0)),
                 "reason": str(item.get("summary") or item.get("event_type") or ""),
                 "target_roles": list(item.get("target_roles") or []),
                 "target_zones": list(item.get("target_zones") or []),
+                "world_id": world_id,
             }
-            for item in key_events[:5]
+            for idx, item in enumerate(key_events[:5], start=1)
         ],
         "groups": [
             {
+                "anchor_id": f"group:{world_id}:{str(item.get('group_id') or '')}",
                 "kind": "group",
                 "group_id": str(item.get("group_id") or ""),
                 "label": str(item.get("role_label") or "group"),
@@ -674,27 +679,32 @@ def _build_grounding(
                 "tension_delta": float(item.get("tension_delta", 0.0)),
                 "polarization_delta": float(item.get("polarization_delta", 0.0)),
                 "coalition_signal": str(item.get("coalition_signal") or ""),
+                "world_id": world_id,
             }
             for item in groups[:5]
         ],
         "zones": [
             {
+                "anchor_id": f"zone:{world_id}:{str(item.get('zone_id') or '')}",
                 "kind": "zone",
                 "zone_id": str(item.get("zone_id") or ""),
                 "label": str(item.get("zone_label") or "zone"),
                 "avg_z_delta": float(item.get("avg_z_delta", 0.0)),
                 "cell_count_after": int(item.get("cell_count_after", 0)),
+                "world_id": world_id,
             }
             for item in zone_z_drift[:5]
         ],
         "agents": [
             {
+                "anchor_id": f"agent:{world_id}:{str(item.get('cell_id') or '')}",
                 "kind": "agent",
                 "cell_id": str(item.get("cell_id") or ""),
                 "label": str(item.get("role_label") or "agent"),
                 "zone_label": str(item.get("zone_label") or ""),
                 "belief_shift_score": float(item.get("belief_shift_score", 0.0)),
                 "z_delta": float(item.get("z_delta", 0.0)),
+                "world_id": world_id,
             }
             for item in notable_agents[:5]
         ],

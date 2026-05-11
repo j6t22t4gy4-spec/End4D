@@ -7,6 +7,7 @@ import {
   getReviewDiff,
   getReviewSummary,
   getSessionReview,
+  postSessionReviewQuery,
   postReviewDiffQuery,
   postReviewQuery,
   type ReviewDiffResponse,
@@ -14,6 +15,7 @@ import {
   type ReviewGroundingItem,
   type ReviewQueryResponse,
   type ReviewSummaryResponse,
+  type SessionReviewQueryResponse,
   type SessionReviewResponse,
   type SessionSummary,
 } from "@/lib/api";
@@ -50,6 +52,11 @@ export function ReviewLabWorkspace({
   const [sessionReview, setSessionReview] = useState<SessionReviewResponse | null>(null);
   const [sessionReviewLoading, setSessionReviewLoading] = useState(false);
   const [sessionReviewError, setSessionReviewError] = useState<string | null>(null);
+  const [sessionQuery, setSessionQuery] = useState("이 세션에서 가장 불안정했던 정책 실험은 무엇이고 왜 그런가?");
+  const [sessionQueryData, setSessionQueryData] = useState<SessionReviewQueryResponse | null>(null);
+  const [sessionQueryLoading, setSessionQueryLoading] = useState(false);
+  const [sessionQueryError, setSessionQueryError] = useState<string | null>(null);
+  const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string>("");
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -95,6 +102,27 @@ export function ReviewLabWorkspace({
     : [];
   const largestGroupShiftGap = (policyImpactDelta.largest_group_shift_gap ?? {}) as Record<string, unknown>;
   const largestZoneShiftGap = (policyImpactDelta.largest_zone_shift_gap ?? {}) as Record<string, unknown>;
+  const graphNodes = Array.isArray(data?.belief_graph?.nodes)
+    ? (data?.belief_graph?.nodes as Array<Record<string, unknown>>)
+    : [];
+  const graphEdges = Array.isArray(data?.belief_graph?.edges)
+    ? (data?.belief_graph?.edges as Array<Record<string, unknown>>)
+    : [];
+  const selectedGraphNode =
+    graphNodes.find((node) => String(node.id ?? "") === selectedGraphNodeId) ?? graphNodes[0] ?? null;
+  const filteredGraphEdges = selectedGraphNode
+    ? graphEdges.filter(
+        (edge) =>
+          String(edge.source ?? "") === String(selectedGraphNode.id ?? "") ||
+          String(edge.target ?? "") === String(selectedGraphNode.id ?? "")
+      )
+    : graphEdges;
+  const selectedNodeGrounding = selectedGraphNode
+    ? flattenGrounding(data?.grounding ?? {}).find(
+        (item) =>
+          item.group_id != null && String(item.group_id) === String(selectedGraphNode.group_id ?? selectedGraphNode.id ?? "")
+      ) ?? null
+    : null;
 
   useEffect(() => {
     if (!worldId) {
@@ -195,6 +223,21 @@ export function ReviewLabWorkspace({
       cancelled = true;
     };
   }, [currentSession?.session_id]);
+
+  useEffect(() => {
+    setSessionQueryData(null);
+    setSessionQueryError(null);
+  }, [currentSession?.session_id]);
+
+  useEffect(() => {
+    if (!graphNodes.length) {
+      setSelectedGraphNodeId("");
+      return;
+    }
+    if (!selectedGraphNodeId || !graphNodes.some((node) => String(node.id ?? "") === selectedGraphNodeId)) {
+      setSelectedGraphNodeId(String(graphNodes[0].id ?? ""));
+    }
+  }, [graphNodes, selectedGraphNodeId]);
 
   if (!worldId) {
     return (
@@ -418,6 +461,82 @@ export function ReviewLabWorkspace({
                 </div>
               ))}
             </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {sessionReview.decision_implications.map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="inspector-body">{item}</p>
+                </div>
+              ))}
+            </div>
+            <textarea
+              className="app-input min-h-[84px]"
+              value={sessionQuery}
+              onChange={(event) => setSessionQuery(event.target.value)}
+              placeholder="예: 이 세션에서 가장 불안정했던 정책 실험은 무엇이고 왜 그런가?"
+            />
+            <div className="session-thread-card__actions">
+              <button
+                type="button"
+                className="app-button app-button--ghost"
+                onClick={() => {
+                  if (!currentSession?.session_id || !sessionQuery.trim()) return;
+                  setSessionQueryLoading(true);
+                  setSessionQueryError(null);
+                  postSessionReviewQuery(currentSession.session_id, sessionQuery.trim())
+                    .then((payload) => setSessionQueryData(payload))
+                    .catch((reason: Error) => setSessionQueryError(reason.message))
+                    .finally(() => setSessionQueryLoading(false));
+                }}
+              >
+                Ask Session
+              </button>
+            </div>
+            {sessionQueryLoading ? <p className="text-sm text-slate-500">Session query loading…</p> : null}
+            {sessionQueryError ? (
+              <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                세션 질의를 처리하지 못했습니다: {sessionQueryError}
+              </p>
+            ) : null}
+            {sessionQueryData ? (
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+                <div className="space-y-3">
+                  <div className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">Session Answer</p>
+                      <span className="session-thread-card__meta">{sessionQueryData.mode}</span>
+                    </div>
+                    <p className="session-thread-card__prompt">{sessionQueryData.answer}</p>
+                  </div>
+                  <div className="session-thread-card">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                    <div className="mt-2 grid gap-2">
+                      {sessionQueryData.evidence.map((item, index) => (
+                        <p key={`${index}-${item}`} className="inspector-body">
+                          {item}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <GroundingPanel
+                    title="Session Grounding"
+                    items={flattenGrounding(sessionQueryData.grounding)}
+                    onOpenWorldAt={onOpenWorldAt}
+                    worldId={worldId}
+                  />
+                  <div className="session-thread-card">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Session Query Provenance</p>
+                    <p className="mt-2 text-sm text-slate-700">
+                      prompt {String((sessionQueryData.review_meta.query as Record<string, unknown>)?.prompt_version ?? "n/a")}
+                    </p>
+                    <p className="text-sm text-slate-700">
+                      model {String((sessionQueryData.review_meta.query as Record<string, unknown>)?.model ?? "n/a")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </>
         ) : (
           <p className="text-sm text-slate-500">같은 세션에 world가 쌓이면 세션 단위 리뷰를 제공합니다.</p>
@@ -683,13 +802,19 @@ export function ReviewLabWorkspace({
         subtitle="Role nodes and relationship edges"
         bodyClassName="space-y-3"
       >
-        {Array.isArray(data?.belief_graph?.nodes) && data.belief_graph.nodes.length > 0 ? (
+        {graphNodes.length > 0 ? (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
             <div className="grid gap-3 md:grid-cols-2">
-              {data.belief_graph.nodes.slice(0, 8).map((node, index) => {
+              {graphNodes.slice(0, 8).map((node, index) => {
                 const item = node as Record<string, unknown>;
+                const isSelected = String(item.id ?? "") === String(selectedGraphNode?.id ?? "");
                 return (
-                  <div key={`${index}-${String(item.id ?? item.label ?? "node")}`} className="session-thread-card">
+                  <button
+                    key={`${index}-${String(item.id ?? item.label ?? "node")}`}
+                    type="button"
+                    className={`session-thread-card text-left ${isSelected ? "ring-2 ring-slate-900/10 border-slate-400" : ""}`}
+                    onClick={() => setSelectedGraphNodeId(String(item.id ?? ""))}
+                  >
                     <div className="session-thread-card__header">
                       <p className="session-thread-card__title">{String(item.label ?? "group")}</p>
                       <span className="session-thread-card__meta">{String(item.stance ?? "diffuse")}</span>
@@ -697,12 +822,37 @@ export function ReviewLabWorkspace({
                     <p className="session-thread-card__prompt">
                       split {Number(item.split_risk ?? 0).toFixed(2)} · block {Number(item.block_divergence ?? 0).toFixed(2)} · fracture {Number(item.cross_zone_fracture ?? 0).toFixed(2)}
                     </p>
-                  </div>
+                  </button>
                 );
               })}
             </div>
             <div className="space-y-3">
-              {(data.belief_graph.edges ?? []).slice(0, 10).map((edge, index) => {
+              {selectedGraphNode ? (
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">{String(selectedGraphNode.label ?? "group")}</p>
+                    <span className="session-thread-card__meta">{String(selectedGraphNode.stance ?? "diffuse")}</span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    cohesion {Number(selectedGraphNode.cohesion ?? 0).toFixed(2)} · tension {Number(selectedGraphNode.tension ?? 0).toFixed(2)} · polarization {Number(selectedGraphNode.polarization ?? 0).toFixed(2)}
+                  </p>
+                  <p className="session-thread-card__prompt">
+                    split {Number(selectedGraphNode.split_risk ?? 0).toFixed(2)} · block {Number(selectedGraphNode.block_divergence ?? 0).toFixed(2)} · fracture {Number(selectedGraphNode.cross_zone_fracture ?? 0).toFixed(2)}
+                  </p>
+                  {selectedNodeGrounding?.t != null ? (
+                    <div className="session-thread-card__actions">
+                      <button
+                        type="button"
+                        className="app-button app-button--ghost"
+                        onClick={() => onOpenWorldAt(selectedNodeGrounding.world_id ?? worldId, selectedNodeGrounding.t ?? null)}
+                      >
+                        Open Node Anchor
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {(filteredGraphEdges ?? []).slice(0, 10).map((edge, index) => {
                 const item = edge as Record<string, unknown>;
                 return (
                   <div key={`${index}-${String(item.source)}-${String(item.target)}`} className="session-thread-card">

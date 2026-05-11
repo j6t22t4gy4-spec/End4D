@@ -84,6 +84,7 @@ def test_review_query_returns_answer_and_grounding():
     assert payload["answer"]
     assert isinstance(payload["evidence"], list)
     assert "grounding" in payload
+    assert "citations" in payload
     assert payload["mode"] in {"heuristic", "llm"}
 
 
@@ -116,3 +117,4 @@ def test_review_diff_query_returns_answer_and_grounding():
     assert payload["answer"]
     assert isinstance(payload["evidence"], list)
     assert "grounding" in payload
+    assert "citations" in payload

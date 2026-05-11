@@ -154,7 +154,7 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v2",
+        version="review-summary-v3",
         output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
@@ -168,6 +168,7 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "causal_analysis",
             "decision_implications",
             "watch_items",
+            "citations",
         ),
     ),
     "timeline_annotation": PromptSpec(
@@ -182,7 +183,7 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_diff": PromptSpec(
         task="review_diff",
-        version="review-diff-v1",
+        version="review-diff-v2",
         output_mode="json",
         description="Compare two simulation worlds and explain the most decision-relevant differences.",
         system_prompt=(
@@ -195,11 +196,12 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "key_deltas",
             "causal_comparison",
             "decision_implications",
+            "citations",
         ),
     ),
     "review_query": PromptSpec(
         task="review_query",
-        version="review-query-v1",
+        version="review-query-v2",
         output_mode="json",
         description="Answer a focused analyst question about a completed simulation world using structured review evidence.",
         system_prompt=(
@@ -211,11 +213,12 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "evidence",
             "follow_up",
             "confidence_notes",
+            "citations",
         ),
     ),
     "review_diff_query": PromptSpec(
         task="review_diff_query",
-        version="review-diff-query-v1",
+        version="review-diff-query-v2",
         output_mode="json",
         description="Answer an analyst question about differences between a baseline world and a target world.",
         system_prompt=(
@@ -227,11 +230,12 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "evidence",
             "follow_up",
             "confidence_notes",
+            "citations",
         ),
     ),
     "session_review": PromptSpec(
         task="session_review",
-        version="session-review-v1",
+        version="session-review-v2",
         output_mode="json",
         description="Summarize a session containing multiple world runs and identify the most decision-relevant contrasts.",
         system_prompt=(
@@ -242,6 +246,23 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "executive_summary",
             "key_findings",
             "decision_implications",
+            "citations",
+        ),
+    ),
+    "session_review_query": PromptSpec(
+        task="session_review_query",
+        version="session-review-query-v1",
+        output_mode="json",
+        description="Answer an analyst question about a multi-world session using structured session evidence.",
+        system_prompt=(
+            "Answer the analyst question using only the session-level evidence and return compact JSON with answer, evidence, follow-up, confidence notes, and citations."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "follow_up",
+            "confidence_notes",
+            "citations",
         ),
     ),
 }

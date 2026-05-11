@@ -84,6 +84,7 @@ class ReviewQueryResponse(BaseModel):
     confidence_notes: List[str] = Field(default_factory=list)
     mode: str
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
+    citations: List[ReviewGroundingItem] = Field(default_factory=list)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -101,6 +102,7 @@ class ReviewDiffQueryResponse(BaseModel):
     confidence_notes: List[str] = Field(default_factory=list)
     mode: str
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
+    citations: List[ReviewGroundingItem] = Field(default_factory=list)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -144,6 +146,7 @@ def get_review_summary(world_id: str):
         grounding={
             key: [
                 ReviewGroundingItem(
+                    anchor_id=str(item.get("anchor_id") or ""),
                     kind=str(item.get("kind") or key[:-1] or "evidence"),
                     label=str(item.get("label") or item.get("role_label") or item.get("zone_label") or item.get("name") or "evidence"),
                     reason=str(item.get("reason") or item.get("summary") or ""),
@@ -151,12 +154,13 @@ def get_review_summary(world_id: str):
                     group_id=str(item.get("group_id")) if item.get("group_id") is not None else None,
                     zone_id=str(item.get("zone_id")) if item.get("zone_id") is not None else None,
                     cell_id=str(item.get("cell_id")) if item.get("cell_id") is not None else None,
+                    world_id=str(item.get("world_id")) if item.get("world_id") is not None else None,
                 )
                 for item in list(value or [])
             ]
             for key, value in dict(payload.get("grounding") or {}).items()
         },
-        citations=_build_summary_citations(payload),
+        citations=_build_summary_citations(payload, summary["summary"].get("citations")),
         review_meta={
             "summary": {
                 "prompt_version": summary["prompt_version"],
@@ -218,7 +222,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         causal_comparison=[str(item) for item in list(diff["diff"].get("causal_comparison") or [])],
         decision_implications=[str(item) for item in list(diff["diff"].get("decision_implications") or [])],
         compared_metrics=compared_metrics,
-        citations=_build_diff_citations(diff_payload),
+        citations=_build_diff_citations(diff_payload, diff["diff"].get("citations")),
         review_meta={
             "diff": {
                 "prompt_version": diff["prompt_version"],
@@ -253,6 +257,7 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
         grounding={
             key: [
                 ReviewGroundingItem(
+                    anchor_id=str(item.get("anchor_id") or ""),
                     kind=str(item.get("kind") or key[:-1] or "evidence"),
                     label=str(item.get("label") or item.get("role_label") or item.get("zone_label") or item.get("name") or "evidence"),
                     reason=str(item.get("reason") or item.get("summary") or ""),
@@ -260,11 +265,13 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
                     group_id=str(item.get("group_id")) if item.get("group_id") is not None else None,
                     zone_id=str(item.get("zone_id")) if item.get("zone_id") is not None else None,
                     cell_id=str(item.get("cell_id")) if item.get("cell_id") is not None else None,
+                    world_id=str(item.get("world_id")) if item.get("world_id") is not None else None,
                 )
                 for item in list(value or [])
             ]
             for key, value in dict(payload.get("grounding") or {}).items()
         },
+        citations=_citations_from_ids(payload, list(answer.get("citations") or [])),
         review_meta={
             "query": {
                 "prompt_version": str(query.get("prompt_version") or ""),
@@ -303,6 +310,7 @@ def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQu
         confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
         mode=str(query.get("mode") or "heuristic"),
         grounding=_build_diff_citations(diff_payload),
+        citations=_citations_from_ids(diff_payload, list(answer.get("citations") or [])),
         review_meta={
             "query": {
                 "prompt_version": str(query.get("prompt_version") or ""),
@@ -329,7 +337,14 @@ def _ground_item(*, kind: str, label: str, reason: str = "", t: Optional[float] 
     )
 
 
-def _build_summary_citations(payload: Dict[str, Any]) -> Dict[str, List[ReviewGroundingItem]]:
+def _build_summary_citations(
+    payload: Dict[str, Any],
+    citation_ids: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, List[ReviewGroundingItem]]:
+    if citation_ids:
+        resolved = _citation_sections_from_ids(payload, citation_ids)
+        if any(resolved.values()):
+            return resolved
     groups = list((payload.get("belief_drift") or {}).get("groups") or [])
     events = list(payload.get("key_events") or [])
     zones = list(payload.get("zone_z_drift") or [])
@@ -370,7 +385,14 @@ def _build_summary_citations(payload: Dict[str, Any]) -> Dict[str, List[ReviewGr
     }
 
 
-def _build_diff_citations(diff_payload: Dict[str, Any]) -> Dict[str, List[ReviewGroundingItem]]:
+def _build_diff_citations(
+    diff_payload: Dict[str, Any],
+    citation_ids: Optional[Dict[str, List[str]]] = None,
+) -> Dict[str, List[ReviewGroundingItem]]:
+    if citation_ids:
+        resolved = _citation_sections_from_ids(diff_payload, citation_ids)
+        if any(resolved.values()):
+            return resolved
     target_world_id = str(diff_payload.get("target_world_id") or "")
     base_world_id = str(diff_payload.get("base_world_id") or "")
     groups = list(diff_payload.get("group_drift_deltas") or [])
@@ -420,4 +442,54 @@ def _build_diff_citations(diff_payload: Dict[str, Any]) -> Dict[str, List[Review
         ]
         if top_zone
         else [],
+    }
+
+
+def _grounding_rows(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    grounding = dict(payload.get("grounding") or {})
+    rows: List[Dict[str, Any]] = []
+    for value in grounding.values():
+        rows.extend(dict(item) for item in list(value or []))
+    return rows
+
+
+def _grounding_index(payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    rows = _grounding_rows(payload)
+    return {
+        str(item.get("anchor_id") or ""): item
+        for item in rows
+        if str(item.get("anchor_id") or "").strip()
+    }
+
+
+def _citations_from_ids(payload: Dict[str, Any], anchor_ids: List[str]) -> List[ReviewGroundingItem]:
+    index = _grounding_index(payload)
+    items: List[ReviewGroundingItem] = []
+    for anchor_id in anchor_ids[:6]:
+        row = index.get(str(anchor_id))
+        if row is None:
+            continue
+        items.append(
+            ReviewGroundingItem(
+                anchor_id=str(row.get("anchor_id") or ""),
+                kind=str(row.get("kind") or "evidence"),
+                label=str(row.get("label") or "evidence"),
+                reason=str(row.get("reason") or ""),
+                t=float(row.get("t")) if row.get("t") is not None else None,
+                group_id=str(row.get("group_id")) if row.get("group_id") is not None else None,
+                zone_id=str(row.get("zone_id")) if row.get("zone_id") is not None else None,
+                cell_id=str(row.get("cell_id")) if row.get("cell_id") is not None else None,
+                world_id=str(row.get("world_id")) if row.get("world_id") is not None else None,
+            )
+        )
+    return items
+
+
+def _citation_sections_from_ids(
+    payload: Dict[str, Any],
+    citation_ids: Dict[str, List[str]],
+) -> Dict[str, List[ReviewGroundingItem]]:
+    return {
+        str(section): _citations_from_ids(payload, list(anchor_ids or []))
+        for section, anchor_ids in citation_ids.items()
     }

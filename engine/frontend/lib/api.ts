@@ -272,6 +272,7 @@ export type ReviewQueryResponse = {
   confidence_notes: string[];
   mode: string;
   grounding: Record<string, ReviewGroundingItem[]>;
+  citations: ReviewGroundingItem[];
   review_meta: Record<string, unknown>;
 };
 
@@ -285,6 +286,7 @@ export type ReviewDiffQueryResponse = {
   confidence_notes: string[];
   mode: string;
   grounding: Record<string, ReviewGroundingItem[]>;
+  citations: ReviewGroundingItem[];
   review_meta: Record<string, unknown>;
 };
 
@@ -299,6 +301,20 @@ export type SessionReviewResponse = {
   metrics: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
   grounding: Record<string, Array<Record<string, unknown>>>;
+  citations: Record<string, ReviewGroundingItem[]>;
+  review_meta: Record<string, unknown>;
+};
+
+export type SessionReviewQueryResponse = {
+  session_id: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+  follow_up: string[];
+  confidence_notes: string[];
+  mode: string;
+  grounding: Record<string, ReviewGroundingItem[]>;
+  citations: ReviewGroundingItem[];
   review_meta: Record<string, unknown>;
 };
 
@@ -408,6 +424,19 @@ export async function getSessionReview(
 ): Promise<SessionReviewResponse> {
   const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/review`);
   if (!res.ok) throw new Error(`getSessionReview: ${res.status}`);
+  return res.json();
+}
+
+export async function postSessionReviewQuery(
+  sessionId: string,
+  question: string
+): Promise<SessionReviewQueryResponse> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/review/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) throw new Error(`postSessionReviewQuery: ${res.status}`);
   return res.json();
 }
 

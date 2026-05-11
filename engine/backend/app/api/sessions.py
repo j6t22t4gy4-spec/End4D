@@ -53,6 +53,24 @@ class SessionReviewResponse(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
     strongest_worlds: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    citations: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    review_meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SessionReviewQueryRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+
+
+class SessionReviewQueryResponse(BaseModel):
+    session_id: str
+    question: str
+    answer: str
+    evidence: List[str] = Field(default_factory=list)
+    follow_up: List[str] = Field(default_factory=list)
+    confidence_notes: List[str] = Field(default_factory=list)
+    mode: str
+    grounding: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    citations: List[Dict[str, Any]] = Field(default_factory=list)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -127,6 +145,7 @@ def get_session_review(session_id: str):
         metrics=dict(payload.get("summary_stats") or {}),
         strongest_worlds=[dict(item) for item in list(payload.get("strongest_worlds") or [])],
         grounding={key: [dict(item) for item in list(value or [])] for key, value in dict(payload.get("grounding") or {}).items()},
+        citations=_session_citations(payload, dict((summary.get("summary") or {}).get("citations") or {})),
         review_meta={
             "summary": {
                 "prompt_version": str(summary.get("prompt_version") or ""),
@@ -134,6 +153,40 @@ def get_session_review(session_id: str):
                 "provider": str(summary.get("provider") or ""),
                 "model": str(summary.get("model") or ""),
                 "fallback_reason": str(summary.get("fallback_reason") or ""),
+            }
+        },
+    )
+
+
+@router.post("/{session_id}/review/query", response_model=SessionReviewQueryResponse)
+def post_session_review_query(session_id: str, body: SessionReviewQueryRequest):
+    session = session_store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    world_entries = [world_store.get(wid) for wid in list(session.get("world_ids") or [])]
+    try:
+        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    query = llm_facade.query_session_review(payload, question=body.question)
+    answer = dict(query.get("query") or {})
+    return SessionReviewQueryResponse(
+        session_id=str(session.get("session_id") or ""),
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        follow_up=[str(item) for item in list(answer.get("follow_up") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(query.get("mode") or "heuristic"),
+        grounding={key: [dict(item) for item in list(value or [])] for key, value in dict(payload.get("grounding") or {}).items()},
+        citations=_session_query_citations(payload, [str(item) for item in list(answer.get("citations") or [])]),
+        review_meta={
+            "query": {
+                "prompt_version": str(query.get("prompt_version") or ""),
+                "prompt_meta": dict(query.get("prompt_meta") or {}),
+                "provider": str(query.get("provider") or ""),
+                "model": str(query.get("model") or ""),
+                "fallback_reason": str(query.get("fallback_reason") or ""),
             }
         },
     )
@@ -153,3 +206,31 @@ def delete_session(session_id: str):
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"session_id": session_id, "deleted": True}
+
+
+def _session_grounding_index(payload: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for value in dict(payload.get("grounding") or {}).values():
+        rows.extend(dict(item) for item in list(value or []))
+    return {
+        str(item.get("anchor_id") or ""): item
+        for item in rows
+        if str(item.get("anchor_id") or "").strip()
+    }
+
+
+def _session_query_citations(payload: Dict[str, Any], anchor_ids: List[str]) -> List[Dict[str, Any]]:
+    index = _session_grounding_index(payload)
+    out: List[Dict[str, Any]] = []
+    for anchor_id in anchor_ids[:6]:
+        row = index.get(str(anchor_id))
+        if row is not None:
+            out.append(dict(row))
+    return out
+
+
+def _session_citations(payload: Dict[str, Any], sections: Dict[str, List[str]]) -> Dict[str, List[Dict[str, Any]]]:
+    return {
+        str(section): _session_query_citations(payload, [str(item) for item in list(anchor_ids or [])])
+        for section, anchor_ids in sections.items()
+    }

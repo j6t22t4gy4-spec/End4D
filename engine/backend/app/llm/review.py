@@ -18,6 +18,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
             ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
             ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
             ("zone_z_drift", _compact_list(payload.get("zone_z_drift") or [], limit=5)),
+            ("grounding", _compact(payload.get("grounding") or {})),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
         ],
     )
@@ -47,6 +48,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("notable_agent_delta", _compact(diff_payload.get("notable_agent_delta") or {})),
             ("coalition_shift_delta", _compact(diff_payload.get("coalition_shift_delta") or {})),
+            ("grounding", _compact(diff_payload.get("grounding") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
     )
@@ -87,6 +89,19 @@ def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
     return build_prompt_contract(
         "session_review",
         [
+            ("session_title", str(payload.get("title") or "Session")),
+            ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
+            ("grounding", _compact(payload.get("grounding") or {})),
+        ],
+    )
+
+
+def build_session_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
+    return build_prompt_contract(
+        "session_review_query",
+        [
+            ("question", question),
             ("session_title", str(payload.get("title") or "Session")),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
@@ -149,6 +164,11 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         "causal_analysis": causal_analysis[:4],
         "decision_implications": decision_implications[:4],
         "watch_items": watch_items,
+        "citations": {
+            "headline": _citation_ids(payload, "groups", limit=1),
+            "causal_analysis": _citation_ids(payload, "events", limit=2),
+            "decision_implications": _citation_ids(payload, "zones", limit=1),
+        },
     }
 
 
@@ -220,6 +240,11 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             "target world에서 drift가 큰 집단은 추가 intervention에 더 민감할 수 있습니다.",
             "가장 큰 zone z gap이 난 지역은 정책 커뮤니케이션 방식도 별도로 점검해야 합니다.",
         ],
+        "citations": {
+            "key_deltas": _citation_ids(diff_payload, "groups", limit=1),
+            "causal_comparison": _citation_ids(diff_payload, "events", limit=2),
+            "decision_implications": _citation_ids(diff_payload, "zones", limit=1),
+        },
     }
 
 
@@ -304,6 +329,7 @@ def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[st
         "evidence": evidence[:4],
         "follow_up": follow_up[:3],
         "confidence_notes": ["heuristic fallback used" if evidence else "limited evidence available"],
+        "citations": _citation_ids(payload, "groups", limit=2) or _citation_ids(payload, "events", limit=2),
     }
 
 
@@ -367,6 +393,7 @@ def heuristic_review_diff_query(diff_payload: Mapping[str, Any], question: str) 
             "policy impact delta와 group drift table을 함께 보면 원인 해석이 더 선명해집니다.",
         ],
         "confidence_notes": ["heuristic diff query used"],
+        "citations": _citation_ids(diff_payload, "groups", limit=2) or _citation_ids(diff_payload, "events", limit=2),
     }
 
 
@@ -390,6 +417,31 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
             "같은 세션 내 strongest world와 baseline world를 붙여보면 정책 민감도 차이가 더 잘 드러납니다.",
             "fracture score가 높은 world는 후속 intervention 실험의 우선 후보입니다.",
         ],
+        "citations": {"key_findings": _citation_ids(payload, "worlds", limit=2)},
+    }
+
+
+def heuristic_session_review_query(payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    strongest = list(payload.get("strongest_worlds") or [])
+    top = dict(strongest[0] if strongest else {})
+    answer = (
+        f"세션에서 가장 주목할 world는 {top.get('world_id', 'n/a')}입니다. "
+        f"split risk {float(top.get('split_risk', 0.0)):.2f}, "
+        f"block divergence {float(top.get('block_divergence', 0.0)):.2f}, "
+        f"cross-zone fracture {float(top.get('cross_zone_fracture', 0.0)):.2f}가 가장 높았습니다."
+    )
+    return {
+        "answer": answer,
+        "evidence": [
+            f"world={top.get('world_id', 'n/a')} signal={top.get('overall_signal', 'diffuse')}",
+            f"split_risk={float(top.get('split_risk', 0.0)):.2f}, cross_zone_fracture={float(top.get('cross_zone_fracture', 0.0)):.2f}",
+        ],
+        "follow_up": [
+            "이 world를 baseline world와 diff report로 다시 비교해보는 것이 좋습니다.",
+            "session strongest worlds 사이의 policy target 차이를 확인해보세요.",
+        ],
+        "confidence_notes": ["heuristic session query used"],
+        "citations": _citation_ids(payload, "worlds", limit=2),
     }
 
 
@@ -413,6 +465,7 @@ def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str,
             fallback["decision_implications"],
         ),
         "watch_items": _string_list(parsed.get("watch_items"), fallback["watch_items"]),
+        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
     }
 
 
@@ -456,6 +509,7 @@ def parse_review_diff(raw_text: str, diff_payload: Mapping[str, Any]) -> dict[st
             parsed.get("decision_implications"),
             fallback["decision_implications"],
         ),
+        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
     }
 
 
@@ -473,6 +527,7 @@ def parse_review_query(raw_text: str, payload: Mapping[str, Any], question: str)
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
     }
 
 
@@ -490,6 +545,7 @@ def parse_review_diff_query(raw_text: str, diff_payload: Mapping[str, Any], ques
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
     }
 
 
@@ -507,6 +563,25 @@ def parse_session_review(raw_text: str, payload: Mapping[str, Any]) -> dict[str,
         "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),
         "key_findings": _string_list(parsed.get("key_findings"), fallback["key_findings"]),
         "decision_implications": _string_list(parsed.get("decision_implications"), fallback["decision_implications"]),
+        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
+    }
+
+
+def parse_session_review_query(raw_text: str, payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_session_review_query(payload, question)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_session_review_query(payload, question)
+    fallback = heuristic_session_review_query(payload, question)
+    return {
+        "answer": str(parsed.get("answer") or fallback["answer"]),
+        "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
+        "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
+        "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
     }
 
 
@@ -524,6 +599,25 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
         return list(fallback)
     cleaned = [str(item).strip() for item in value if str(item).strip()]
     return cleaned[:6] or list(fallback)
+
+
+def _citation_ids(payload: Mapping[str, Any], section: str, *, limit: int) -> list[str]:
+    grounding = dict(payload.get("grounding") or {})
+    rows = list(grounding.get(section) or [])
+    out = [str(item.get("anchor_id") or "") for item in rows if str(item.get("anchor_id") or "").strip()]
+    return out[:limit]
+
+
+def _citation_map(value: Any, fallback: dict[str, list[str]]) -> dict[str, list[str]]:
+    if not isinstance(value, Mapping):
+        return dict(fallback)
+    cleaned: dict[str, list[str]] = {}
+    for key, rows in value.items():
+        if isinstance(rows, list):
+            items = [str(item).strip() for item in rows if str(item).strip()]
+            if items:
+                cleaned[str(key)] = items[:6]
+    return cleaned or dict(fallback)
 
 
 def _severity(score: float) -> str:
