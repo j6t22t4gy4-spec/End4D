@@ -35,18 +35,19 @@ def build_timeline_annotation_prompt(payload: Mapping[str, Any]) -> str:
     )
 
 
-def build_review_diff_prompt(base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> str:
+def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
     return build_prompt_contract(
         "review_diff",
         [
-            ("base_summary_stats", _compact(base_payload.get("summary_stats") or {})),
-            ("target_summary_stats", _compact(target_payload.get("summary_stats") or {})),
-            ("base_belief_drift", _compact(base_payload.get("belief_drift") or {})),
-            ("target_belief_drift", _compact(target_payload.get("belief_drift") or {})),
-            ("base_policy_impact", _compact(base_payload.get("policy_impact") or {})),
-            ("target_policy_impact", _compact(target_payload.get("policy_impact") or {})),
-            ("base_highlights", " | ".join(str(item) for item in list(base_payload.get("highlights") or [])[:6])),
-            ("target_highlights", " | ".join(str(item) for item in list(target_payload.get("highlights") or [])[:6])),
+            ("base_summary_stats", _compact(diff_payload.get("base_summary_stats") or {})),
+            ("target_summary_stats", _compact(diff_payload.get("target_summary_stats") or {})),
+            ("group_drift_deltas", _compact_list(diff_payload.get("group_drift_deltas") or [], limit=6)),
+            ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=6)),
+            ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
+            ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
+            ("notable_agent_delta", _compact(diff_payload.get("notable_agent_delta") or {})),
+            ("coalition_shift_delta", _compact(diff_payload.get("coalition_shift_delta") or {})),
+            ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
     )
 
@@ -122,15 +123,15 @@ def heuristic_timeline_annotations(payload: Mapping[str, Any]) -> list[dict[str,
     return annotations
 
 
-def heuristic_review_diff(base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> dict[str, Any]:
-    base_stats = dict(base_payload.get("summary_stats") or {})
-    target_stats = dict(target_payload.get("summary_stats") or {})
+def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
+    base_stats = dict(diff_payload.get("base_summary_stats") or {})
+    target_stats = dict(diff_payload.get("target_summary_stats") or {})
     base_signal = str(base_stats.get("overall_signal") or "diffuse")
     target_signal = str(target_stats.get("overall_signal") or "diffuse")
-    base_groups = list((base_payload.get("belief_drift") or {}).get("groups") or [])
-    target_groups = list((target_payload.get("belief_drift") or {}).get("groups") or [])
-    base_top = dict(base_groups[0] if base_groups else {})
-    target_top = dict(target_groups[0] if target_groups else {})
+    group_deltas = list(diff_payload.get("group_drift_deltas") or [])
+    zone_deltas = list(diff_payload.get("zone_z_delta") or [])
+    top_group = dict(group_deltas[0] if group_deltas else {})
+    top_zone = dict(zone_deltas[0] if zone_deltas else {})
     key_deltas = [
         (
             f"cell delta moved from {int(base_stats.get('cell_delta', 0)):+d} "
@@ -144,16 +145,25 @@ def heuristic_review_diff(base_payload: Mapping[str, Any], target_payload: Mappi
             f"overall signal shifted from {base_signal} to {target_signal}"
         ),
     ]
+    if top_group:
+        key_deltas.append(
+            f"largest group gap is {top_group.get('role_label', 'group')} "
+            f"(cohesion {float(top_group.get('cohesion_gap', 0.0)):+.2f}, tension {float(top_group.get('tension_gap', 0.0)):+.2f})"
+        )
     causal = [
         (
-            f"baseline의 핵심 집단은 {base_top.get('role_label', 'n/a')}였고, "
-            f"target에서는 {target_top.get('role_label', 'n/a')}가 더 큰 drift를 보였습니다."
+            f"baseline 대비 target에서 {top_group.get('role_label', '핵심 집단')}의 stance가 "
+            f"{top_group.get('stance_base', 'n/a')} -> {top_group.get('stance_target', 'n/a')}로 달라졌습니다."
         ),
         (
-            f"target의 cohesion/tension 변화는 "
-            f"{float(target_top.get('cohesion_delta', 0.0)):+.2f} / {float(target_top.get('tension_delta', 0.0)):+.2f}입니다."
+            f"이 집단의 cohesion/tension gap은 "
+            f"{float(top_group.get('cohesion_gap', 0.0)):+.2f} / {float(top_group.get('tension_gap', 0.0)):+.2f}입니다."
         ),
     ]
+    if top_zone:
+        causal.append(
+            f"{top_zone.get('zone_label', '주요 zone')}에서 avg z gap {float(top_zone.get('avg_z_gap', 0.0)):+.2f}가 나타났습니다."
+        )
     return {
         "headline": f"{base_signal} baseline vs {target_signal} target",
         "executive_summary": (
@@ -165,6 +175,7 @@ def heuristic_review_diff(base_payload: Mapping[str, Any], target_payload: Mappi
         "decision_implications": [
             "두 world의 policy target 역할과 zone을 함께 확인해야 합니다.",
             "target world에서 drift가 큰 집단은 추가 intervention에 더 민감할 수 있습니다.",
+            "가장 큰 zone z gap이 난 지역은 정책 커뮤니케이션 방식도 별도로 점검해야 합니다.",
         ],
     }
 
@@ -214,15 +225,15 @@ def parse_timeline_annotations(raw_text: str, payload: Mapping[str, Any]) -> lis
     return out or heuristic_timeline_annotations(payload)
 
 
-def parse_review_diff(raw_text: str, base_payload: Mapping[str, Any], target_payload: Mapping[str, Any]) -> dict[str, Any]:
+def parse_review_diff(raw_text: str, diff_payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
-        return heuristic_review_diff(base_payload, target_payload)
+        return heuristic_review_diff(diff_payload)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        return heuristic_review_diff(base_payload, target_payload)
-    fallback = heuristic_review_diff(base_payload, target_payload)
+        return heuristic_review_diff(diff_payload)
+    fallback = heuristic_review_diff(diff_payload)
     return {
         "headline": str(parsed.get("headline") or fallback["headline"]),
         "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),

@@ -87,6 +87,108 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def build_review_diff_payload(
+    *,
+    base_payload: dict[str, Any],
+    target_payload: dict[str, Any],
+) -> dict[str, Any]:
+    base_stats = dict(base_payload.get("summary_stats") or {})
+    target_stats = dict(target_payload.get("summary_stats") or {})
+    base_groups = {
+        str(item.get("group_id") or ""): dict(item)
+        for item in list((base_payload.get("belief_drift") or {}).get("groups") or [])
+    }
+    target_groups = {
+        str(item.get("group_id") or ""): dict(item)
+        for item in list((target_payload.get("belief_drift") or {}).get("groups") or [])
+    }
+    base_zones = {
+        str(item.get("zone_id") or ""): dict(item)
+        for item in list(base_payload.get("zone_z_drift") or [])
+    }
+    target_zones = {
+        str(item.get("zone_id") or ""): dict(item)
+        for item in list(target_payload.get("zone_z_drift") or [])
+    }
+
+    group_drift_deltas: list[dict[str, Any]] = []
+    for group_id, target_group in target_groups.items():
+        base_group = dict(base_groups.get(group_id) or {})
+        group_drift_deltas.append(
+            {
+                "group_id": group_id,
+                "role_label": str(target_group.get("role_label") or base_group.get("role_label") or "group"),
+                "stance_base": str(base_group.get("stance_after") or base_group.get("stance_before") or "not_present"),
+                "stance_target": str(target_group.get("stance_after") or target_group.get("stance_before") or "not_present"),
+                "cohesion_gap": round(float(target_group.get("cohesion_after", 0.0)) - float(base_group.get("cohesion_after", 0.0)), 3),
+                "tension_gap": round(float(target_group.get("tension_after", 0.0)) - float(base_group.get("tension_after", 0.0)), 3),
+                "z_gap": round(float(target_group.get("avg_z_delta", 0.0)) - float(base_group.get("avg_z_delta", 0.0)), 3),
+                "cell_gap": int(target_group.get("cell_delta", 0)) - int(base_group.get("cell_delta", 0)),
+                "worldview_gap": round(float(target_group.get("worldview_norm_delta", 0.0)) - float(base_group.get("worldview_norm_delta", 0.0)), 3),
+            }
+        )
+    group_drift_deltas.sort(
+        key=lambda item: abs(float(item["cohesion_gap"])) + abs(float(item["tension_gap"])) + abs(float(item["z_gap"])),
+        reverse=True,
+    )
+
+    zone_z_delta: list[dict[str, Any]] = []
+    for zone_id, target_zone in target_zones.items():
+        base_zone = dict(base_zones.get(zone_id) or {})
+        zone_z_delta.append(
+            {
+                "zone_id": zone_id,
+                "zone_label": str(target_zone.get("zone_label") or base_zone.get("zone_label") or "zone"),
+                "avg_z_gap": round(float(target_zone.get("avg_z_delta", 0.0)) - float(base_zone.get("avg_z_delta", 0.0)), 3),
+                "avg_energy_gap": round(float(target_zone.get("avg_energy_after", 0.0)) - float(base_zone.get("avg_energy_after", 0.0)), 3),
+                "cell_count_gap": int(target_zone.get("cell_count_after", 0)) - int(base_zone.get("cell_count_after", 0)),
+            }
+        )
+    zone_z_delta.sort(key=lambda item: abs(float(item["avg_z_gap"])), reverse=True)
+
+    policy_impact_delta = {
+        "base": dict(base_payload.get("policy_impact") or {}),
+        "target": dict(target_payload.get("policy_impact") or {}),
+        "event_count_gap": int((target_payload.get("policy_impact") or {}).get("event_count", 0)) - int((base_payload.get("policy_impact") or {}).get("event_count", 0)),
+    }
+
+    timeline_turning_point_delta = {
+        "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
+        "target": [dict(item) for item in list(target_payload.get("annotation_candidates") or [])[:4]],
+    }
+
+    notable_agent_delta = {
+        "base": [dict(item) for item in list(base_payload.get("notable_agents") or [])[:5]],
+        "target": [dict(item) for item in list(target_payload.get("notable_agents") or [])[:5]],
+    }
+
+    coalition_shift_delta = {
+        "base_active_roles": sorted(str(key) for key in dict((base_payload.get("coalition_shift") or {}).get("active") or {}).keys()),
+        "target_active_roles": sorted(str(key) for key in dict((target_payload.get("coalition_shift") or {}).get("active") or {}).keys()),
+    }
+
+    key_delta_summary = [
+        f"cell delta gap {int(target_stats.get('cell_delta', 0)) - int(base_stats.get('cell_delta', 0)):+d}",
+        f"energy delta gap {float(target_stats.get('energy_delta', 0.0)) - float(base_stats.get('energy_delta', 0.0)):+.2f}",
+        f"z delta gap {float(target_stats.get('z_delta', 0.0)) - float(base_stats.get('z_delta', 0.0)):+.2f}",
+        f"signal {base_stats.get('overall_signal', 'diffuse')} -> {target_stats.get('overall_signal', 'diffuse')}",
+    ]
+
+    return {
+        "base_world_id": str(base_payload.get("world_id") or ""),
+        "target_world_id": str(target_payload.get("world_id") or ""),
+        "base_summary_stats": base_stats,
+        "target_summary_stats": target_stats,
+        "group_drift_deltas": group_drift_deltas[:8],
+        "zone_z_delta": zone_z_delta[:8],
+        "policy_impact_delta": policy_impact_delta,
+        "timeline_turning_point_delta": timeline_turning_point_delta,
+        "notable_agent_delta": notable_agent_delta,
+        "coalition_shift_delta": coalition_shift_delta,
+        "key_delta_summary": key_delta_summary,
+    }
+
+
 def build_timeline_annotation_candidates(
     points: list[dict[str, Any]],
     *,

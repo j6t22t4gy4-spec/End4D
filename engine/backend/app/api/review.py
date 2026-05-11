@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.core.review_payloads import build_world_review_payload
+from app.core.review_payloads import build_review_diff_payload, build_world_review_payload
 from app.core.store import world_store
 from app.llm.facade import llm_facade
 
@@ -121,9 +121,10 @@ def get_review_diff(world_id: str, base_world_id: str):
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    diff = llm_facade.compare_reviews(base_payload=base_payload, target_payload=target_payload)
-    base_stats = dict(base_payload.get("summary_stats") or {})
-    target_stats = dict(target_payload.get("summary_stats") or {})
+    diff_payload = build_review_diff_payload(base_payload=base_payload, target_payload=target_payload)
+    diff = llm_facade.compare_reviews(diff_payload=diff_payload)
+    base_stats = dict(diff_payload.get("base_summary_stats") or {})
+    target_stats = dict(diff_payload.get("target_summary_stats") or {})
     compared_metrics = {
         "base": base_stats,
         "target": target_stats,
@@ -132,6 +133,9 @@ def get_review_diff(world_id: str, base_world_id: str):
             "energy_delta_gap": round(float(target_stats.get("energy_delta", 0.0)) - float(base_stats.get("energy_delta", 0.0)), 3),
             "z_delta_gap": round(float(target_stats.get("z_delta", 0.0)) - float(base_stats.get("z_delta", 0.0)), 3),
         },
+        "group_drift_deltas": [dict(item) for item in list(diff_payload.get("group_drift_deltas") or [])],
+        "zone_z_delta": [dict(item) for item in list(diff_payload.get("zone_z_delta") or [])],
+        "policy_impact_delta": dict(diff_payload.get("policy_impact_delta") or {}),
     }
     return ReviewDiffResponse(
         base_world_id=base_world_id,

@@ -214,6 +214,20 @@ export function ReviewLabWorkspace({
                 <p className="session-thread-card__title">{diff.headline}</p>
                 <p className="session-thread-card__prompt">{diff.summary}</p>
               </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <MetricCard
+                  label="Cell Gap"
+                  value={String((diff.compared_metrics.delta as Record<string, unknown>)?.cell_delta_gap ?? "n/a")}
+                />
+                <MetricCard
+                  label="Energy Gap"
+                  value={String((diff.compared_metrics.delta as Record<string, unknown>)?.energy_delta_gap ?? "n/a")}
+                />
+                <MetricCard
+                  label="Z Gap"
+                  value={String((diff.compared_metrics.delta as Record<string, unknown>)?.z_delta_gap ?? "n/a")}
+                />
+              </div>
               {diff.key_deltas.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
@@ -254,6 +268,56 @@ export function ReviewLabWorkspace({
             ))
           ) : (
             <p className="text-sm text-slate-500">주요 시점 어노테이션이 아직 없습니다.</p>
+          )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel title="Group Drift Gaps" subtitle="Role-level differences" bodyClassName="space-y-3">
+          {Array.isArray(diff?.compared_metrics?.group_drift_deltas) &&
+          (diff?.compared_metrics?.group_drift_deltas as Array<Record<string, unknown>>).length > 0 ? (
+            (diff.compared_metrics.group_drift_deltas as Array<Record<string, unknown>>)
+              .slice(0, 5)
+              .map((item, index) => (
+                <div key={`${index}-${String(item.group_id)}`} className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">{String(item.role_label ?? "group")}</p>
+                    <span className="session-thread-card__meta">
+                      {String(item.stance_base ?? "n/a")} → {String(item.stance_target ?? "n/a")}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    cohesion {Number(item.cohesion_gap ?? 0).toFixed(2)} · tension{" "}
+                    {Number(item.tension_gap ?? 0).toFixed(2)} · z {Number(item.z_gap ?? 0).toFixed(2)}
+                  </p>
+                </div>
+              ))
+          ) : (
+            <p className="text-sm text-slate-500">집단 drift 차이가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel title="Zone Z Gaps" subtitle="Regional elevation differences" bodyClassName="space-y-3">
+          {Array.isArray(diff?.compared_metrics?.zone_z_delta) &&
+          (diff?.compared_metrics?.zone_z_delta as Array<Record<string, unknown>>).length > 0 ? (
+            (diff.compared_metrics.zone_z_delta as Array<Record<string, unknown>>)
+              .slice(0, 5)
+              .map((item, index) => (
+                <div key={`${index}-${String(item.zone_id)}`} className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">{String(item.zone_label ?? "zone")}</p>
+                    <span className="session-thread-card__meta">
+                      cells {String(item.cell_count_gap ?? 0)}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    avg z {Number(item.avg_z_gap ?? 0).toFixed(2)} · avg energy{" "}
+                    {Number(item.avg_energy_gap ?? 0).toFixed(2)}
+                  </p>
+                </div>
+              ))
+          ) : (
+            <p className="text-sm text-slate-500">zone z 차이가 아직 없습니다.</p>
           )}
         </AppPanel>
       </div>
@@ -340,6 +404,18 @@ export function ReviewLabWorkspace({
                 label="Annotation Model"
                 value={String((data.review_meta.timeline_annotation as Record<string, unknown>)?.model ?? "n/a")}
               />
+              {diff ? (
+                <>
+                  <MetricCard
+                    label="Diff Prompt"
+                    value={String((diff.review_meta.diff as Record<string, unknown>)?.prompt_version ?? "n/a")}
+                  />
+                  <MetricCard
+                    label="Diff Model"
+                    value={String((diff.review_meta.diff as Record<string, unknown>)?.model ?? "n/a")}
+                  />
+                </>
+              ) : null}
             </div>
           ) : null}
         </AppPanel>

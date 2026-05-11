@@ -170,17 +170,16 @@ class LLMFacade:
     def compare_reviews(
         self,
         *,
-        base_payload: Mapping[str, Any],
-        target_payload: Mapping[str, Any],
+        diff_payload: Mapping[str, Any],
     ) -> dict[str, Any]:
-        prompt = build_review_diff_prompt(base_payload, target_payload)
+        prompt = build_review_diff_prompt(diff_payload)
         texts, meta = self._run_task_with_meta([prompt], task="review_diff")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
         summary = (
-            heuristic_review_diff(base_payload, target_payload)
+            heuristic_review_diff(diff_payload)
             if used_heuristic
-            else parse_review_diff(text, base_payload, target_payload)
+            else parse_review_diff(text, diff_payload)
         )
         return {
             "diff": summary,
