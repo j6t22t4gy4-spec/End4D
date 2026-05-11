@@ -147,6 +147,15 @@ def install_data_pack(
     pack["version"] = version or str(pack.get("version") or "")
     pack["dataset_id"] = dataset_id or str(pack.get("dataset_id") or "")
     pack["source_url"] = source_url or str(pack.get("source_url") or "")
+    _append_pack_history(
+        pack,
+        action="install",
+        detail={
+            "version": str(pack.get("version") or ""),
+            "relative_path": str(pack.get("relative_path") or ""),
+            "dataset_id": str(pack.get("dataset_id") or ""),
+        },
+    )
     _write_manifest(manifest)
     validation = validate_data_pack(pack_id)
     validation["installed"] = True
@@ -175,6 +184,11 @@ def validate_data_pack(pack_id: str) -> Dict[str, Any]:
         "row_count_estimate": row_count,
         "sample_error": sample_error,
     }
+    _append_pack_history(
+        pack,
+        action="validate",
+        detail={"exists": exists, "row_count_estimate": row_count, "sample_error": sample_error},
+    )
     _write_manifest(manifest)
     return {
         "pack_id": pack_id,
@@ -256,6 +270,15 @@ def verify_data_pack(pack_id: str) -> Dict[str, Any]:
             and coverage.get("persona_text", 0.0) >= 0.6
         )
     pack["verification"] = report
+    _append_pack_history(
+        pack,
+        action="verify",
+        detail={
+            "schema_health": str(report.get("schema_health") or ""),
+            "ready_for_genesis": bool(report.get("ready_for_genesis")),
+            "country_consistency": float(report.get("country_consistency") or 0.0),
+        },
+    )
     _write_manifest(manifest)
     return report
 
@@ -268,12 +291,56 @@ def pin_data_pack(pack_id: str, *, pinned_version: str) -> Dict[str, Any]:
     pack["pinned"] = True
     pack["pinned_version"] = pinned_version.strip()
     pack["pinned_at"] = _now_iso()
+    _append_pack_history(
+        pack,
+        action="pin",
+        detail={"pinned_version": str(pack.get("pinned_version") or "")},
+    )
     _write_manifest(manifest)
     return {
         "pack_id": pack_id,
         "pinned": True,
         "pinned_version": str(pack.get("pinned_version") or ""),
         "pinned_at": str(pack.get("pinned_at") or ""),
+    }
+
+
+def rollback_data_pack(pack_id: str, *, history_index: int) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+    history = list(pack.get("history") or [])
+    if history_index < 0 or history_index >= len(history):
+        raise ValueError("Invalid history_index")
+    snapshot = dict((history[history_index] or {}).get("snapshot") or {})
+    if not snapshot:
+        raise ValueError("No snapshot stored for this history entry")
+    for key in (
+        "version",
+        "relative_path",
+        "dataset_id",
+        "source_url",
+        "pinned",
+        "pinned_version",
+        "validation",
+        "verification",
+    ):
+        if key in snapshot:
+            pack[key] = snapshot[key]
+    pack["updated_at"] = _now_iso()
+    _append_pack_history(
+        pack,
+        action="rollback",
+        detail={"history_index": history_index, "restored_version": str(pack.get("version") or "")},
+    )
+    _write_manifest(manifest)
+    return {
+        "pack_id": pack_id,
+        "rolled_back": True,
+        "version": str(pack.get("version") or ""),
+        "history_index": history_index,
+        "updated_at": str(pack.get("updated_at") or ""),
     }
 
 
@@ -309,6 +376,8 @@ def _merge_packs(base: List[Dict[str, Any]], updates: List[Dict[str, Any]]) -> L
         merged.setdefault("installed_at", "")
         merged.setdefault("validated_at", "")
         merged.setdefault("validation", {})
+        merged.setdefault("verification", {})
+        merged.setdefault("history", [])
         by_key[key] = merged
     return list(by_key.values())
 
@@ -341,6 +410,7 @@ def list_installed_data_packs() -> List[Dict[str, Any]]:
                 "validated_at": str(raw.get("validated_at") or ""),
                 "validation": dict(raw.get("validation") or {}),
                 "verification": dict(raw.get("verification") or {}),
+                "history": [dict(item) for item in list(raw.get("history") or [])[-20:]],
                 "description": str(raw.get("description") or ""),
             }
         )
@@ -402,6 +472,28 @@ def _find_pack(manifest: Dict[str, Any], pack_id: str) -> Optional[Dict[str, Any
         if str(pack.get("pack_id") or "") == pack_id:
             return pack
     return None
+
+
+def _append_pack_history(pack: Dict[str, Any], *, action: str, detail: Dict[str, Any]) -> None:
+    history = list(pack.get("history") or [])
+    history.append(
+        {
+            "at": _now_iso(),
+            "action": action,
+            "detail": dict(detail),
+            "snapshot": {
+                "version": str(pack.get("version") or ""),
+                "relative_path": str(pack.get("relative_path") or ""),
+                "dataset_id": str(pack.get("dataset_id") or ""),
+                "source_url": str(pack.get("source_url") or ""),
+                "pinned": bool(pack.get("pinned", False)),
+                "pinned_version": str(pack.get("pinned_version") or ""),
+                "validation": dict(pack.get("validation") or {}),
+                "verification": dict(pack.get("verification") or {}),
+            },
+        }
+    )
+    pack["history"] = history[-20:]
 
 
 def _sample_row_count(path: Path, limit: int = 5000) -> int:

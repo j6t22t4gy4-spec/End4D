@@ -579,6 +579,33 @@ export function ReviewLabWorkspace({
             current world의 notable agent를 고른 뒤 baseline world와 1:1 인터뷰 비교를 실행할 수 있습니다.
           </p>
         )}
+        {interviewCandidates.length ? (
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Persona Interview Matrix</p>
+            <div className="grid gap-2">
+              {interviewCandidates.slice(0, 6).map((item, index) => (
+                <button
+                  key={`${index}-${String(item.cell_id ?? "")}`}
+                  type="button"
+                  className={`session-thread-card text-left ${String(item.cell_id ?? "") === interviewCellId ? "border-sky-300 bg-sky-50" : ""}`}
+                  onClick={() => setInterviewCellId(String(item.cell_id ?? ""))}
+                >
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">
+                      {String(item.role_label ?? item.role_key ?? "agent")}
+                    </p>
+                    <span className="session-thread-card__meta">
+                      shift {Number(item.belief_shift_score ?? 0).toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    {String(item.zone_label ?? item.zone_id ?? "zone")} · zΔ {Number(item.z_delta ?? 0).toFixed(2)} · worldview {Number(item.worldview_shift ?? 0).toFixed(2)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </AppPanel>
 
       <AppPanel
@@ -663,6 +690,9 @@ export function ReviewLabWorkspace({
                         </p>
                       </div>
                       <p className="session-thread-card__prompt">{String(item.reason ?? "comparison candidate")}</p>
+                      {item.recommendation ? (
+                        <p className="mt-2 text-sm leading-6 text-slate-600">{String(item.recommendation)}</p>
+                      ) : null}
                       <div className="session-thread-card__actions">
                         <button
                           type="button"

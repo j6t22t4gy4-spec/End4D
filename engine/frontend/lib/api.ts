@@ -122,6 +122,7 @@ export type RuntimePack = {
   validated_at?: string;
   validation?: Record<string, unknown>;
   verification?: Record<string, unknown>;
+  history?: Array<Record<string, unknown>>;
   description: string;
 };
 
@@ -173,6 +174,14 @@ export type DataPackPinResponse = {
   pinned: boolean;
   pinned_version: string;
   pinned_at: string;
+};
+
+export type DataPackRollbackResponse = {
+  pack_id: string;
+  rolled_back: boolean;
+  version: string;
+  history_index: number;
+  updated_at: string;
 };
 
 export type AgentGroupSummary = {
@@ -537,6 +546,19 @@ export async function pinRuntimeDataPack(
     body: JSON.stringify({ pack_id: packId, pinned_version: pinnedVersion }),
   });
   if (!res.ok) throw new Error(`pinRuntimeDataPack: ${res.status}`);
+  return res.json();
+}
+
+export async function rollbackRuntimeDataPack(
+  packId: string,
+  historyIndex: number
+): Promise<DataPackRollbackResponse> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/rollback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_id: packId, history_index: historyIndex }),
+  });
+  if (!res.ok) throw new Error(`rollbackRuntimeDataPack: ${res.status}`);
   return res.json();
 }
 

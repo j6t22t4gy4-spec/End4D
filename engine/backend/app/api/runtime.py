@@ -10,6 +10,7 @@ from app.core.data_packs import (
     install_data_pack,
     local_runtime_status,
     pin_data_pack,
+    rollback_data_pack,
     sync_data_pack_manifest,
     validate_data_pack,
     verify_data_pack,
@@ -36,6 +37,7 @@ class RuntimePackResponse(BaseModel):
     validated_at: str = ""
     validation: Dict[str, Any] = Field(default_factory=dict)
     verification: Dict[str, Any] = Field(default_factory=dict)
+    history: List[Dict[str, Any]] = Field(default_factory=list)
     description: str = ""
 
 
@@ -136,6 +138,19 @@ class DataPackVerifyResponse(BaseModel):
     ready_for_genesis: bool = False
 
 
+class DataPackRollbackRequest(BaseModel):
+    pack_id: str
+    history_index: int
+
+
+class DataPackRollbackResponse(BaseModel):
+    pack_id: str
+    rolled_back: bool = False
+    version: str = ""
+    history_index: int = 0
+    updated_at: str = ""
+
+
 class LocalRuntimeStatusResponse(BaseModel):
     runtime_profile: str
     state_dir: str
@@ -222,3 +237,8 @@ def pin_runtime_data_pack(req: DataPackPinRequest):
 @router.post("/data-packs/verify", response_model=DataPackVerifyResponse)
 def verify_runtime_data_pack(req: DataPackVerifyRequest):
     return DataPackVerifyResponse(**verify_data_pack(req.pack_id))
+
+
+@router.post("/data-packs/rollback", response_model=DataPackRollbackResponse)
+def rollback_runtime_data_pack(req: DataPackRollbackRequest):
+    return DataPackRollbackResponse(**rollback_data_pack(req.pack_id, history_index=req.history_index))

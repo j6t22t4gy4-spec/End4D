@@ -153,9 +153,19 @@ def build_session_review_payload(
                 {
                     "base_world_id": str(right.get("world_id") or ""),
                     "target_world_id": str(left.get("world_id") or ""),
+                    "objective": objective,
+                    "score_gap": round(
+                        abs(float(left.get("score", 0.0)) - float(right.get("score", 0.0))),
+                        3,
+                    ),
                     "reason": (
                         f"score gap {abs(float(left.get('score', 0.0)) - float(right.get('score', 0.0))):.2f}; "
                         f"signal {left.get('overall_signal', 'diffuse')} vs {right.get('overall_signal', 'diffuse')}"
+                    ),
+                    "recommendation": _pair_recommendation(
+                        objective=objective,
+                        target=dict(left),
+                        base=dict(right),
                     ),
                 }
             )
@@ -246,6 +256,35 @@ def _objective_explanation(
         )
     return (
         f"`{world_id}`가 split risk, block divergence, cross-zone fracture를 종합했을 때 가장 두드러져 balanced 기준의 대표 world로 선정되었습니다."
+    )
+
+
+def _pair_recommendation(
+    *,
+    objective: str,
+    target: dict[str, Any],
+    base: dict[str, Any],
+) -> str:
+    target_id = str(target.get("world_id") or "target")
+    base_id = str(base.get("world_id") or "base")
+    if objective == "stability":
+        return (
+            f"`{target_id}`와 `{base_id}`를 비교하면 split risk 억제와 zone fracture 완화 전략 차이를 가장 잘 볼 수 있습니다."
+        )
+    if objective == "cohesion":
+        return (
+            f"`{target_id}`와 `{base_id}`를 비교하면 응집 유지와 긴장 완화가 어떤 설계 차이에서 갈렸는지 읽기 좋습니다."
+        )
+    if objective == "polarization":
+        return (
+            f"`{target_id}`와 `{base_id}`를 비교하면 ideology block divergence와 극화 신호 차이를 가장 선명하게 확인할 수 있습니다."
+        )
+    if objective == "fracture":
+        return (
+            f"`{target_id}`와 `{base_id}`를 비교하면 cross-zone fracture와 sub-coalition split이 어디서 벌어졌는지 직접 추적하기 좋습니다."
+        )
+    return (
+        f"`{target_id}`와 `{base_id}`를 비교하면 split risk, block divergence, cross-zone fracture의 종합 차이를 가장 넓게 해석할 수 있습니다."
     )
 
 

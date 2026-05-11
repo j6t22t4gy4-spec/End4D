@@ -26,6 +26,7 @@ import {
   installRuntimeDataPack,
   listSnapshotTimes,
   pinRuntimeDataPack,
+  rollbackRuntimeDataPack,
   getSnapshotAtT,
   sampleCellsForVisualization,
   syncDataPacks,
@@ -761,6 +762,54 @@ export default function GodView({
                           Install / Refresh
                         </button>
                       </div>
+                      {Array.isArray(selectedPack.history) && selectedPack.history.length ? (
+                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Lifecycle History
+                          </p>
+                          {selectedPack.history
+                            .slice()
+                            .reverse()
+                            .slice(0, 6)
+                            .map((item, index) => {
+                              const historyIndex = selectedPack.history
+                                ? selectedPack.history.length - 1 - index
+                                : index;
+                              return (
+                                <div key={`${historyIndex}-${String(item.at ?? "at")}`} className="session-thread-card">
+                                  <div className="session-thread-card__header">
+                                    <p className="session-thread-card__title">{String(item.action ?? "event")}</p>
+                                    <span className="session-thread-card__meta">{String(item.at ?? "")}</span>
+                                  </div>
+                                  <p className="session-thread-card__prompt">
+                                    {String((item.detail as Record<string, unknown> | undefined)?.version ?? (item.detail as Record<string, unknown> | undefined)?.restored_version ?? "")}
+                                  </p>
+                                  <div className="session-thread-card__actions">
+                                    <button
+                                      type="button"
+                                      className="app-button app-button--ghost"
+                                      onClick={async () => {
+                                        if (!selectedPack) return;
+                                        setPackActionStatus("rolling back pack…");
+                                        try {
+                                          await rollbackRuntimeDataPack(selectedPack.pack_id, historyIndex);
+                                          setRuntimeStatus(await getLocalRuntimeStatus());
+                                          setPackActionStatus("rollback complete");
+                                        } catch (reason) {
+                                          setPackActionStatus(
+                                            reason instanceof Error ? reason.message : "rollback failed"
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      Rollback
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : null}
                       {packActionStatus ? <p className="text-xs text-slate-500">{packActionStatus}</p> : null}
                     </div>
                   ) : null}
