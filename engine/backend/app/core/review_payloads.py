@@ -9,6 +9,23 @@ import numpy as np
 from app.models.cell import Cell
 from app.models.world import Snapshot
 
+MAX_REVIEW_GROUPS = 10
+MAX_REVIEW_ZONES = 10
+MAX_REVIEW_AGENTS = 12
+MAX_REVIEW_EVENTS = 8
+MAX_REVIEW_HIGHLIGHTS = 6
+MAX_REVIEW_ANNOTATIONS = 8
+MAX_REVIEW_GRAPH_EDGES = 18
+
+
+def _entry_world_id(entry: dict[str, Any]) -> str:
+    world = entry.get("world")
+    if world is None:
+        return ""
+    if isinstance(world, dict):
+        return str(world.get("world_id") or "")
+    return str(getattr(world, "world_id", "") or "")
+
 
 def build_cached_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     store = entry["snapshot_store"]
@@ -24,6 +41,22 @@ def build_cached_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         return dict(cache["payload"])
     payload = build_world_review_payload(entry)
     entry["_review_payload_cache"] = {"key": key, "payload": payload}
+    return payload
+
+
+def build_cached_session_review_payload(
+    session: dict[str, Any],
+    world_entries: list[dict[str, Any]],
+    *,
+    objective: str = "balanced",
+) -> dict[str, Any]:
+    world_ids = tuple(_entry_world_id(entry) for entry in world_entries if entry is not None)
+    key = (world_ids, objective, len(world_ids))
+    cache = dict(session.get("_session_review_payload_cache") or {})
+    if cache.get("key") == key and isinstance(cache.get("payload"), dict):
+        return dict(cache["payload"])
+    payload = build_session_review_payload(session, world_entries, objective=objective)
+    session["_session_review_payload_cache"] = {"key": key, "payload": payload}
     return payload
 
 
@@ -49,7 +82,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     )
     zone_z_drift = _zone_z_drift(first, latest)
     notable_agents = _notable_agents(first, latest)
-    key_events = [_event_summary(event) for event in list(world.nutrients or [])[-8:]]
+    key_events = [_event_summary(event) for event in list(world.nutrients or [])[-MAX_REVIEW_EVENTS:]]
     summary_stats = {
         "initial_cell_count": len(first.cells),
         "final_cell_count": len(latest.cells),
@@ -110,8 +143,10 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             "active": dict(entry.get("coalition_state") or {}),
             "history_tail": [dict(item) for item in list(entry.get("coalition_history") or [])[-8:]],
         },
-        "highlights": highlights,
-        "annotation_candidates": build_timeline_annotation_candidates(timeline_points, key_events=key_events),
+        "highlights": highlights[:MAX_REVIEW_HIGHLIGHTS],
+        "annotation_candidates": build_timeline_annotation_candidates(timeline_points, key_events=key_events)[
+            :MAX_REVIEW_ANNOTATIONS
+        ],
         "legacy_metrics": summary_stats,
     }
 
@@ -641,7 +676,7 @@ def _belief_drift_summary(
         "overall_split_risk": round(float(np.mean([g["sub_coalition_split_risk"] for g in groups])) if groups else 0.0, 3),
         "overall_block_divergence": round(float(np.mean([g["ideology_block_divergence"] for g in groups])) if groups else 0.0, 3),
         "overall_cross_zone_fracture": round(float(np.mean([g["cross_zone_group_fracture"] for g in groups])) if groups else 0.0, 3),
-        "groups": groups[:8],
+        "groups": groups[:MAX_REVIEW_GROUPS],
     }
 
 
@@ -663,7 +698,7 @@ def _zone_z_drift(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
             }
         )
     rows.sort(key=lambda item: abs(float(item["avg_z_delta"])), reverse=True)
-    return rows[:8]
+    return rows[:MAX_REVIEW_ZONES]
 
 
 def _zone_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
@@ -714,7 +749,7 @@ def _notable_agents(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
             }
         )
     movers.sort(key=lambda item: float(item["belief_shift_score"]), reverse=True)
-    return movers[:8]
+    return movers[:MAX_REVIEW_AGENTS]
 
 
 def _policy_impact_summary(
@@ -800,7 +835,7 @@ def _build_grounding(
                 "world_id": world_id,
             }
             for idx, item in enumerate(key_events[:5], start=1)
-        ],
+        ][:MAX_REVIEW_EVENTS],
         "groups": [
             {
                 "anchor_id": f"group:{world_id}:{str(item.get('group_id') or '')}",
@@ -814,7 +849,7 @@ def _build_grounding(
                 "coalition_signal": str(item.get("coalition_signal") or ""),
                 "world_id": world_id,
             }
-            for item in groups[:5]
+            for item in groups[: min(5, MAX_REVIEW_GROUPS)]
         ],
         "zones": [
             {
@@ -826,7 +861,7 @@ def _build_grounding(
                 "cell_count_after": int(item.get("cell_count_after", 0)),
                 "world_id": world_id,
             }
-            for item in zone_z_drift[:5]
+            for item in zone_z_drift[: min(5, MAX_REVIEW_ZONES)]
         ],
         "agents": [
             {
@@ -839,7 +874,7 @@ def _build_grounding(
                 "z_delta": float(item.get("z_delta", 0.0)),
                 "world_id": world_id,
             }
-            for item in notable_agents[:5]
+            for item in notable_agents[: min(5, MAX_REVIEW_AGENTS)]
         ],
     }
 
@@ -878,7 +913,7 @@ def _build_belief_graph(belief_drift: dict[str, Any]) -> dict[str, Any]:
                     "relationship": "aligned" if str(left.get("stance_after")) == str(right.get("stance_after")) else "contested",
                 }
             )
-    return {"nodes": nodes, "edges": edges[:16]}
+    return {"nodes": nodes[:MAX_REVIEW_GROUPS], "edges": edges[:MAX_REVIEW_GRAPH_EDGES]}
 
 
 def _clip01(value: float) -> float:

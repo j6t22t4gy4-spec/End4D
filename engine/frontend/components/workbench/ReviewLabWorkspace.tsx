@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
@@ -67,6 +67,9 @@ export function ReviewLabWorkspace({
   const [interviewLoading, setInterviewLoading] = useState(false);
   const [interviewError, setInterviewError] = useState<string | null>(null);
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState<string>("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [zoneFilter, setZoneFilter] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("all");
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -160,10 +163,51 @@ export function ReviewLabWorkspace({
       Array.isArray(data?.top_z_movers)
         ? (data?.top_z_movers as Array<Record<string, unknown>>).filter(
             (item) => String(item.cell_id ?? "").trim().length > 0
-          )
+        )
         : [],
     [data]
   );
+  const deferredCandidates = useDeferredValue(interviewCandidates);
+  const roleOptions = useMemo(
+    () => uniqueSorted(deferredCandidates.map((item) => String(item.role_label ?? "agent"))),
+    [deferredCandidates]
+  );
+  const zoneOptions = useMemo(
+    () => uniqueSorted(deferredCandidates.map((item) => String(item.zone_label ?? "zone"))),
+    [deferredCandidates]
+  );
+  const countryOptions = useMemo(
+    () => uniqueSorted(deferredCandidates.map((item) => String(item.persona_country ?? ""))),
+    [deferredCandidates]
+  );
+  const filteredInterviewCandidates = useMemo(
+    () =>
+      deferredCandidates.filter((item) => {
+        const role = String(item.role_label ?? "agent");
+        const zone = String(item.zone_label ?? "zone");
+        const country = String(item.persona_country ?? "");
+        return (
+          (roleFilter === "all" || role === roleFilter) &&
+          (zoneFilter === "all" || zone === zoneFilter) &&
+          (countryFilter === "all" || country === countryFilter)
+        );
+      }),
+    [countryFilter, deferredCandidates, roleFilter, zoneFilter]
+  );
+  const batchInterviewSummary = useMemo(() => {
+    if (!filteredInterviewCandidates.length) {
+      return null;
+    }
+    const scores = filteredInterviewCandidates.map((item) => Number(item.belief_shift_score ?? 0));
+    const zDeltas = filteredInterviewCandidates.map((item) => Math.abs(Number(item.z_delta ?? 0)));
+    const worldview = filteredInterviewCandidates.map((item) => Number(item.worldview_shift ?? 0));
+    return {
+      count: filteredInterviewCandidates.length,
+      avgShift: average(scores),
+      avgZDelta: average(zDeltas),
+      avgWorldview: average(worldview),
+    };
+  }, [filteredInterviewCandidates]);
   const selectedGraphNode =
     graphNodes.find((node) => String(node.id ?? "") === selectedGraphNodeId) ?? graphNodes[0] ?? null;
   const filteredGraphEdges = selectedGraphNode
@@ -296,14 +340,17 @@ export function ReviewLabWorkspace({
   }, [graphNodes, selectedGraphNodeId]);
 
   useEffect(() => {
-    if (!interviewCandidates.length) {
+    if (!filteredInterviewCandidates.length) {
       setInterviewCellId("");
       return;
     }
-    if (!interviewCellId || !interviewCandidates.some((item) => String(item.cell_id ?? "") === interviewCellId)) {
-      setInterviewCellId(String(interviewCandidates[0]?.cell_id ?? ""));
+    if (
+      !interviewCellId ||
+      !filteredInterviewCandidates.some((item) => String(item.cell_id ?? "") === interviewCellId)
+    ) {
+      setInterviewCellId(String(filteredInterviewCandidates[0]?.cell_id ?? ""));
     }
-  }, [interviewCandidates, interviewCellId]);
+  }, [filteredInterviewCandidates, interviewCellId]);
 
   if (!worldId) {
     return (
@@ -511,10 +558,10 @@ export function ReviewLabWorkspace({
             className="app-input"
             value={interviewCellId}
             onChange={(event) => setInterviewCellId(event.target.value)}
-            disabled={!interviewCandidates.length}
+            disabled={!filteredInterviewCandidates.length}
           >
             <option value="">Select agent/persona</option>
-            {interviewCandidates.map((item) => (
+            {filteredInterviewCandidates.map((item) => (
               <option key={String(item.cell_id ?? "")} value={String(item.cell_id ?? "")}>
                 {String(item.role_label ?? item.role_key ?? "agent")} · {String(item.zone_label ?? item.zone_id ?? "zone")}
               </option>
@@ -579,11 +626,49 @@ export function ReviewLabWorkspace({
             current world의 notable agent를 고른 뒤 baseline world와 1:1 인터뷰 비교를 실행할 수 있습니다.
           </p>
         )}
-        {interviewCandidates.length ? (
+        {deferredCandidates.length ? (
           <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Persona Interview Matrix</p>
+            <div className="grid gap-2 md:grid-cols-3">
+              <select className="app-input" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+                <option value="all">All roles</option>
+                {roleOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <select className="app-input" value={zoneFilter} onChange={(event) => setZoneFilter(event.target.value)}>
+                <option value="all">All zones</option>
+                {zoneOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="app-input"
+                value={countryFilter}
+                onChange={(event) => setCountryFilter(event.target.value)}
+              >
+                <option value="all">All countries</option>
+                {countryOptions.map((item) => (
+                  <option key={item || "unknown"} value={item}>
+                    {item || "unknown"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {batchInterviewSummary ? (
+              <div className="grid gap-2 md:grid-cols-4">
+                <MetricCard label="Filtered" value={String(batchInterviewSummary.count)} />
+                <MetricCard label="Avg Shift" value={batchInterviewSummary.avgShift.toFixed(2)} />
+                <MetricCard label="Avg zΔ" value={batchInterviewSummary.avgZDelta.toFixed(2)} />
+                <MetricCard label="Avg Worldview" value={batchInterviewSummary.avgWorldview.toFixed(2)} />
+              </div>
+            ) : null}
             <div className="grid gap-2">
-              {interviewCandidates.slice(0, 6).map((item, index) => (
+              {filteredInterviewCandidates.slice(0, 8).map((item, index) => (
                 <button
                   key={`${index}-${String(item.cell_id ?? "")}`}
                   type="button"
@@ -599,7 +684,7 @@ export function ReviewLabWorkspace({
                     </span>
                   </div>
                   <p className="session-thread-card__prompt">
-                    {String(item.zone_label ?? item.zone_id ?? "zone")} · zΔ {Number(item.z_delta ?? 0).toFixed(2)} · worldview {Number(item.worldview_shift ?? 0).toFixed(2)}
+                    {String(item.zone_label ?? item.zone_id ?? "zone")} · {String(item.persona_country ?? "n/a")} · zΔ {Number(item.z_delta ?? 0).toFixed(2)} · worldview {Number(item.worldview_shift ?? 0).toFixed(2)}
                   </p>
                 </button>
               ))}
@@ -1564,6 +1649,17 @@ export function ReviewLabWorkspace({
       </div>
     </div>
   );
+}
+
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values.filter((item) => item.trim().length > 0))).sort((left, right) =>
+    left.localeCompare(right)
+  );
+}
+
+function average(values: number[]) {
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function GroundingPanel({

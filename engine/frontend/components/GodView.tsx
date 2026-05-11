@@ -102,6 +102,7 @@ export default function GodView({
   const [installSourcePath, setInstallSourcePath] = useState("");
   const [pinVersion, setPinVersion] = useState("2026.05");
   const [packActionStatus, setPackActionStatus] = useState<string | null>(null);
+  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -131,6 +132,32 @@ export default function GodView({
     () => runtimeStatus?.packs.find((pack) => pack.pack_id === selectedPackId) ?? runtimeStatus?.packs[0] ?? null,
     [runtimeStatus, selectedPackId]
   );
+  const selectedHistoryEntry = useMemo(() => {
+    if (!selectedPack || selectedHistoryIndex == null || !Array.isArray(selectedPack.history)) return null;
+    return (selectedPack.history[selectedHistoryIndex] as Record<string, unknown> | undefined) ?? null;
+  }, [selectedHistoryIndex, selectedPack]);
+  const rollbackPreview = useMemo(() => {
+    const snapshot = (selectedHistoryEntry?.snapshot as Record<string, unknown> | undefined) ?? null;
+    if (!selectedPack || !snapshot) return [];
+    return [
+      ["version", String(selectedPack.version ?? ""), String(snapshot.version ?? "")],
+      ["dataset", String(selectedPack.dataset_id ?? ""), String(snapshot.dataset_id ?? "")],
+      ["path", String(selectedPack.relative_path ?? ""), String(snapshot.relative_path ?? "")],
+      ["pinned", String(selectedPack.pinned_version ?? selectedPack.pinned ?? ""), String(snapshot.pinned_version ?? snapshot.pinned ?? "")],
+      ["schema", String((selectedPack.verification as Record<string, unknown> | undefined)?.schema_health ?? ""), String((snapshot.verification as Record<string, unknown> | undefined)?.schema_health ?? "")],
+      ["ready", String((selectedPack.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? ""), String((snapshot.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "")],
+    ].filter(([, currentValue, previousValue]) => currentValue !== previousValue);
+  }, [selectedHistoryEntry, selectedPack]);
+  const verificationHistory = useMemo(
+    () =>
+      Array.isArray(selectedPack?.history)
+        ? selectedPack.history.filter((item) => {
+            const action = String((item as Record<string, unknown>).action ?? "");
+            return action === "verify" || action === "validate";
+          })
+        : [],
+    [selectedPack]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +184,10 @@ export default function GodView({
       cancelled = true;
     };
   }, [personaRefreshKey]);
+
+  useEffect(() => {
+    setSelectedHistoryIndex(null);
+  }, [selectedPackId]);
 
   useEffect(() => {
     if (!worldId) {
@@ -788,6 +819,13 @@ export default function GodView({
                                     <button
                                       type="button"
                                       className="app-button app-button--ghost"
+                                      onClick={() => setSelectedHistoryIndex(historyIndex)}
+                                    >
+                                      Preview
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="app-button app-button--ghost"
                                       onClick={async () => {
                                         if (!selectedPack) return;
                                         setPackActionStatus("rolling back pack…");
@@ -808,6 +846,50 @@ export default function GodView({
                                 </div>
                               );
                             })}
+                        </div>
+                      ) : null}
+                      {selectedHistoryEntry ? (
+                        <div className="grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+                            Rollback Preview
+                          </p>
+                          <p className="text-sm text-slate-600">
+                            selected history entry: {String(selectedHistoryEntry.action ?? "event")} · {String(selectedHistoryEntry.at ?? "")}
+                          </p>
+                          {rollbackPreview.length ? (
+                            <div className="grid gap-2">
+                              {rollbackPreview.map(([label, currentValue, previousValue]) => (
+                                <div key={label} className="session-thread-card">
+                                  <div className="session-thread-card__header">
+                                    <p className="session-thread-card__title">{label}</p>
+                                  </div>
+                                  <p className="session-thread-card__prompt">
+                                    current: {currentValue || "n/a"} {"->"} rollback: {previousValue || "n/a"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500">현재 상태와 달라지는 주요 필드가 없습니다.</p>
+                          )}
+                        </div>
+                      ) : null}
+                      {verificationHistory.length ? (
+                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                            Verification Timeline
+                          </p>
+                          {verificationHistory.slice().reverse().slice(0, 4).map((item, index) => (
+                            <div key={`${index}-${String((item as Record<string, unknown>).at ?? "")}`} className="session-thread-card">
+                              <div className="session-thread-card__header">
+                                <p className="session-thread-card__title">{String((item as Record<string, unknown>).action ?? "verify")}</p>
+                                <span className="session-thread-card__meta">{String((item as Record<string, unknown>).at ?? "")}</span>
+                              </div>
+                              <p className="session-thread-card__prompt">
+                                schema {String(((item as Record<string, unknown>).detail as Record<string, unknown> | undefined)?.schema_health ?? "n/a")} · ready {String(((item as Record<string, unknown>).detail as Record<string, unknown> | undefined)?.ready_for_genesis ?? "n/a")}
+                              </p>
+                            </div>
+                          ))}
                         </div>
                       ) : null}
                       {packActionStatus ? <p className="text-xs text-slate-500">{packActionStatus}</p> : null}

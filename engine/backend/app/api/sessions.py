@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.core.review_payloads import build_session_review_payload
+from app.core.review_payloads import build_cached_session_review_payload
 from app.core.session_store import session_store
 from app.core.store import world_store
 from app.llm.facade import llm_facade
@@ -136,7 +136,11 @@ def get_session_review(
         raise HTTPException(status_code=404, detail="Session not found")
     world_entries = [world_store.get(wid) for wid in list(session.get("world_ids") or [])]
     try:
-        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None], objective=objective)
+        payload = build_cached_session_review_payload(
+            session,
+            [entry for entry in world_entries if entry is not None],
+            objective=objective,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     summary = llm_facade.summarize_session_review(payload)
@@ -178,7 +182,10 @@ def post_session_review_query(session_id: str, body: SessionReviewQueryRequest):
         raise HTTPException(status_code=404, detail="Session not found")
     world_entries = [world_store.get(wid) for wid in list(session.get("world_ids") or [])]
     try:
-        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None])
+        payload = build_cached_session_review_payload(
+            session,
+            [entry for entry in world_entries if entry is not None],
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     query = llm_facade.query_session_review(payload, question=body.question)
