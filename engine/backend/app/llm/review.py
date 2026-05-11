@@ -15,6 +15,8 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
             ("world_meta", _compact(payload.get("world_meta") or {})),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("group_analysis", _compact(payload.get("group_analysis") or {})),
+            ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
             ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
             ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
@@ -62,6 +64,8 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("question", question),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("group_analysis", _compact(payload.get("group_analysis") or {})),
+            ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
             ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=5)),
@@ -190,6 +194,8 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     top_group = dict((belief_drift.get("groups") or [{}])[0] or {})
     key_events = list(payload.get("key_events") or [])
     notable_agents = list(payload.get("notable_agents") or [])
+    emergent = dict(payload.get("emergent_dynamics") or {})
+    group_analysis = dict(payload.get("group_analysis") or {})
 
     headline = (
         f"{summary_stats.get('outcome', 'stable')} trajectory with "
@@ -219,10 +225,18 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         causal_analysis.append(
             f"{mover.get('role_label', 'agent')}에서 worldview/z 변화가 크게 나타나 미시적 전환 신호가 확인됩니다."
         )
+    if emergent:
+        causal_analysis.append(
+            f"장기 emergent 신호는 revolution risk={emergent.get('revolution_risk', 'low')}이며 "
+            f"split/block/fracture={float(emergent.get('split_risk', 0.0)):.2f}/"
+            f"{float(emergent.get('block_divergence', 0.0)):.2f}/"
+            f"{float(emergent.get('cross_zone_fracture', 0.0)):.2f}입니다."
+        )
 
     decision_implications = [
         "정책 이벤트의 대상 role과 zone이 실제로 어떤 신념 이동을 만들었는지 비교 실험이 필요합니다.",
         "contest 신호가 있는 집단은 후속 intervention에서 불안정성이 커질 수 있습니다.",
+        "fracture와 split risk가 큰 집단/지역은 별도 정책 주입 후 재실행이 필요합니다.",
     ]
 
     watch_items = list(payload.get("highlights") or [])[:4]
@@ -244,8 +258,10 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             "causal_analysis.0": _citation_ids(payload, "events", limit=1),
             "causal_analysis.1": _citation_ids(payload, "groups", limit=1),
             "causal_analysis.2": _citation_ids(payload, "agents", limit=1),
+            "causal_analysis.3": _citation_ids(payload, "groups", limit=1),
             "decision_implications.0": _citation_ids(payload, "events", limit=1),
             "decision_implications.1": _citation_ids(payload, "groups", limit=1),
+            "decision_implications.2": _citation_ids(payload, "zones", limit=1),
         },
     }
 

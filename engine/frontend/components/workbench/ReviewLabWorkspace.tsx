@@ -230,6 +230,14 @@ export function ReviewLabWorkspace({
           item.group_id != null && String(item.group_id) === String(selectedGraphNode.group_id ?? selectedGraphNode.id ?? "")
       ) ?? null
     : null;
+  const emergentDynamics = useMemo(
+    () => (data?.emergent_dynamics ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const groupAnalysis = useMemo(
+    () => (data?.group_analysis ?? {}) as Record<string, unknown>,
+    [data]
+  );
 
   useEffect(() => {
     if (!worldId) {
@@ -552,6 +560,80 @@ export function ReviewLabWorkspace({
           <p className="text-sm text-slate-500">
             질문을 입력하면 review payload를 기반으로 LLM 또는 heuristic analyst가 답변합니다.
           </p>
+        )}
+      </AppPanel>
+
+      <AppPanel
+        title="Group Analysis"
+        subtitle="Role, fracture, and emergent dynamics at the collective level"
+        bodyClassName="space-y-3"
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricCard label="Split Risk" value={String(emergentDynamics.split_risk ?? "0")} />
+          <MetricCard label="Block Divergence" value={String(emergentDynamics.block_divergence ?? "0")} />
+          <MetricCard label="Revolution Risk" value={String(emergentDynamics.revolution_risk ?? "low")} />
+        </div>
+        <div className="grid gap-3 xl:grid-cols-3">
+          <div className="session-thread-card">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contested Groups</p>
+            <div className="mt-2 grid gap-2">
+              {((groupAnalysis.contested_groups as Array<Record<string, unknown>> | undefined) ?? []).map((item) => (
+                <p key={String(item.group_id ?? "group")} className="inspector-body">
+                  {String(item.role_label ?? "group")} · tension {Number(item.tension_after ?? 0).toFixed(2)} · polarization {Number(item.polarization_after ?? 0).toFixed(2)}
+                </p>
+              ))}
+            </div>
+          </div>
+          <div className="session-thread-card">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Fracture Groups</p>
+            <div className="mt-2 grid gap-2">
+              {((groupAnalysis.fracture_groups as Array<Record<string, unknown>> | undefined) ?? []).map((item) => (
+                <p key={String(item.group_id ?? "group")} className="inspector-body">
+                  {String(item.role_label ?? "group")} · split {Number(item.split_risk ?? 0).toFixed(2)} · fracture {Number(item.cross_zone_fracture ?? 0).toFixed(2)}
+                </p>
+              ))}
+            </div>
+          </div>
+          <div className="session-thread-card">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ideology Blocks</p>
+            <div className="mt-2 grid gap-2">
+              {((emergentDynamics.ideology_blocks as Array<Record<string, unknown>> | undefined) ?? []).map((item, index) => (
+                <p key={`${index}-${String(item.label ?? "block")}`} className="inspector-body">
+                  {String(item.label ?? "block")} · divergence {Number(item.divergence ?? 0).toFixed(2)} · {String(item.coalition_signal ?? "n/a")}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      </AppPanel>
+
+      <AppPanel
+        title="Next Actions"
+        subtitle="Take the review back into simulation"
+        bodyClassName="space-y-3"
+      >
+        {Array.isArray(data?.next_actions) && data.next_actions.length ? (
+          <div className="grid gap-2 md:grid-cols-3">
+            {data.next_actions.map((item, index) => (
+              <div key={`${index}-${String(item.label ?? "action")}`} className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">{String(item.label ?? "Action")}</p>
+                </div>
+                <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
+                <div className="session-thread-card__actions">
+                  <button
+                    type="button"
+                    className="app-button app-button--ghost"
+                    onClick={() => onOpenWorldAt(String(item.world_id ?? worldId), Number(item.t ?? 0) || null)}
+                  >
+                    Open in Simulation
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">리뷰 기반 후속 액션이 아직 생성되지 않았습니다.</p>
         )}
       </AppPanel>
 

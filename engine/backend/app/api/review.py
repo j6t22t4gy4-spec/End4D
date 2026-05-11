@@ -51,10 +51,13 @@ class ReviewSummaryResponse(BaseModel):
     annotation_mode: str
     metrics: Dict[str, Any] = Field(default_factory=dict)
     stance_groups: List[Dict[str, Any]] = Field(default_factory=list)
+    group_analysis: Dict[str, Any] = Field(default_factory=dict)
+    emergent_dynamics: Dict[str, Any] = Field(default_factory=dict)
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
     belief_graph: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    next_actions: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -139,6 +142,8 @@ def get_review_summary(world_id: str):
         annotation_mode=str(annotations["mode"]),
         metrics=dict(payload.get("summary_stats") or {}),
         stance_groups=[dict(item) for item in list((payload.get("belief_drift") or {}).get("groups") or [])],
+        group_analysis=dict(payload.get("group_analysis") or {}),
+        emergent_dynamics=dict(payload.get("emergent_dynamics") or {}),
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
         top_z_movers=[dict(item) for item in list(payload.get("notable_agents") or [])],
         policy_events=[dict(item) for item in list(payload.get("key_events") or [])],
@@ -146,6 +151,7 @@ def get_review_summary(world_id: str):
             "nodes": [dict(item) for item in list((payload.get("belief_graph") or {}).get("nodes") or [])],
             "edges": [dict(item) for item in list((payload.get("belief_graph") or {}).get("edges") or [])],
         },
+        next_actions=_build_next_actions(world_id, payload),
         grounding={
             key: [
                 ReviewGroundingItem(
@@ -496,3 +502,47 @@ def _citation_sections_from_ids(
         str(section): _citations_from_ids(payload, list(anchor_ids or []))
         for section, anchor_ids in citation_ids.items()
     }
+
+
+def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    actions: List[Dict[str, Any]] = []
+    annotations = list(payload.get("annotation_candidates") or [])
+    groups = list((payload.get("belief_drift") or {}).get("groups") or [])
+    zones = list(payload.get("zone_z_drift") or [])
+    if annotations:
+        top = dict(annotations[0] or {})
+        actions.append(
+            {
+                "kind": "jump",
+                "label": f"Inspect t={int(float(top.get('t', 0.0)))}",
+                "description": str(top.get("reason") or top.get("label") or ""),
+                "world_id": world_id,
+                "t": float(top.get("t", 0.0)),
+            }
+        )
+    if groups:
+        top_group = dict(groups[0] or {})
+        actions.append(
+            {
+                "kind": "group_followup",
+                "label": f"Probe {top_group.get('role_label', 'group')}",
+                "description": (
+                    f"cohesion {float(top_group.get('cohesion_delta', 0.0)):+.2f}, "
+                    f"tension {float(top_group.get('tension_delta', 0.0)):+.2f}"
+                ),
+                "world_id": world_id,
+                "group_id": str(top_group.get("group_id") or ""),
+            }
+        )
+    if zones:
+        top_zone = dict(zones[0] or {})
+        actions.append(
+            {
+                "kind": "zone_followup",
+                "label": f"Inspect {top_zone.get('zone_label', 'zone')}",
+                "description": f"avg z delta {float(top_zone.get('avg_z_delta', 0.0)):+.2f}",
+                "world_id": world_id,
+                "zone_id": str(top_zone.get("zone_id") or ""),
+            }
+        )
+    return actions[:3]

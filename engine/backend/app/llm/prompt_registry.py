@@ -154,12 +154,12 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v3",
+        version="review-summary-v4",
         output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
             "Act as an analyst reviewing a completed long-horizon societal simulation. "
-            "Return compact JSON only, focusing on major events, belief shifts, causes, and decision implications. "
+            "Return compact JSON only, focusing on major events, group-level belief shifts, emergent ideological dynamics, causes, and decision implications. "
             "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0."
         ),
         expected_keys=(

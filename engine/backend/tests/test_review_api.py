@@ -30,6 +30,9 @@ def test_review_summary_returns_summary_and_annotations():
     assert "grounding" in payload
     assert "citations" in payload
     assert "review_meta" in payload
+    assert "group_analysis" in payload
+    assert "emergent_dynamics" in payload
+    assert "next_actions" in payload
 
 
 def test_review_diff_returns_comparison():

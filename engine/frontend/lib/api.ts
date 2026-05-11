@@ -311,10 +311,13 @@ export type ReviewSummaryResponse = {
   annotation_mode: string;
   metrics: Record<string, unknown>;
   stance_groups: Array<Record<string, unknown>>;
+  group_analysis: Record<string, unknown>;
+  emergent_dynamics: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
   belief_graph: Record<string, Array<Record<string, unknown>>>;
+  next_actions: Array<Record<string, unknown>>;
   grounding: Record<string, ReviewGroundingItem[]>;
   citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;

@@ -100,6 +100,12 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "outcome": _classify_outcome(timeline_points),
     }
     policy_impact = _policy_impact_summary(key_events, belief_drift["groups"], zone_z_drift)
+    group_analysis = _group_analysis_summary(belief_drift, zone_z_drift)
+    emergent_dynamics = _emergent_dynamics_summary(
+        timeline_points=timeline_points,
+        belief_drift=belief_drift,
+        key_events=key_events,
+    )
     highlights = _build_highlights(
         summary_stats=summary_stats,
         belief_drift=belief_drift,
@@ -127,6 +133,8 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         },
         "summary_stats": summary_stats,
         "belief_drift": belief_drift,
+        "group_analysis": group_analysis,
+        "emergent_dynamics": emergent_dynamics,
         "policy_impact": policy_impact,
         "key_events": key_events,
         "notable_agents": notable_agents,
@@ -811,6 +819,110 @@ def _build_highlights(
     if key_events:
         lines.append(f"{key_events[0]['name']} is the most recent policy/event intervention")
     return lines[:6]
+
+
+def _group_analysis_summary(
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+) -> dict[str, Any]:
+    groups = list(belief_drift.get("groups") or [])
+    contested = [item for item in groups if str(item.get("stance_after") or "") == "contested"]
+    cohesive = sorted(groups, key=lambda item: float(item.get("cohesion_after", 0.0)), reverse=True)[:3]
+    fracture = sorted(
+        groups,
+        key=lambda item: (
+            float(item.get("sub_coalition_split_risk", 0.0))
+            + float(item.get("cross_zone_group_fracture", 0.0))
+        ),
+        reverse=True,
+    )[:4]
+    return {
+        "contested_groups": [
+            {
+                "group_id": str(item.get("group_id") or ""),
+                "role_label": str(item.get("role_label") or "group"),
+                "tension_after": float(item.get("tension_after", 0.0)),
+                "polarization_after": float(item.get("polarization_after", 0.0)),
+            }
+            for item in contested[:4]
+        ],
+        "cohesive_groups": [
+            {
+                "group_id": str(item.get("group_id") or ""),
+                "role_label": str(item.get("role_label") or "group"),
+                "cohesion_after": float(item.get("cohesion_after", 0.0)),
+                "coalition_signal": str(item.get("coalition_signal") or ""),
+            }
+            for item in cohesive
+        ],
+        "fracture_groups": [
+            {
+                "group_id": str(item.get("group_id") or ""),
+                "role_label": str(item.get("role_label") or "group"),
+                "split_risk": float(item.get("sub_coalition_split_risk", 0.0)),
+                "cross_zone_fracture": float(item.get("cross_zone_group_fracture", 0.0)),
+                "block_divergence": float(item.get("ideology_block_divergence", 0.0)),
+            }
+            for item in fracture
+        ],
+        "zone_hotspots": [
+            {
+                "zone_id": str(item.get("zone_id") or ""),
+                "zone_label": str(item.get("zone_label") or "zone"),
+                "avg_z_delta": float(item.get("avg_z_delta", 0.0)),
+                "cell_count_after": int(item.get("cell_count_after", 0)),
+            }
+            for item in zone_z_drift[:4]
+        ],
+    }
+
+
+def _emergent_dynamics_summary(
+    *,
+    timeline_points: list[dict[str, Any]],
+    belief_drift: dict[str, Any],
+    key_events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    groups = list(belief_drift.get("groups") or [])
+    avg_split = float(belief_drift.get("overall_split_risk", 0.0))
+    avg_divergence = float(belief_drift.get("overall_block_divergence", 0.0))
+    avg_fracture = float(belief_drift.get("overall_cross_zone_fracture", 0.0))
+    ideology_blocks = [
+        {
+            "label": str(item.get("role_label") or "group"),
+            "divergence": float(item.get("ideology_block_divergence", 0.0)),
+            "coalition_signal": str(item.get("coalition_signal") or ""),
+        }
+        for item in sorted(
+            groups,
+            key=lambda group: float(group.get("ideology_block_divergence", 0.0)),
+            reverse=True,
+        )[:4]
+    ]
+    timeline_tail = timeline_points[-5:]
+    worldview_curve = [
+        {
+            "t": float(item.get("t", 0.0)),
+            "cell_count": int(item.get("cell_count", 0)),
+            "avg_z": float(item.get("avg_z", 0.0)),
+        }
+        for item in timeline_tail
+    ]
+    if avg_split >= 0.65 or avg_fracture >= 0.65:
+        revolution_risk = "high"
+    elif avg_divergence >= 0.45 or avg_split >= 0.45:
+        revolution_risk = "medium"
+    else:
+        revolution_risk = "low"
+    return {
+        "revolution_risk": revolution_risk,
+        "split_risk": round(avg_split, 3),
+        "block_divergence": round(avg_divergence, 3),
+        "cross_zone_fracture": round(avg_fracture, 3),
+        "ideology_blocks": ideology_blocks,
+        "worldview_curve": worldview_curve,
+        "recent_events": [str(item.get("name") or item.get("event_type") or "event") for item in key_events[:4]],
+    }
 
 
 def _build_grounding(
