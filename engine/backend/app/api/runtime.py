@@ -354,25 +354,36 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
 
 @router.post("/llm-config/test", response_model=RuntimeLlmTestResponse)
 def test_runtime_llm_config():
-    result = generate_reasoning_batch(
-        ["Respond in one short sentence confirming that runtime cognition is connected."],
-        task="thought",
-    )
-    texts = list(result.get("texts") or [])
-    meta = dict(result.get("meta") or {})
-    preview = str(texts[0] if texts else "").strip()
-    ok = bool(preview) and not (
-        bool(meta.get("used_fallback")) and str(meta.get("fallback_reason") or "") == "llm_disabled"
-    )
-    return RuntimeLlmTestResponse(
-        ok=ok,
-        mode="llm" if bool(meta.get("enabled")) and not bool(meta.get("used_fallback")) else "fallback",
-        provider=str(meta.get("provider") or "stub"),
-        model=str(meta.get("model") or "stub"),
-        used_fallback=bool(meta.get("used_fallback")),
-        fallback_reason=str(meta.get("fallback_reason") or ""),
-        preview=preview[:240],
-    )
+    try:
+        result = generate_reasoning_batch(
+            ["Respond in one short sentence confirming that runtime cognition is connected."],
+            task="thought",
+        )
+        texts = list(result.get("texts") or [])
+        meta = dict(result.get("meta") or {})
+        preview = str(texts[0] if texts else "").strip()
+        ok = bool(preview) and not (
+            bool(meta.get("used_fallback")) and str(meta.get("fallback_reason") or "") == "llm_disabled"
+        )
+        return RuntimeLlmTestResponse(
+            ok=ok,
+            mode="llm" if bool(meta.get("enabled")) and not bool(meta.get("used_fallback")) else "fallback",
+            provider=str(meta.get("provider") or "stub"),
+            model=str(meta.get("model") or "stub"),
+            used_fallback=bool(meta.get("used_fallback")),
+            fallback_reason=str(meta.get("fallback_reason") or ""),
+            preview=preview[:240],
+        )
+    except Exception as exc:
+        return RuntimeLlmTestResponse(
+            ok=False,
+            mode="error",
+            provider="unknown",
+            model="unknown",
+            used_fallback=False,
+            fallback_reason=str(exc),
+            preview="",
+        )
 
 
 @router.post("/data-packs/sync", response_model=DataPackSyncResponse)

@@ -81,11 +81,9 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
             generated = _ollama_chat_batch(active_items, task=task)
             return {"texts": generated + skipped_items, "meta": meta}
     except Exception as exc:
-        if get_llm_strict_mode() == "fail-hard":
-            raise
         meta["used_fallback"] = True
         meta["fallback_reason"] = f"provider_error:{type(exc).__name__}"
-        return {"texts": items, "meta": meta}
+        raise RuntimeError(meta["fallback_reason"]) from exc
     meta["used_fallback"] = True
     meta["fallback_reason"] = "provider_stub"
     return {"texts": items, "meta": meta}

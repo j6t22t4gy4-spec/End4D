@@ -47,6 +47,7 @@ textarea {
   display: flex;
   min-height: 100dvh;
   padding: 12px;
+  justify-content: center;
 }
 
 .app-shell__frame {
@@ -54,13 +55,14 @@ textarea {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
-  width: 100%;
+  width: min(100%, 1880px);
   min-height: calc(100dvh - 24px);
+  margin: 0 auto;
 }
 
 .app-shell__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
+  grid-template-columns: minmax(0, 1.55fr) clamp(320px, 22vw, 400px);
   gap: 10px;
   min-height: 0;
   align-items: start;
@@ -68,7 +70,7 @@ textarea {
 
 .app-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(420px, 1.2fr) minmax(320px, 0.9fr);
   align-items: center;
   gap: 12px;
   min-height: 62px;
@@ -133,6 +135,56 @@ textarea {
   gap: 6px;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.app-toolbar__meta--split {
+  align-items: center;
+  gap: 10px;
+}
+
+.app-toolbar__status-row {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.app-toolbar__language {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.app-toolbar__language-switch {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.8);
+}
+
+.app-toolbar__language-button {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 5px 8px;
+  border-radius: 999px;
+}
+
+.app-toolbar__language-button.is-active {
+  background: white;
+  color: #0f172a;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .app-status-pill {
@@ -637,22 +689,22 @@ textarea {
 }
 
 .godview-layout--balanced {
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: clamp(260px, 18vw, 340px) minmax(0, 1fr);
 }
 
 .godview-layout--focus {
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: clamp(220px, 16vw, 300px) minmax(0, 1fr);
 }
 
 .godview-layout--wide-left {
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: clamp(320px, 22vw, 420px) minmax(0, 1fr);
 }
 
 .godview-main {
   display: grid;
   min-height: 0;
   gap: 10px;
-  grid-template-columns: minmax(0, 1.55fr) minmax(220px, 0.45fr) minmax(220px, 0.48fr);
+  grid-template-columns: minmax(0, 1.8fr) minmax(250px, 0.58fr) minmax(280px, 0.68fr);
 }
 
 .timeline-bookmarks {
@@ -821,6 +873,15 @@ textarea {
     overflow-x: auto;
   }
 
+  .app-toolbar__meta--split {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-toolbar__status-row {
+    overflow-x: auto;
+  }
+
   .simulation-map__header {
     flex-direction: column;
   }
@@ -837,5 +898,19 @@ textarea {
 
   .session-thread-card__actions {
     justify-content: flex-start;
+  }
+}
+
+@media (min-width: 1680px) {
+  .app-shell__frame {
+    width: min(100%, 1980px);
+  }
+
+  .app-shell__workspace {
+    grid-template-columns: minmax(0, 1.65fr) clamp(340px, 21vw, 430px);
+  }
+
+  .godview-main {
+    grid-template-columns: minmax(0, 1.95fr) minmax(280px, 0.62fr) minmax(320px, 0.72fr);
   }
 }

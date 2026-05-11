@@ -21,6 +21,7 @@ import { OverviewWorkspace } from "@/components/workbench/OverviewWorkspace";
 import { DataPacksWorkspace } from "@/components/workbench/DataPacksWorkspace";
 import { ReviewLabWorkspace } from "@/components/workbench/ReviewLabWorkspace";
 import { FocusedWorkspace } from "@/components/workbench/FocusedWorkspace";
+import { type UiLocale } from "@/lib/ui-language";
 
 const GodView = dynamic(() => import("@/components/GodView"), {
   ssr: false,
@@ -28,6 +29,7 @@ const GodView = dynamic(() => import("@/components/GodView"), {
 });
 
 export default function HomeWithCanvas() {
+  const [locale, setLocale] = useState<UiLocale>("ko");
   const [runtime, setRuntime] = useState<LocalRuntimeStatus | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -57,6 +59,19 @@ export default function HomeWithCanvas() {
       .catch((error: Error) => {
         setRuntimeError(error.message);
       });
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("end4d-ui-locale") : null;
+    if (saved === "ko" || saved === "en") {
+      setLocale(saved);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("end4d-ui-locale", locale);
+    }
+  }, [locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,6 +122,8 @@ export default function HomeWithCanvas() {
     <main className="app-shell">
       <div className="app-shell__frame">
         <AppToolbar
+          locale={locale}
+          onChangeLocale={setLocale}
           runtimeProfile={runtime?.runtime_profile ?? "Booting"}
           installedPackCount={runtime?.installed_pack_count ?? 0}
           countriesLabel={countriesLabel}
@@ -205,6 +222,7 @@ export default function HomeWithCanvas() {
 
           <aside className="hidden min-h-0 overflow-y-auto xl:block">
             <RuntimeDock
+              locale={locale}
               runtime={runtime}
               runtimeError={runtimeError}
               apiBase={getApiBase()}
