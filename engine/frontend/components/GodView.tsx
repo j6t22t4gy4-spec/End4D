@@ -9,6 +9,15 @@ import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline
 import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
+  SimulationInspectorPanel,
+  type SelectedBand,
+  type SelectedZone,
+} from "@/components/SimulationInspectorPanel";
+import {
+  TimelineBookmarks,
+  type TimelineMarker,
+} from "@/components/TimelineBookmarks";
+import {
   createWorld,
   getWorld,
   listSnapshotTimes,
@@ -60,6 +69,12 @@ export default function GodView({
   const [zMode, setZMode] = useState("hybrid");
   const [zWeight, setZWeight] = useState("0.08");
   const [zScale, setZScale] = useState("12.0");
+  const [selectedAgent, setSelectedAgent] = useState<CellSnapshot | null>(null);
+  const [selectedZone, setSelectedZone] = useState<SelectedZone | null>(null);
+  const [selectedBand, setSelectedBand] = useState<SelectedBand | null>(null);
+  const [bookmarks, setBookmarks] = useState<TimelineMarker[]>([]);
+  const [eventMarkers, setEventMarkers] = useState<TimelineMarker[]>([]);
+  const [layoutMode, setLayoutMode] = useState<"balanced" | "focus" | "wide-left">("balanced");
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -132,6 +147,11 @@ export default function GodView({
       setCurrentT(0);
       setVisibleCells([]);
       setVisualStats(null);
+      setSelectedAgent(null);
+      setSelectedZone(null);
+      setSelectedBand(null);
+      setBookmarks([]);
+      setEventMarkers([]);
       setPersonaRefreshKey((k) => k + 1);
       bumpChartRefresh();
     } catch (e) {
@@ -231,6 +251,45 @@ export default function GodView({
   }, [availableKey, currentT, worldId]);
 
   const sliderDisabled = availableT.length === 0 || snapshotLoading;
+  const timelineMarkers = useMemo(() => {
+    const frameMarkers = availableT.slice(-12).map((value) => ({
+      key: `frame-${value}`,
+      t: value,
+      label: `Saved frame ${value}`,
+      kind: "frame" as const,
+    }));
+    const dedup = new Map<string, TimelineMarker>();
+    [...frameMarkers, ...eventMarkers, ...bookmarks].forEach((marker) => {
+      dedup.set(marker.key, marker);
+    });
+    return Array.from(dedup.values()).sort((a, b) => a.t - b.t);
+  }, [availableT, bookmarks, eventMarkers]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedAgent(null);
+    setSelectedZone(null);
+    setSelectedBand(null);
+  }, []);
+
+  const addBookmark = useCallback(() => {
+    const key = `bookmark-${currentT}`;
+    setBookmarks((prev) => {
+      if (prev.some((item) => item.key === key)) return prev;
+      return [
+        ...prev,
+        {
+          key,
+          t: currentT,
+          label: `Bookmark t=${currentT}`,
+          kind: "bookmark" as const,
+        },
+      ].sort((a, b) => a.t - b.t);
+    });
+  }, [currentT]);
+
+  const removeBookmark = useCallback((key: string) => {
+    setBookmarks((prev) => prev.filter((item) => item.key !== key));
+  }, []);
 
   useEffect(() => {
     if (!initialWorldId) return;
@@ -254,7 +313,15 @@ export default function GodView({
   }, [initialWorldId]);
 
   return (
-    <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
+    <div
+      className={`godview-layout ${
+        layoutMode === "focus"
+          ? "godview-layout--focus"
+          : layoutMode === "wide-left"
+            ? "godview-layout--wide-left"
+            : "godview-layout--balanced"
+      }`}
+    >
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
         <AppPanel
           title="Scenario Genesis"
@@ -404,14 +471,53 @@ export default function GodView({
           worldId={worldId}
           suggestedT={currentT}
           simRunning={isRunning}
-          onInjected={handleInjected}
+          onInjected={async ({ t, eventType }) => {
+            setEventMarkers((prev) => [
+              ...prev,
+              {
+                key: `inject-${t}-${eventType}-${prev.length}`,
+                t,
+                label: `${eventType} @ t=${t}`,
+                kind: "inject" as const,
+              },
+            ]);
+            await handleInjected();
+          }}
         />
       </div>
 
-      <div className="grid min-h-0 gap-4 xl:grid-rows-[minmax(0,1fr)_auto]">
+      <div className="grid min-h-0 gap-4 xl:grid-rows-[auto_minmax(0,1fr)_auto]">
+        <AppPanel
+          title="Workbench Layout"
+          subtitle="Selection and comparison-first workspace"
+          bodyClassName="flex flex-wrap gap-2"
+        >
+          <button
+            type="button"
+            className={`app-button ${layoutMode === "balanced" ? "app-button--primary" : "app-button--secondary"}`}
+            onClick={() => setLayoutMode("balanced")}
+          >
+            Balanced
+          </button>
+          <button
+            type="button"
+            className={`app-button ${layoutMode === "focus" ? "app-button--primary" : "app-button--secondary"}`}
+            onClick={() => setLayoutMode("focus")}
+          >
+            Focus Viz
+          </button>
+          <button
+            type="button"
+            className={`app-button ${layoutMode === "wide-left" ? "app-button--primary" : "app-button--secondary"}`}
+            onClick={() => setLayoutMode("wide-left")}
+          >
+            Wide Controls
+          </button>
+        </AppPanel>
+
         <AppPanel
           title="Simulation View"
-          subtitle="Belief dynamics and agent field"
+          subtitle="Belief dynamics, selection, and map-driven inspection"
           className="min-h-0"
           bodyClassName="flex h-full min-h-0 flex-col gap-4"
           action={
@@ -428,12 +534,26 @@ export default function GodView({
             </div>
           )}
 
-          <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="godview-main">
+            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-0">
               <SimulationMap2D
                 cells={visibleCells}
                 totalCells={visualStats?.totalCells ?? visibleCells.length}
                 sampled={visualStats?.sampled ?? false}
+                selectedAgentId={selectedAgent?.cell_id ?? null}
+                selectedZoneId={selectedZone?.zoneId ?? null}
+                selectedBandKey={selectedBand?.key ?? null}
+                onSelectAgent={(cell) => {
+                  setSelectedAgent(cell);
+                  setSelectedZone(null);
+                }}
+                onSelectZone={(zone) => {
+                  setSelectedZone(zone);
+                  setSelectedAgent(null);
+                }}
+                onSelectBand={(band) => {
+                  setSelectedBand(band);
+                }}
               />
             </div>
 
@@ -451,6 +571,20 @@ export default function GodView({
                 <GenesisMeta lastGenesis={lastGenesis} />
               )}
             </div>
+
+            <SimulationInspectorPanel
+              selectedAgent={selectedAgent}
+              selectedZone={selectedZone}
+              selectedBand={selectedBand}
+              worldSummary={{
+                worldId,
+                currentT,
+                visibleCount: visibleCells.length,
+                totalCount: visualStats?.totalCells ?? visibleCells.length,
+                sampled: visualStats?.sampled ?? false,
+              }}
+              onClearSelection={clearSelection}
+            />
           </div>
         </AppPanel>
 
@@ -467,6 +601,16 @@ export default function GodView({
               step={1}
               onChange={setCurrentT}
               disabled={sliderDisabled}
+            />
+            <TimelineBookmarks
+              t={currentT}
+              tMin={tSliderMin}
+              tMax={Math.max(tSliderMin + 1, tSliderMax)}
+              markers={timelineMarkers}
+              bookmarks={bookmarks}
+              onJump={setCurrentT}
+              onAddBookmark={addBookmark}
+              onRemoveBookmark={removeBookmark}
             />
             <div className="flex items-center justify-between text-xs text-slate-500">
               <span>
@@ -553,7 +697,7 @@ function RunPanel({
       <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
         {isRunning ? (
           <>
-            실행 중
+            실행 중 · stream active
             {liveT != null ? ` · t ${liveT.toFixed(1)}` : ""}
             {liveCellCount != null ? ` · ${liveCellCount} cells` : ""}
           </>
@@ -569,7 +713,7 @@ function GenesisMeta({ lastGenesis }: { lastGenesis: CreateWorldResult }) {
   return (
     <AppPanel
       title="World Proposal"
-      subtitle="Initial simulation parameters"
+      subtitle="Initial simulation parameters and persona-aware genesis"
       bodyClassName="grid gap-3"
     >
       <MetricChip label="t_max" value={String(lastGenesis.t_max)} />
@@ -589,6 +733,12 @@ function GenesisMeta({ lastGenesis }: { lastGenesis: CreateWorldResult }) {
         label="Roles"
         value={lastGenesis.role_catalog.join(", ")}
       />
+      {lastGenesis.persona_distribution_summary ? (
+        <MetricChip
+          label="Persona seed"
+          value={`${Number(lastGenesis.persona_distribution_summary.persona_count ?? 0)} personas`}
+        />
+      ) : null}
       <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
         {lastGenesis.rationale}
       </p>

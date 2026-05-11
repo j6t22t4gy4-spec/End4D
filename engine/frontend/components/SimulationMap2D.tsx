@@ -6,11 +6,21 @@ import {
   emotionToColorAndScale,
   type CellSnapshot,
 } from "@/lib/api";
+import type {
+  SelectedBand,
+  SelectedZone,
+} from "@/components/SimulationInspectorPanel";
 
 type SimulationMap2DProps = {
   cells: CellSnapshot[];
   totalCells: number;
   sampled: boolean;
+  selectedAgentId?: string | null;
+  selectedZoneId?: string | null;
+  selectedBandKey?: string | null;
+  onSelectAgent?: (cell: CellSnapshot) => void;
+  onSelectZone?: (zone: SelectedZone) => void;
+  onSelectBand?: (band: SelectedBand) => void;
 };
 
 type ZoneBox = {
@@ -56,11 +66,18 @@ export default function SimulationMap2D({
   cells,
   totalCells,
   sampled,
+  selectedAgentId = null,
+  selectedZoneId = null,
+  selectedBandKey = null,
+  onSelectAgent,
+  onSelectZone,
+  onSelectBand,
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
   const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
   const activeBand =
     scene.elevationBands.find((band) => band.key === hoveredBandKey) ??
+    scene.elevationBands.find((band) => band.key === selectedBandKey) ??
     scene.elevationBands[scene.elevationBands.length - 1] ??
     null;
 
@@ -134,10 +151,26 @@ export default function SimulationMap2D({
                 style={{
                   fill: contourFill(scene.zSemantics, index, band.alpha),
                   stroke: contourStroke(scene.zSemantics, index),
-                  opacity: !activeBand || activeBand.key === band.key ? 1 : 0.58,
+                  opacity:
+                    !activeBand || activeBand.key === band.key || selectedBandKey === band.key
+                      ? 1
+                      : 0.58,
                 }}
                 onMouseEnter={() => setHoveredBandKey(band.key)}
                 onMouseLeave={() => setHoveredBandKey(null)}
+                onClick={() =>
+                  onSelectBand?.({
+                    key: band.key,
+                    label: band.label,
+                    lower: band.lower,
+                    upper: band.upper,
+                    agentCount: band.agentCount,
+                    avgEnergy: band.avgEnergy,
+                    avgZ: band.avgZ,
+                    dominantRole: band.dominantRole,
+                    modeLabel: scene.zSemantics.label,
+                  })
+                }
               >
                 <title>{band.label}</title>
               </path>
@@ -153,7 +186,17 @@ export default function SimulationMap2D({
                   rx="24"
                   fill={zoneBackground(index)}
                   stroke={zoneStroke(index)}
-                  strokeWidth="1.5"
+                  strokeWidth={selectedZoneId === zone.zoneId ? "3" : "1.5"}
+                  className="simulation-map__zone-rect"
+                  onClick={() =>
+                    onSelectZone?.({
+                      zoneId: zone.zoneId,
+                      label: zone.label,
+                      influence: zone.influence,
+                      friction: zone.friction,
+                      count: zone.count,
+                    })
+                  }
                 />
                 <text
                   x={zone.x0 + 14}
@@ -173,8 +216,10 @@ export default function SimulationMap2D({
                   r={node.r}
                   fill={node.fill}
                   fillOpacity="0.92"
-                  stroke="#ffffff"
-                  strokeWidth="1.5"
+                  stroke={selectedAgentId === node.id ? "#0f172a" : "#ffffff"}
+                  strokeWidth={selectedAgentId === node.id ? "2.5" : "1.5"}
+                  className="simulation-map__agent-node"
+                  onClick={() => onSelectAgent?.(node.cell)}
                 />
                 <title>{node.title}</title>
               </g>
@@ -291,6 +336,7 @@ function buildScene(cells: CellSnapshot[]) {
 
     return {
       id: cell.cell_id,
+      cell,
       cx,
       cy,
       r: 4 + scale * 5,

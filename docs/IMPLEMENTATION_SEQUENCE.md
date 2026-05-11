@@ -342,8 +342,9 @@ Phase 14: 네이티브 앱 / 기관 배포
 |------|------|--------|------|
 | 12.1 | 세션별 world comparison 화면 | baseline vs branch 비교 | 전문가 사용성 핵심 |
 | 12.2 | stance/cohesion diff report | before/after 변화 요약 | 정책·시장 비교 설명력 강화 |
-| 12.3 | snapshot lineage / fork graph | 복원·분기 이력 시각화 | 실험 추적성 |
-| 12.4 | exportable report payload | JSON/PDF/slide용 결과 구조 | 기관 보고 워크플로우 대응 |
+| 12.3 | selection-driven God View | 좌-중-우 레이아웃, 선택 상세 패널, 타임라인 마커/북마크 | 전문가 탐색 워크플로우 기반 |
+| 12.4 | snapshot lineage / fork graph | 복원·분기 이력 시각화 | 실험 추적성 |
+| 12.5 | exportable report payload | JSON/PDF/slide용 결과 구조 | 기관 보고 워크플로우 대응 |
 
 ---
 

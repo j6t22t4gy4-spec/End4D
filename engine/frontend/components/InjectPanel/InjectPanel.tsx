@@ -38,7 +38,7 @@ type InjectPanelProps = {
   suggestedT: number;
   /** 시뮬 실행 중이면 비활성 */
   simRunning?: boolean;
-  onInjected: () => Promise<void>;
+  onInjected: (info: { t: number; eventType: string }) => Promise<void>;
 };
 
 export function InjectPanel({
@@ -89,7 +89,7 @@ export function InjectPanel({
           (out.forwarded ? " 재계산됨" : " 종료") +
           ` · 세포 수 ${out.cell_count}`
       );
-      await onInjected();
+      await onInjected({ t: injectT, eventType });
     } catch (e) {
       setErr((e as Error).message);
     } finally {

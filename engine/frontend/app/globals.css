@@ -313,6 +313,13 @@ textarea {
 .simulation-map__contour-band {
   stroke-width: 1.25;
   stroke-dasharray: 8 8;
+  cursor: pointer;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.simulation-map__zone-rect,
+.simulation-map__agent-node {
+  cursor: pointer;
 }
 
 .simulation-map__legend {
@@ -460,9 +467,155 @@ textarea {
   color: #0f172a;
 }
 
+.app-button--ghost {
+  background: rgba(226, 232, 240, 0.55);
+  color: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .app-button--warning {
   background: #f59e0b;
   color: white;
+}
+
+.godview-layout {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  gap: 16px;
+}
+
+.godview-layout--balanced {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+
+.godview-layout--focus {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.godview-layout--wide-left {
+  grid-template-columns: 360px minmax(0, 1fr);
+}
+
+.godview-main {
+  display: grid;
+  min-height: 0;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.52fr) minmax(280px, 0.55fr);
+}
+
+.timeline-bookmarks {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-bookmarks__rail {
+  position: relative;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(90deg, #f8fafc, #eef2f7);
+}
+
+.timeline-bookmarks__marker,
+.timeline-bookmarks__cursor {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.timeline-bookmarks__marker {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.timeline-bookmarks__marker--frame {
+  background: #94a3b8;
+}
+
+.timeline-bookmarks__marker--inject {
+  background: #f59e0b;
+}
+
+.timeline-bookmarks__marker--bookmark {
+  background: #0f172a;
+}
+
+.timeline-bookmarks__cursor {
+  width: 3px;
+  height: 24px;
+  border-radius: 999px;
+  background: #0f172a;
+}
+
+.timeline-bookmarks__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.timeline-bookmarks__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timeline-bookmarks__chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.timeline-bookmarks__chip button {
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.timeline-bookmarks__chip-remove {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: #64748b;
+}
+
+.inspector-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.inspector-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inspector-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.inspector-note {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .app-range {
@@ -550,6 +703,14 @@ textarea {
   }
 
   .app-shell__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .godview-layout,
+  .godview-layout--balanced,
+  .godview-layout--focus,
+  .godview-layout--wide-left,
+  .godview-main {
     grid-template-columns: minmax(0, 1fr);
   }
 }

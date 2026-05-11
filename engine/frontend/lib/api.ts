@@ -56,6 +56,8 @@ export type WorldMeta = {
   persona_country?: string;
   persona_source?: string;
   persona_count?: number;
+  persona_distribution_summary?: Record<string, unknown>;
+  simulation_config?: Record<string, unknown>;
 };
 
 export type PersonaPreviewItem = {
@@ -155,6 +157,7 @@ export type CreateWorldResult = {
   persona_count: number;
   session_id: string;
   simulation_config: Record<string, unknown>;
+  persona_distribution_summary: Record<string, unknown>;
 };
 
 export type GodModePayload = {
