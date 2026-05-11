@@ -337,6 +337,66 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert data["llm_runtime"]["recent_runs"][-1]["task"] == "action"
 
 
+def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
+    state_dir = tmp_path / "state" / "worlds"
+    state_dir.mkdir(parents=True)
+    monkeypatch.setenv("ORGANIC4D_STATE_DIR", str(state_dir))
+
+    response = client.post(
+        "/runtime/llm-config",
+        json={
+            "enabled": True,
+            "provider": "openai-compatible",
+            "model": "local-model",
+            "base_url": "http://127.0.0.1:8001/v1",
+            "api_key": "test-key",
+            "temperature": 0.3,
+            "timeout_s": 12,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled"] is True
+    assert payload["provider"] == "openai-compatible"
+    assert payload["model"] == "local-model"
+    assert payload["has_api_key"] is True
+
+    status = client.get("/runtime/local-status")
+    assert status.status_code == 200
+    status_payload = status.json()
+    assert status_payload["llm"]["enabled"] is True
+    assert status_payload["llm"]["provider"] == "openai-compatible"
+    assert status_payload["llm"]["has_api_key"] is True
+
+
+def test_runtime_llm_test_endpoint_reports_runtime_result(monkeypatch):
+    llm_facade.reset_stats()
+
+    def fake_batch(prompts, *, task):
+        return {
+            "texts": ["runtime cognition connected"],
+            "meta": {
+                "task": task,
+                "enabled": True,
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "prompt_count_in": 1,
+                "prompt_count_sent": 1,
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
+
+    monkeypatch.setattr("app.api.runtime.generate_reasoning_batch", fake_batch)
+    response = client.post("/runtime/llm-config/test")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["provider"] == "openai"
+    assert payload["preview"] == "runtime cognition connected"
+
+
 def test_runtime_data_pack_diff_preview_returns_changed_fields(tmp_path, monkeypatch):
     llm_facade.reset_stats()
     packs_dir = tmp_path / "packs"

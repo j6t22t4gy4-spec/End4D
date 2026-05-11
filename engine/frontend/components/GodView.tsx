@@ -31,12 +31,15 @@ import {
   getSnapshotAtT,
   sampleCellsForVisualization,
   syncDataPacks,
+  testRuntimeLlmConfig,
+  updateRuntimeLlmConfig,
   type CreateWorldResult,
   type CellSnapshot,
   type DataPackDiffResponse,
   type GodModePayload,
   type LocalRuntimeStatus,
   type ReviewSummaryResponse,
+  type RuntimeLlmTestResponse,
   verifyRuntimeDataPack,
 } from "@/lib/api";
 import { useSimulation } from "@/hooks/useSimulation";
@@ -112,6 +115,15 @@ export default function GodView({
     eventType: string;
     payload: Record<string, unknown>;
   } | null>(null);
+  const [llmEnabled, setLlmEnabled] = useState(false);
+  const [llmProvider, setLlmProvider] = useState("openai");
+  const [llmModel, setLlmModel] = useState("gpt-4.1-mini");
+  const [llmBaseUrl, setLlmBaseUrl] = useState("");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmTemperature, setLlmTemperature] = useState("0.2");
+  const [llmTimeout, setLlmTimeout] = useState("20");
+  const [llmConfigStatus, setLlmConfigStatus] = useState<string | null>(null);
+  const [llmTestResult, setLlmTestResult] = useState<RuntimeLlmTestResponse | null>(null);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -164,6 +176,10 @@ export default function GodView({
       .then((payload) => {
         if (!cancelled) {
           setRuntimeStatus(payload);
+          setLlmEnabled(Boolean(payload.llm?.enabled));
+          setLlmProvider(String(payload.llm?.provider || "openai"));
+          setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
+          setLlmBaseUrl(String(payload.llm?.base_url || ""));
           if (!selectedPackId && payload.packs[0]?.pack_id) {
             setSelectedPackId(payload.packs[0].pack_id);
           }
@@ -643,6 +659,134 @@ export default function GodView({
             </AppPanel>
 
             <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
+
+            <AppPanel
+              title="LLM Runtime Connection"
+              subtitle="Connect a real provider so agents think, decide, and act through live LLM calls"
+              bodyClassName="space-y-3"
+            >
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={llmEnabled}
+                    onChange={(event) => setLlmEnabled(event.target.checked)}
+                  />
+                  enable live LLM cognition
+                </label>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <MetricChip label="current provider" value={runtimeStatus?.llm?.provider ?? "stub"} />
+                  <MetricChip
+                    label="api key"
+                    value={runtimeStatus?.llm?.has_api_key ? "configured" : "missing"}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  provider
+                  <select className="app-input" value={llmProvider} onChange={(event) => setLlmProvider(event.target.value)}>
+                    <option value="openai">OpenAI</option>
+                    <option value="openai-compatible">OpenAI-compatible</option>
+                    <option value="ollama">Ollama</option>
+                    <option value="stub">Stub</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  model
+                  <input className="app-input" value={llmModel} onChange={(event) => setLlmModel(event.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  base url
+                  <input
+                    className="app-input"
+                    value={llmBaseUrl}
+                    onChange={(event) => setLlmBaseUrl(event.target.value)}
+                    placeholder="https://api.openai.com/v1 or http://127.0.0.1:11434"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  api key
+                  <input
+                    type="password"
+                    className="app-input"
+                    value={llmApiKey}
+                    onChange={(event) => setLlmApiKey(event.target.value)}
+                    placeholder="sk-... or local token"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  temperature
+                  <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  timeout (s)
+                  <input className="app-input" value={llmTimeout} onChange={(event) => setLlmTimeout(event.target.value)} />
+                </label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={async () => {
+                    setLlmConfigStatus("saving llm runtime config…");
+                    try {
+                      await updateRuntimeLlmConfig({
+                        enabled: llmEnabled,
+                        provider: llmProvider,
+                        model: llmModel,
+                        base_url: llmBaseUrl,
+                        api_key: llmApiKey,
+                        temperature: Number(llmTemperature) || 0.2,
+                        timeout_s: Number(llmTimeout) || 20,
+                      });
+                      setRuntimeStatus(await getLocalRuntimeStatus());
+                      setLlmConfigStatus("llm runtime saved");
+                    } catch (reason) {
+                      setLlmConfigStatus(reason instanceof Error ? reason.message : "llm config save failed");
+                    }
+                  }}
+                >
+                  Save LLM Config
+                </button>
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={async () => {
+                    setLlmConfigStatus("testing llm connection…");
+                    try {
+                      const result = await testRuntimeLlmConfig();
+                      setLlmTestResult(result);
+                      setRuntimeStatus(await getLocalRuntimeStatus());
+                      setLlmConfigStatus(result.ok ? "llm test completed" : `llm test fallback: ${result.fallback_reason}`);
+                    } catch (reason) {
+                      setLlmConfigStatus(reason instanceof Error ? reason.message : "llm test failed");
+                    }
+                  }}
+                >
+                  Test Connection
+                </button>
+              </div>
+              {llmTestResult ? (
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">LLM Test Result</p>
+                    <span className="session-thread-card__meta">
+                      {llmTestResult.provider} · {llmTestResult.model}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">{llmTestResult.preview}</p>
+                  <p className="text-xs text-slate-500">
+                    mode={llmTestResult.mode} · fallback={String(llmTestResult.used_fallback)}
+                    {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
+                  </p>
+                </div>
+              ) : null}
+              <p className="text-xs text-slate-500">
+                LLM이 연결되면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation이 규칙 fallback보다 실제 provider 경로를 우선 사용합니다.
+              </p>
+              {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
+            </AppPanel>
 
             <AppPanel
               title="Data Pack Lifecycle"

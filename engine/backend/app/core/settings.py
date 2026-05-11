@@ -6,6 +6,7 @@ LLM 채팅 API·DB 영속화는 아직 미구현이며, 환경 변수로만 분�
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -46,9 +47,64 @@ _TASK_PRIORITY_DEFAULTS = {
 }
 
 
+def _runtime_llm_config_path() -> Path:
+    return get_state_dir().parent / "runtime" / "llm_config.json"
+
+
+def _load_runtime_llm_config() -> dict[str, str]:
+    path = _runtime_llm_config_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(key): str(value) for key, value in data.items() if value is not None}
+
+
+def _write_runtime_llm_config(config: dict[str, str]) -> None:
+    path = _runtime_llm_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _get_runtime_llm_value(key: str, default: str = "") -> str:
+    env_value = os.getenv(key, "").strip()
+    if env_value:
+        return env_value
+    return str(_load_runtime_llm_config().get(key, default)).strip()
+
+
+def set_runtime_llm_config(
+    *,
+    enabled: bool,
+    provider: str,
+    model: str,
+    base_url: str = "",
+    api_key: str = "",
+    temperature: float = 0.2,
+    timeout_s: float = 20.0,
+) -> dict[str, str]:
+    config = {
+        "ORGANIC4D_LLM_CHAT_ENABLED": "1" if enabled else "0",
+        "ORGANIC4D_LLM_PROVIDER": provider.strip(),
+        "ORGANIC4D_LLM_MODEL": model.strip(),
+        "ORGANIC4D_LLM_BASE_URL": base_url.strip(),
+        "ORGANIC4D_LLM_API_KEY": api_key.strip(),
+        "ORGANIC4D_LLM_TEMPERATURE": str(float(temperature)),
+        "ORGANIC4D_LLM_TIMEOUT_S": str(float(timeout_s)),
+    }
+    _write_runtime_llm_config(config)
+    for key, value in config.items():
+        os.environ[key] = value
+    return config
+
+
 def get_llm_chat_enabled() -> bool:
     """True면 (후속) Ollama 등 대화형 LLM으로 Thought/Worldview 문장 생성."""
-    return os.getenv("ORGANIC4D_LLM_CHAT_ENABLED", "").strip().lower() in (
+    return _get_runtime_llm_value("ORGANIC4D_LLM_CHAT_ENABLED", "").lower() in (
         "1",
         "true",
         "yes",
@@ -58,7 +114,7 @@ def get_llm_chat_enabled() -> bool:
 
 def get_llm_provider() -> Literal["stub", "openai", "openai-compatible", "ollama"]:
     """LLM chat backend for Thought/Worldview text generation."""
-    v = os.getenv("ORGANIC4D_LLM_PROVIDER", "stub").strip().lower()
+    v = _get_runtime_llm_value("ORGANIC4D_LLM_PROVIDER", "stub").lower()
     if v in ("openai",):
         return "openai"
     if v in ("openai-compatible", "openai_compatible", "openai-compatible-local"):
@@ -76,11 +132,11 @@ def get_llm_model() -> str:
         "ollama": "llama3.1",
         "stub": "stub",
     }[provider]
-    return os.getenv("ORGANIC4D_LLM_MODEL", default_model).strip() or default_model
+    return _get_runtime_llm_value("ORGANIC4D_LLM_MODEL", default_model) or default_model
 
 
 def get_llm_base_url() -> Optional[str]:
-    raw = os.getenv("ORGANIC4D_LLM_BASE_URL", "").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_BASE_URL", "")
     if raw:
         return raw.rstrip("/")
     provider = get_llm_provider()
@@ -92,7 +148,7 @@ def get_llm_base_url() -> Optional[str]:
 
 
 def get_llm_api_key() -> Optional[str]:
-    raw = os.getenv("ORGANIC4D_LLM_API_KEY", "").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_API_KEY", "")
     if raw:
         return raw
     raw = os.getenv("OPENAI_API_KEY", "").strip()
@@ -100,7 +156,7 @@ def get_llm_api_key() -> Optional[str]:
 
 
 def get_llm_timeout_s() -> float:
-    raw = os.getenv("ORGANIC4D_LLM_TIMEOUT_S", "20").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_TIMEOUT_S", "20")
     try:
         return max(1.0, min(120.0, float(raw)))
     except ValueError:
@@ -108,7 +164,7 @@ def get_llm_timeout_s() -> float:
 
 
 def get_llm_temperature() -> float:
-    raw = os.getenv("ORGANIC4D_LLM_TEMPERATURE", "0.2").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_TEMPERATURE", "0.2")
     try:
         return max(0.0, min(2.0, float(raw)))
     except ValueError:

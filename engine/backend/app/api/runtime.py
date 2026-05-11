@@ -16,6 +16,8 @@ from app.core.data_packs import (
     validate_data_pack,
     verify_data_pack,
 )
+from app.core.settings import set_runtime_llm_config
+from app.llm.chat_runtime import generate_reasoning_batch
 
 router = APIRouter(prefix="/runtime", tags=["runtime"])
 
@@ -47,6 +49,8 @@ class RuntimeLlmResponse(BaseModel):
     provider: str = "stub"
     model: str = "stub"
     base_url: str = ""
+    has_api_key: bool = False
+    configured_via: str = "default"
 
 
 class RuntimeLlmRunResponse(BaseModel):
@@ -191,6 +195,37 @@ class DataPackSyncResponse(BaseModel):
     installed_pack_count: int = 0
 
 
+class RuntimeLlmConfigRequest(BaseModel):
+    enabled: bool = False
+    provider: str = "stub"
+    model: str = "stub"
+    base_url: str = ""
+    api_key: str = ""
+    temperature: float = 0.2
+    timeout_s: float = 20.0
+
+
+class RuntimeLlmConfigResponse(BaseModel):
+    enabled: bool = False
+    provider: str = "stub"
+    model: str = "stub"
+    base_url: str = ""
+    has_api_key: bool = False
+    temperature: float = 0.2
+    timeout_s: float = 20.0
+    configured_via: str = "runtime-ui"
+
+
+class RuntimeLlmTestResponse(BaseModel):
+    ok: bool = False
+    mode: str = "stub"
+    provider: str = "stub"
+    model: str = "stub"
+    used_fallback: bool = False
+    fallback_reason: str = ""
+    preview: str = ""
+
+
 @router.get("/local-status", response_model=LocalRuntimeStatusResponse)
 def get_local_runtime_status():
     status: Dict[str, Any] = local_runtime_status()
@@ -217,6 +252,52 @@ def get_local_runtime_status():
         installed_pack_count=int(status.get("installed_pack_count") or 0),
         available_countries=list(status.get("available_countries") or []),
         packs=[RuntimePackResponse(**pack) for pack in status.get("packs") or []],
+    )
+
+
+@router.post("/llm-config", response_model=RuntimeLlmConfigResponse)
+def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
+    config = set_runtime_llm_config(
+        enabled=req.enabled,
+        provider=req.provider,
+        model=req.model,
+        base_url=req.base_url,
+        api_key=req.api_key,
+        temperature=req.temperature,
+        timeout_s=req.timeout_s,
+    )
+    return RuntimeLlmConfigResponse(
+        enabled=config["ORGANIC4D_LLM_CHAT_ENABLED"] == "1",
+        provider=str(config["ORGANIC4D_LLM_PROVIDER"] or "stub"),
+        model=str(config["ORGANIC4D_LLM_MODEL"] or "stub"),
+        base_url=str(config["ORGANIC4D_LLM_BASE_URL"] or ""),
+        has_api_key=bool(config["ORGANIC4D_LLM_API_KEY"]),
+        temperature=float(config["ORGANIC4D_LLM_TEMPERATURE"]),
+        timeout_s=float(config["ORGANIC4D_LLM_TIMEOUT_S"]),
+        configured_via="runtime-ui",
+    )
+
+
+@router.post("/llm-config/test", response_model=RuntimeLlmTestResponse)
+def test_runtime_llm_config():
+    result = generate_reasoning_batch(
+        ["Respond in one short sentence confirming that runtime cognition is connected."],
+        task="thought",
+    )
+    texts = list(result.get("texts") or [])
+    meta = dict(result.get("meta") or {})
+    preview = str(texts[0] if texts else "").strip()
+    ok = bool(preview) and not (
+        bool(meta.get("used_fallback")) and str(meta.get("fallback_reason") or "") == "llm_disabled"
+    )
+    return RuntimeLlmTestResponse(
+        ok=ok,
+        mode="llm" if bool(meta.get("enabled")) and not bool(meta.get("used_fallback")) else "fallback",
+        provider=str(meta.get("provider") or "stub"),
+        model=str(meta.get("model") or "stub"),
+        used_fallback=bool(meta.get("used_fallback")),
+        fallback_reason=str(meta.get("fallback_reason") or ""),
+        preview=preview[:240],
     )
 
 

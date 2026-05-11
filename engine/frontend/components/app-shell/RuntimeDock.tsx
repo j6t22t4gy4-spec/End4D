@@ -31,6 +31,14 @@ export function RuntimeDock({
           }
         />
         <InfoRow
+          label="LLM Auth"
+          value={
+            runtime?.llm?.has_api_key
+              ? `key set · ${runtime?.llm?.configured_via ?? "runtime-ui"}`
+              : "No API key"
+          }
+        />
+        <InfoRow
           label="Manifest"
           value={runtime?.manifest_path ?? "Waiting for runtime"}
         />

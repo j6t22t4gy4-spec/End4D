@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 from app.core.settings import (
     get_data_cache_dir,
     get_data_pack_remote_manifest_url,
+    get_llm_api_key,
     get_llm_base_url,
     get_llm_chat_enabled,
     get_llm_model,
@@ -507,6 +508,8 @@ def local_runtime_status() -> Dict[str, Any]:
             "provider": get_llm_provider(),
             "model": get_llm_model(),
             "base_url": str(get_llm_base_url() or ""),
+            "has_api_key": bool(get_llm_api_key()),
+            "configured_via": "runtime-ui" if get_llm_chat_enabled() else "default",
         },
         "llm_runtime": llm_facade.snapshot_stats(),
         "installed_pack_count": len(installed),

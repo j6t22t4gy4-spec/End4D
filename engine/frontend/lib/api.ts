@@ -131,6 +131,8 @@ export type RuntimeLlmStatus = {
   provider: string;
   model: string;
   base_url: string;
+  has_api_key: boolean;
+  configured_via: string;
 };
 
 export type LocalRuntimeStatus = {
@@ -143,6 +145,27 @@ export type LocalRuntimeStatus = {
   installed_pack_count: number;
   available_countries: string[];
   packs: RuntimePack[];
+};
+
+export type RuntimeLlmConfigResponse = {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  base_url: string;
+  has_api_key: boolean;
+  temperature: number;
+  timeout_s: number;
+  configured_via: string;
+};
+
+export type RuntimeLlmTestResponse = {
+  ok: boolean;
+  mode: string;
+  provider: string;
+  model: string;
+  used_fallback: boolean;
+  fallback_reason: string;
+  preview: string;
 };
 
 export type DataPackVerifyResponse = {
@@ -504,6 +527,32 @@ export async function postAgentInterviewWorldDiff(
 export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
   const res = await fetch(`${API_BASE}/runtime/local-status`);
   if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
+  return res.json();
+}
+
+export async function updateRuntimeLlmConfig(body: {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  base_url?: string;
+  api_key?: string;
+  temperature?: number;
+  timeout_s?: number;
+}): Promise<RuntimeLlmConfigResponse> {
+  const res = await fetch(`${API_BASE}/runtime/llm-config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`updateRuntimeLlmConfig: ${res.status}`);
+  return res.json();
+}
+
+export async function testRuntimeLlmConfig(): Promise<RuntimeLlmTestResponse> {
+  const res = await fetch(`${API_BASE}/runtime/llm-config/test`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`testRuntimeLlmConfig: ${res.status}`);
   return res.json();
 }
 
