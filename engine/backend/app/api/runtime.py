@@ -1,7 +1,7 @@
 """Local runtime status API for packaged engine deployments."""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -52,6 +52,7 @@ class RuntimeLlmResponse(BaseModel):
     has_api_key: bool = False
     configured_via: str = "default"
     runtime_profile: str = "balanced"
+    strict_mode: str = "adaptive"
 
 
 class RuntimeLlmRunResponse(BaseModel):
@@ -62,7 +63,13 @@ class RuntimeLlmRunResponse(BaseModel):
     prompt_count_in: int = 0
     prompt_count_sent: int = 0
     prompt_count_skipped_by_task_budget: int = 0
+    prompt_count_skipped_by_cycle_budget: int = 0
     task_budget: int = 0
+    task_priority: int = 0
+    cycle_key: str = ""
+    cycle_budget_total: int = 0
+    cycle_budget_remaining_before: int = 0
+    cycle_budget_remaining_after: int = 0
     used_fallback: bool = False
     fallback_reason: str = ""
 
@@ -72,13 +79,31 @@ class RuntimeLlmTotalsResponse(BaseModel):
     prompt_count_in: int = 0
     prompt_count_sent: int = 0
     prompt_count_skipped_by_task_budget: int = 0
+    prompt_count_skipped_by_cycle_budget: int = 0
     fallback_calls: int = 0
+
+
+class RuntimeLlmHealthResponse(BaseModel):
+    status: str = "disabled"
+    reason: str = ""
+    recent_call_count: int = 0
+    recent_fallback_count: int = 0
+    recent_fallback_rate: float = 0.0
+    last_fallback_reason: str = ""
 
 
 class RuntimeLlmRuntimeResponse(BaseModel):
     provider: str = "stub"
     model: str = "stub"
+    strict_mode: str = "adaptive"
+    cycle_prompt_budget: int = 0
+    agent_sample_size: int = 0
+    dialogue_max_pairs: int = 0
+    group_deliberation_max_groups: int = 0
+    task_priorities: Dict[str, int] = Field(default_factory=dict)
     task_budgets: Dict[str, int] = Field(default_factory=dict)
+    scheduler: Dict[str, Any] = Field(default_factory=dict)
+    health: RuntimeLlmHealthResponse = Field(default_factory=RuntimeLlmHealthResponse)
     recent_runs: List[RuntimeLlmRunResponse] = Field(default_factory=list)
     task_totals: Dict[str, RuntimeLlmTotalsResponse] = Field(default_factory=dict)
 
@@ -205,6 +230,13 @@ class RuntimeLlmConfigRequest(BaseModel):
     temperature: float = 0.2
     timeout_s: float = 20.0
     runtime_profile: str = "balanced"
+    strict_mode: str = "adaptive"
+    cycle_prompt_budget: Optional[int] = None
+    agent_sample_size: Optional[int] = None
+    dialogue_max_pairs: Optional[int] = None
+    group_deliberation_max_groups: Optional[int] = None
+    task_budgets: Dict[str, int] = Field(default_factory=dict)
+    task_priorities: Dict[str, int] = Field(default_factory=dict)
 
 
 class RuntimeLlmConfigResponse(BaseModel):
@@ -217,6 +249,13 @@ class RuntimeLlmConfigResponse(BaseModel):
     timeout_s: float = 20.0
     configured_via: str = "runtime-ui"
     runtime_profile: str = "balanced"
+    strict_mode: str = "adaptive"
+    cycle_prompt_budget: int = 0
+    agent_sample_size: int = 0
+    dialogue_max_pairs: int = 0
+    group_deliberation_max_groups: int = 0
+    task_budgets: Dict[str, int] = Field(default_factory=dict)
+    task_priorities: Dict[str, int] = Field(default_factory=dict)
 
 
 class RuntimeLlmTestResponse(BaseModel):
@@ -242,7 +281,15 @@ def get_local_runtime_status():
         llm_runtime=RuntimeLlmRuntimeResponse(
             provider=str((status.get("llm_runtime") or {}).get("provider") or "stub"),
             model=str((status.get("llm_runtime") or {}).get("model") or "stub"),
+            strict_mode=str((status.get("llm_runtime") or {}).get("strict_mode") or "adaptive"),
+            cycle_prompt_budget=int((status.get("llm_runtime") or {}).get("cycle_prompt_budget") or 0),
+            agent_sample_size=int((status.get("llm_runtime") or {}).get("agent_sample_size") or 0),
+            dialogue_max_pairs=int((status.get("llm_runtime") or {}).get("dialogue_max_pairs") or 0),
+            group_deliberation_max_groups=int((status.get("llm_runtime") or {}).get("group_deliberation_max_groups") or 0),
+            task_priorities=dict((status.get("llm_runtime") or {}).get("task_priorities") or {}),
             task_budgets=dict((status.get("llm_runtime") or {}).get("task_budgets") or {}),
+            scheduler=dict((status.get("llm_runtime") or {}).get("scheduler") or {}),
+            health=RuntimeLlmHealthResponse(**dict((status.get("llm_runtime") or {}).get("health") or {})),
             recent_runs=[
                 RuntimeLlmRunResponse(**item)
                 for item in (status.get("llm_runtime") or {}).get("recent_runs") or []
@@ -269,6 +316,13 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
         temperature=req.temperature,
         timeout_s=req.timeout_s,
         runtime_profile=req.runtime_profile,
+        strict_mode=req.strict_mode,
+        cycle_prompt_budget=req.cycle_prompt_budget,
+        agent_sample_size=req.agent_sample_size,
+        dialogue_max_pairs=req.dialogue_max_pairs,
+        group_deliberation_max_groups=req.group_deliberation_max_groups,
+        task_budgets=dict(req.task_budgets or {}),
+        task_priorities=dict(req.task_priorities or {}),
     )
     return RuntimeLlmConfigResponse(
         enabled=config["ORGANIC4D_LLM_CHAT_ENABLED"] == "1",
@@ -280,6 +334,21 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
         timeout_s=float(config["ORGANIC4D_LLM_TIMEOUT_S"]),
         configured_via="runtime-ui",
         runtime_profile=str(config.get("ORGANIC4D_LLM_RUNTIME_PROFILE") or "balanced"),
+        strict_mode=str(config.get("ORGANIC4D_LLM_STRICT_MODE") or "adaptive"),
+        cycle_prompt_budget=int(config.get("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET") or 0),
+        agent_sample_size=int(config.get("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE") or 0),
+        dialogue_max_pairs=int(config.get("ORGANIC4D_DIALOGUE_MAX_PAIRS") or 0),
+        group_deliberation_max_groups=int(config.get("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS") or 0),
+        task_budgets={
+            key.removeprefix("ORGANIC4D_LLM_BUDGET_").lower(): int(value)
+            for key, value in config.items()
+            if key.startswith("ORGANIC4D_LLM_BUDGET_")
+        },
+        task_priorities={
+            key.removeprefix("ORGANIC4D_LLM_PRIORITY_").lower(): int(value)
+            for key, value in config.items()
+            if key.startswith("ORGANIC4D_LLM_PRIORITY_")
+        },
     )
 
 

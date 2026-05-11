@@ -46,6 +46,18 @@ import { useSimulation } from "@/hooks/useSimulation";
 
 const PROMPT_PLACEHOLDER =
   "예: 향후 5년간 금리 인상과 주거 보조금이 동시에 시행되면, 시장·가계·정책 주체들이 어떤 장기 신념 변화를 보일까?";
+const IMPORTANT_LLM_TASKS = [
+  "thought",
+  "worldview",
+  "action",
+  "policy",
+  "dialogue",
+  "group_deliberation",
+  "review_summary",
+  "review_diff",
+  "agent_interview",
+  "agent_interview_diff",
+] as const;
 
 export default function GodView({
   initialWorldId = null,
@@ -123,6 +135,13 @@ export default function GodView({
   const [llmTemperature, setLlmTemperature] = useState("0.2");
   const [llmTimeout, setLlmTimeout] = useState("20");
   const [llmRuntimeProfile, setLlmRuntimeProfile] = useState("balanced");
+  const [llmStrictMode, setLlmStrictMode] = useState("adaptive");
+  const [llmCycleBudget, setLlmCycleBudget] = useState("160");
+  const [llmAgentSampleSize, setLlmAgentSampleSize] = useState("256");
+  const [llmDialoguePairs, setLlmDialoguePairs] = useState("64");
+  const [llmDeliberationGroups, setLlmDeliberationGroups] = useState("12");
+  const [taskBudgetDraft, setTaskBudgetDraft] = useState<Record<string, string>>({});
+  const [taskPriorityDraft, setTaskPriorityDraft] = useState<Record<string, string>>({});
   const [llmConfigStatus, setLlmConfigStatus] = useState<string | null>(null);
   const [llmTestResult, setLlmTestResult] = useState<RuntimeLlmTestResponse | null>(null);
 
@@ -168,6 +187,22 @@ export default function GodView({
         : [],
     [selectedPack]
   );
+  const llmRuntime = runtimeStatus?.llm_runtime ?? null;
+  const llmHealth = llmRuntime?.health ?? null;
+  const recentFallbackRuns = useMemo(
+    () => (llmRuntime?.recent_runs ?? []).filter((item) => item.used_fallback).slice(0, 5),
+    [llmRuntime]
+  );
+  const llmTaskRows = useMemo(
+    () =>
+      IMPORTANT_LLM_TASKS.map((task) => ({
+        task,
+        budget: taskBudgetDraft[task] ?? String(llmRuntime?.task_budgets?.[task] ?? ""),
+        priority: taskPriorityDraft[task] ?? String(llmRuntime?.task_priorities?.[task] ?? ""),
+        totals: llmRuntime?.task_totals?.[task],
+      })),
+    [llmRuntime, taskBudgetDraft, taskPriorityDraft]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -182,6 +217,21 @@ export default function GodView({
           setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
           setLlmBaseUrl(String(payload.llm?.base_url || ""));
           setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
+          setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
+          setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
+          setLlmAgentSampleSize(String(payload.llm_runtime?.agent_sample_size || 256));
+          setLlmDialoguePairs(String(payload.llm_runtime?.dialogue_max_pairs || 64));
+          setLlmDeliberationGroups(String(payload.llm_runtime?.group_deliberation_max_groups || 12));
+          setTaskBudgetDraft(
+            Object.fromEntries(
+              Object.entries(payload.llm_runtime?.task_budgets ?? {}).map(([key, value]) => [key, String(value)])
+            )
+          );
+          setTaskPriorityDraft(
+            Object.fromEntries(
+              Object.entries(payload.llm_runtime?.task_priorities ?? {}).map(([key, value]) => [key, String(value)])
+            )
+          );
           if (!selectedPackId && payload.packs[0]?.pack_id) {
             setSelectedPackId(payload.packs[0].pack_id);
           }
@@ -726,6 +776,14 @@ export default function GodView({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  strict mode
+                  <select className="app-input" value={llmStrictMode} onChange={(event) => setLlmStrictMode(event.target.value)}>
+                    <option value="adaptive">Adaptive</option>
+                    <option value="llm-preferred">LLM-preferred</option>
+                    <option value="fail-hard">Fail-hard</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
                   temperature
                   <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
                 </label>
@@ -733,6 +791,67 @@ export default function GodView({
                   timeout (s)
                   <input className="app-input" value={llmTimeout} onChange={(event) => setLlmTimeout(event.target.value)} />
                 </label>
+              </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  cycle prompt budget
+                  <input className="app-input" value={llmCycleBudget} onChange={(event) => setLlmCycleBudget(event.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  agent sample size
+                  <input className="app-input" value={llmAgentSampleSize} onChange={(event) => setLlmAgentSampleSize(event.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  dialogue max pairs
+                  <input className="app-input" value={llmDialoguePairs} onChange={(event) => setLlmDialoguePairs(event.target.value)} />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  deliberation groups
+                  <input className="app-input" value={llmDeliberationGroups} onChange={(event) => setLlmDeliberationGroups(event.target.value)} />
+                </label>
+              </div>
+              <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Task Budgets</p>
+                  <span className="text-xs text-slate-500">Mirofish-like mode: keep thought/action/dialogue high</span>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {llmTaskRows.map((row) => (
+                    <div key={row.task} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">{row.task}</p>
+                        <span className="text-[11px] text-slate-500">
+                          live {row.totals?.prompt_count_sent ?? 0}/{row.totals?.prompt_count_in ?? 0}
+                        </span>
+                      </div>
+                      <div className="mt-2 grid gap-2 grid-cols-2">
+                        <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+                          budget
+                          <input
+                            className="app-input"
+                            value={row.budget}
+                            onChange={(event) =>
+                              setTaskBudgetDraft((current) => ({ ...current, [row.task]: event.target.value }))
+                            }
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+                          priority
+                          <input
+                            className="app-input"
+                            value={row.priority}
+                            onChange={(event) =>
+                              setTaskPriorityDraft((current) => ({ ...current, [row.task]: event.target.value }))
+                            }
+                          />
+                        </label>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        fallback {row.totals?.fallback_calls ?? 0} · skipped task {row.totals?.prompt_count_skipped_by_task_budget ?? 0}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -750,6 +869,17 @@ export default function GodView({
                         temperature: Number(llmTemperature) || 0.2,
                         timeout_s: Number(llmTimeout) || 20,
                         runtime_profile: llmRuntimeProfile,
+                        strict_mode: llmStrictMode,
+                        cycle_prompt_budget: Number(llmCycleBudget) || 160,
+                        agent_sample_size: Number(llmAgentSampleSize) || 256,
+                        dialogue_max_pairs: Number(llmDialoguePairs) || 64,
+                        group_deliberation_max_groups: Number(llmDeliberationGroups) || 12,
+                        task_budgets: Object.fromEntries(
+                          Object.entries(taskBudgetDraft).map(([key, value]) => [key, Number(value) || 1])
+                        ),
+                        task_priorities: Object.fromEntries(
+                          Object.entries(taskPriorityDraft).map(([key, value]) => [key, Number(value) || 0])
+                        ),
                       });
                       setRuntimeStatus(await getLocalRuntimeStatus());
                       setLlmConfigStatus("llm runtime saved");
@@ -796,6 +926,30 @@ export default function GodView({
               <p className="text-xs text-slate-500">
                 `LLM-first`를 선택하면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation의 샘플링과 예산이 더 공격적으로 올라가서 규칙 fallback보다 실제 provider 호출이 주가 되도록 맞춥니다.
               </p>
+              {llmHealth ? (
+                <div className="grid gap-2 md:grid-cols-4">
+                  <MetricChip label="health" value={llmHealth.status} />
+                  <MetricChip label="recent calls" value={String(llmHealth.recent_call_count)} />
+                  <MetricChip label="fallback rate" value={`${Math.round((llmHealth.recent_fallback_rate ?? 0) * 100)}%`} />
+                  <MetricChip label="last fallback" value={llmHealth.last_fallback_reason || "none"} />
+                </div>
+              ) : null}
+              {recentFallbackRuns.length ? (
+                <div className="grid gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Fallback Pressure</p>
+                  {recentFallbackRuns.map((run, index) => (
+                    <div key={`${run.task}-${index}`} className="session-thread-card">
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">{run.task}</p>
+                        <span className="session-thread-card__meta">
+                          {run.prompt_count_sent}/{run.prompt_count_in} · p{run.task_priority}
+                        </span>
+                      </div>
+                      <p className="session-thread-card__prompt">{run.fallback_reason || "fallback"}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
             </AppPanel>
 

@@ -134,6 +134,60 @@ export type RuntimeLlmStatus = {
   has_api_key: boolean;
   configured_via: string;
   runtime_profile: string;
+  strict_mode: string;
+};
+
+export type RuntimeLlmRun = {
+  task: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  prompt_count_in: number;
+  prompt_count_sent: number;
+  prompt_count_skipped_by_task_budget: number;
+  prompt_count_skipped_by_cycle_budget: number;
+  task_budget: number;
+  task_priority: number;
+  cycle_key: string;
+  cycle_budget_total: number;
+  cycle_budget_remaining_before: number;
+  cycle_budget_remaining_after: number;
+  used_fallback: boolean;
+  fallback_reason: string;
+};
+
+export type RuntimeLlmTotals = {
+  calls: number;
+  prompt_count_in: number;
+  prompt_count_sent: number;
+  prompt_count_skipped_by_task_budget: number;
+  prompt_count_skipped_by_cycle_budget: number;
+  fallback_calls: number;
+};
+
+export type RuntimeLlmHealth = {
+  status: string;
+  reason: string;
+  recent_call_count: number;
+  recent_fallback_count: number;
+  recent_fallback_rate: number;
+  last_fallback_reason: string;
+};
+
+export type RuntimeLlmRuntime = {
+  provider: string;
+  model: string;
+  strict_mode: string;
+  cycle_prompt_budget: number;
+  agent_sample_size: number;
+  dialogue_max_pairs: number;
+  group_deliberation_max_groups: number;
+  task_budgets: Record<string, number>;
+  task_priorities: Record<string, number>;
+  scheduler: Record<string, unknown>;
+  health: RuntimeLlmHealth;
+  recent_runs: RuntimeLlmRun[];
+  task_totals: Record<string, RuntimeLlmTotals>;
 };
 
 export type LocalRuntimeStatus = {
@@ -143,6 +197,7 @@ export type LocalRuntimeStatus = {
   manifest_path: string;
   remote_manifest_url: string;
   llm: RuntimeLlmStatus;
+  llm_runtime: RuntimeLlmRuntime;
   installed_pack_count: number;
   available_countries: string[];
   packs: RuntimePack[];
@@ -158,6 +213,13 @@ export type RuntimeLlmConfigResponse = {
   timeout_s: number;
   configured_via: string;
   runtime_profile: string;
+  strict_mode: string;
+  cycle_prompt_budget: number;
+  agent_sample_size: number;
+  dialogue_max_pairs: number;
+  group_deliberation_max_groups: number;
+  task_budgets: Record<string, number>;
+  task_priorities: Record<string, number>;
 };
 
 export type RuntimeLlmTestResponse = {
@@ -541,6 +603,13 @@ export async function updateRuntimeLlmConfig(body: {
   temperature?: number;
   timeout_s?: number;
   runtime_profile?: string;
+  strict_mode?: string;
+  cycle_prompt_budget?: number;
+  agent_sample_size?: number;
+  dialogue_max_pairs?: number;
+  group_deliberation_max_groups?: number;
+  task_budgets?: Record<string, number>;
+  task_priorities?: Record<string, number>;
 }): Promise<RuntimeLlmConfigResponse> {
   const res = await fetch(`${API_BASE}/runtime/llm-config`, {
     method: "POST",

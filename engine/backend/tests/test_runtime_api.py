@@ -66,6 +66,8 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["llm"]["provider"] == "ollama"
     assert data["llm"]["model"] == "llama3.1"
     assert "task_budgets" in data["llm_runtime"]
+    assert "task_priorities" in data["llm_runtime"]
+    assert "health" in data["llm_runtime"]
     assert data["installed_pack_count"] == 1
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"
@@ -335,6 +337,7 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert data["llm_runtime"]["task_totals"]["thought"]["calls"] == 1
     assert data["llm_runtime"]["task_totals"]["action"]["calls"] == 1
     assert data["llm_runtime"]["recent_runs"][-1]["task"] == "action"
+    assert data["llm_runtime"]["health"]["recent_call_count"] >= 2
 
 
 def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
@@ -354,6 +357,13 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
             "temperature": 0.3,
             "timeout_s": 12,
             "runtime_profile": "llm-first",
+            "strict_mode": "llm-preferred",
+            "cycle_prompt_budget": 420,
+            "agent_sample_size": 512,
+            "dialogue_max_pairs": 88,
+            "group_deliberation_max_groups": 20,
+            "task_budgets": {"thought": 144, "action": 120, "dialogue": 96},
+            "task_priorities": {"thought": 0, "action": 1, "dialogue": 1},
         },
     )
     assert response.status_code == 200
@@ -363,6 +373,13 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
     assert payload["model"] == "local-model"
     assert payload["has_api_key"] is True
     assert payload["runtime_profile"] == "llm-first"
+    assert payload["strict_mode"] == "llm-preferred"
+    assert payload["cycle_prompt_budget"] == 420
+    assert payload["agent_sample_size"] == 512
+    assert payload["dialogue_max_pairs"] == 88
+    assert payload["group_deliberation_max_groups"] == 20
+    assert payload["task_budgets"]["thought"] == 144
+    assert payload["task_priorities"]["thought"] == 0
 
     status = client.get("/runtime/local-status")
     assert status.status_code == 200
@@ -371,6 +388,13 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
     assert status_payload["llm"]["provider"] == "openai-compatible"
     assert status_payload["llm"]["has_api_key"] is True
     assert status_payload["llm"]["runtime_profile"] == "llm-first"
+    assert status_payload["llm"]["strict_mode"] == "llm-preferred"
+    assert status_payload["llm_runtime"]["cycle_prompt_budget"] == 420
+    assert status_payload["llm_runtime"]["agent_sample_size"] == 512
+    assert status_payload["llm_runtime"]["dialogue_max_pairs"] == 88
+    assert status_payload["llm_runtime"]["group_deliberation_max_groups"] == 20
+    assert status_payload["llm_runtime"]["task_budgets"]["thought"] == 144
+    assert status_payload["llm_runtime"]["task_priorities"]["dialogue"] == 1
 
 
 def test_runtime_llm_test_endpoint_reports_runtime_result(monkeypatch):

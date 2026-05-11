@@ -13,6 +13,7 @@ from app.core.settings import (
     get_llm_max_prompts_per_task,
     get_llm_model,
     get_llm_provider,
+    get_llm_strict_mode,
     get_llm_temperature,
     get_llm_timeout_s,
 )
@@ -70,6 +71,7 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
         "prompt_count_sent": len(active_items),
         "used_fallback": bool(skipped_items),
         "fallback_reason": "global_prompt_cap" if skipped_items else "",
+        "strict_mode": get_llm_strict_mode(),
     }
     try:
         if provider in ("openai", "openai-compatible"):
@@ -79,6 +81,8 @@ def generate_reasoning_batch(prompts: Iterable[str], *, task: str) -> dict[str, 
             generated = _ollama_chat_batch(active_items, task=task)
             return {"texts": generated + skipped_items, "meta": meta}
     except Exception as exc:
+        if get_llm_strict_mode() == "fail-hard":
+            raise
         meta["used_fallback"] = True
         meta["fallback_reason"] = f"provider_error:{type(exc).__name__}"
         return {"texts": items, "meta": meta}
@@ -93,6 +97,7 @@ def _openai_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     model = get_llm_model()
     temperature = get_llm_temperature()
     timeout = get_llm_timeout_s()
+    retries = 0 if get_llm_strict_mode() == "adaptive" else 1
     out: List[str] = []
     for prompt in prompts:
         body = {
@@ -106,7 +111,13 @@ def _openai_chat_batch(prompts: List[str], *, task: str) -> List[str]:
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
-        data = _post_json(f"{base_url}/chat/completions", body, headers=headers, timeout=timeout)
+        data = _post_json(
+            f"{base_url}/chat/completions",
+            body,
+            headers=headers,
+            timeout=timeout,
+            retries=retries,
+        )
         content = (
             ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
             if isinstance(data, dict)
@@ -121,6 +132,7 @@ def _ollama_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     model = get_llm_model()
     temperature = get_llm_temperature()
     timeout = get_llm_timeout_s()
+    retries = 0 if get_llm_strict_mode() == "adaptive" else 1
     out: List[str] = []
     for prompt in prompts:
         body = {
@@ -129,24 +141,35 @@ def _ollama_chat_batch(prompts: List[str], *, task: str) -> List[str]:
             "stream": False,
             "options": {"temperature": temperature},
         }
-        data = _post_json(f"{base_url}/api/generate", body, headers={"Content-Type": "application/json"}, timeout=timeout)
+        data = _post_json(
+            f"{base_url}/api/generate",
+            body,
+            headers={"Content-Type": "application/json"},
+            timeout=timeout,
+            retries=retries,
+        )
         out.append(str((data or {}).get("response") or prompt))
     return out
 
 
-def _post_json(url: str, body: dict, *, headers: dict, timeout: float) -> dict:
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"LLM request failed: {exc.code} {raw[:240]}")
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"LLM request failed: {exc.reason}")
-    return json.loads(raw or "{}")
+def _post_json(url: str, body: dict, *, headers: dict, timeout: float, retries: int = 0) -> dict:
+    last_error: Exception | None = None
+    for _attempt in range(retries + 1):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                raw = response.read().decode("utf-8")
+            return json.loads(raw or "{}")
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="ignore")
+            last_error = RuntimeError(f"LLM request failed: {exc.code} {raw[:240]}")
+        except urllib.error.URLError as exc:
+            last_error = RuntimeError(f"LLM request failed: {exc.reason}")
+    if last_error is not None:
+        raise last_error
+    return {}

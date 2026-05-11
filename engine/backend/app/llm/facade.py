@@ -6,9 +6,15 @@ from threading import Lock
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.core.settings import (
+    get_dialogue_max_pairs,
+    get_group_deliberation_max_groups,
+    get_llm_api_key,
+    get_llm_agent_sample_size,
+    get_llm_chat_enabled,
     get_llm_cycle_prompt_budget,
     get_llm_model,
     get_llm_provider,
+    get_llm_strict_mode,
     get_llm_task_budget,
     get_llm_task_budgets,
     get_llm_task_priorities,
@@ -375,16 +381,55 @@ class LLMFacade:
 
     def snapshot_stats(self) -> dict[str, Any]:
         with self._lock:
+            recent_runs = [dict(item) for item in self._recent_runs]
+            fallback_runs = [item for item in recent_runs if bool(item.get("used_fallback"))]
+            recent_count = len(recent_runs)
+            fallback_rate = (len(fallback_runs) / recent_count) if recent_count else 0.0
+            last_fallback_reason = str(fallback_runs[-1].get("fallback_reason") or "") if fallback_runs else ""
+            provider = get_llm_provider()
+            enabled = get_llm_chat_enabled()
+            has_api_key = bool(get_llm_api_key())
+            if not enabled:
+                health_status = "disabled"
+                health_reason = "llm_disabled"
+            elif provider in ("openai", "openai-compatible") and not has_api_key:
+                health_status = "auth-missing"
+                health_reason = "api_key_missing"
+            elif recent_count == 0:
+                health_status = "ready"
+                health_reason = "awaiting_calls"
+            elif fallback_rate >= 0.6:
+                health_status = "degraded"
+                health_reason = last_fallback_reason or "fallback_pressure"
+            elif fallback_rate > 0.0:
+                health_status = "warning"
+                health_reason = last_fallback_reason or "partial_fallbacks"
+            else:
+                health_status = "healthy"
+                health_reason = "live_llm_calls_dominant"
             return {
-                "provider": get_llm_provider(),
+                "provider": provider,
                 "model": get_llm_model(),
+                "strict_mode": get_llm_strict_mode(),
+                "cycle_prompt_budget": get_llm_cycle_prompt_budget(),
+                "agent_sample_size": get_llm_agent_sample_size(),
+                "dialogue_max_pairs": get_dialogue_max_pairs(),
+                "group_deliberation_max_groups": get_group_deliberation_max_groups(),
                 "task_budgets": get_llm_task_budgets(),
                 "task_priorities": get_llm_task_priorities(),
                 "scheduler": dict(self._scheduler),
-                "recent_runs": [dict(item) for item in self._recent_runs],
+                "recent_runs": recent_runs,
                 "task_totals": {
                     key: dict(value)
                     for key, value in self._task_totals.items()
+                },
+                "health": {
+                    "status": health_status,
+                    "reason": health_reason,
+                    "recent_call_count": recent_count,
+                    "recent_fallback_count": len(fallback_runs),
+                    "recent_fallback_rate": round(fallback_rate, 4),
+                    "last_fallback_reason": last_fallback_reason,
                 },
             }
 

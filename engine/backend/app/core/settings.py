@@ -26,9 +26,11 @@ LLM_TASK_NAMES = (
     "session_review",
     "session_review_query",
     "agent_interview",
+    "agent_interview_diff",
 )
 
 LLM_RUNTIME_PROFILES = ("rules-first", "balanced", "llm-first")
+LLM_STRICT_MODES = ("adaptive", "llm-preferred", "fail-hard")
 
 _TASK_PRIORITY_DEFAULTS = {
     "genesis": 0,
@@ -46,6 +48,7 @@ _TASK_PRIORITY_DEFAULTS = {
     "session_review": 1,
     "session_review_query": 1,
     "agent_interview": 1,
+    "agent_interview_diff": 1,
 }
 
 
@@ -89,8 +92,17 @@ def set_runtime_llm_config(
     temperature: float = 0.2,
     timeout_s: float = 20.0,
     runtime_profile: str = "balanced",
+    strict_mode: str = "adaptive",
+    cycle_prompt_budget: int | None = None,
+    agent_sample_size: int | None = None,
+    dialogue_max_pairs: int | None = None,
+    group_deliberation_max_groups: int | None = None,
+    task_budgets: dict[str, int] | None = None,
+    task_priorities: dict[str, int] | None = None,
 ) -> dict[str, str]:
     runtime_profile = runtime_profile.strip() if runtime_profile.strip() in LLM_RUNTIME_PROFILES else "balanced"
+    strict_mode = strict_mode.strip() if strict_mode.strip() in LLM_STRICT_MODES else "adaptive"
+    existing = _load_runtime_llm_config()
     config = {
         "ORGANIC4D_LLM_CHAT_ENABLED": "1" if enabled else "0",
         "ORGANIC4D_LLM_PROVIDER": provider.strip(),
@@ -100,7 +112,37 @@ def set_runtime_llm_config(
         "ORGANIC4D_LLM_TEMPERATURE": str(float(temperature)),
         "ORGANIC4D_LLM_TIMEOUT_S": str(float(timeout_s)),
         "ORGANIC4D_LLM_RUNTIME_PROFILE": runtime_profile,
+        "ORGANIC4D_LLM_STRICT_MODE": strict_mode,
     }
+    if cycle_prompt_budget is not None:
+        config["ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET"] = str(int(cycle_prompt_budget))
+    elif "ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET" in existing:
+        config["ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET"] = existing["ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET"]
+    if agent_sample_size is not None:
+        config["ORGANIC4D_LLM_AGENT_SAMPLE_SIZE"] = str(int(agent_sample_size))
+    elif "ORGANIC4D_LLM_AGENT_SAMPLE_SIZE" in existing:
+        config["ORGANIC4D_LLM_AGENT_SAMPLE_SIZE"] = existing["ORGANIC4D_LLM_AGENT_SAMPLE_SIZE"]
+    if dialogue_max_pairs is not None:
+        config["ORGANIC4D_DIALOGUE_MAX_PAIRS"] = str(int(dialogue_max_pairs))
+    elif "ORGANIC4D_DIALOGUE_MAX_PAIRS" in existing:
+        config["ORGANIC4D_DIALOGUE_MAX_PAIRS"] = existing["ORGANIC4D_DIALOGUE_MAX_PAIRS"]
+    if group_deliberation_max_groups is not None:
+        config["ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS"] = str(int(group_deliberation_max_groups))
+    elif "ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS" in existing:
+        config["ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS"] = existing["ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS"]
+    normalized_task_budgets = dict(existing)
+    normalized_task_priorities = dict(existing)
+    for task in LLM_TASK_NAMES:
+        budget_key = f"ORGANIC4D_LLM_BUDGET_{task.upper()}"
+        priority_key = f"ORGANIC4D_LLM_PRIORITY_{task.upper()}"
+        if task_budgets and task in task_budgets:
+            config[budget_key] = str(int(task_budgets[task]))
+        elif budget_key in normalized_task_budgets:
+            config[budget_key] = normalized_task_budgets[budget_key]
+        if task_priorities and task in task_priorities:
+            config[priority_key] = str(int(task_priorities[task]))
+        elif priority_key in normalized_task_priorities:
+            config[priority_key] = normalized_task_priorities[priority_key]
     _write_runtime_llm_config(config)
     for key, value in config.items():
         os.environ[key] = value
@@ -181,6 +223,11 @@ def get_llm_runtime_profile() -> str:
     return profile if profile in LLM_RUNTIME_PROFILES else "balanced"
 
 
+def get_llm_strict_mode() -> str:
+    mode = _get_runtime_llm_value("ORGANIC4D_LLM_STRICT_MODE", "adaptive")
+    return mode if mode in LLM_STRICT_MODES else "adaptive"
+
+
 def get_llm_max_prompts_per_task() -> int:
     """Hard cap for one LLM task batch to keep long runs predictable."""
     raw = os.getenv("ORGANIC4D_LLM_MAX_PROMPTS_PER_TASK", "64").strip()
@@ -198,7 +245,7 @@ def get_llm_max_prompts_per_task() -> int:
 def get_llm_task_budget(task: str) -> int:
     """Per-task prompt cap, falling back to the global max."""
     env_key = f"ORGANIC4D_LLM_BUDGET_{str(task).upper()}"
-    raw = os.getenv(env_key, "").strip()
+    raw = _get_runtime_llm_value(env_key, "")
     if not raw:
         return get_llm_max_prompts_per_task()
     try:
@@ -213,7 +260,7 @@ def get_llm_task_budgets() -> dict[str, int]:
 
 def get_llm_cycle_prompt_budget() -> int:
     """Total prompts the engine may send in one simulation cycle."""
-    raw = os.getenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "160").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "160")
     try:
         return max(1, min(50000, int(raw)))
     except ValueError:
@@ -227,7 +274,7 @@ def get_llm_cycle_prompt_budget() -> int:
 
 def get_llm_task_priority(task: str) -> int:
     env_key = f"ORGANIC4D_LLM_PRIORITY_{str(task).upper()}"
-    raw = os.getenv(env_key, "").strip()
+    raw = _get_runtime_llm_value(env_key, "")
     if raw:
         try:
             return max(0, min(9, int(raw)))
@@ -242,7 +289,7 @@ def get_llm_task_priorities() -> dict[str, int]:
 
 def get_llm_agent_sample_size() -> int:
     """Max agents selected for expensive LLM cognition in one simulation tick."""
-    raw = os.getenv("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "256").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "256")
     try:
         return max(1, min(10000, int(raw)))
     except ValueError:
@@ -263,7 +310,7 @@ def get_dialogue_interval() -> int:
 
 
 def get_dialogue_max_pairs() -> int:
-    raw = os.getenv("ORGANIC4D_DIALOGUE_MAX_PAIRS", "64").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_DIALOGUE_MAX_PAIRS", "64")
     try:
         return max(1, min(5000, int(raw)))
     except ValueError:
@@ -282,7 +329,7 @@ def get_group_deliberation_interval() -> int:
 
 
 def get_group_deliberation_max_groups() -> int:
-    raw = os.getenv("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS", "12").strip()
+    raw = _get_runtime_llm_value("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS", "12")
     try:
         return max(1, min(256, int(raw)))
     except ValueError:

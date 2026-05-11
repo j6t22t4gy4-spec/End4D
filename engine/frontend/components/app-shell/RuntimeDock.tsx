@@ -43,6 +43,18 @@ export function RuntimeDock({
           value={runtime?.llm?.runtime_profile ?? "balanced"}
         />
         <InfoRow
+          label="Strict Mode"
+          value={runtime?.llm?.strict_mode ?? runtime?.llm_runtime?.strict_mode ?? "adaptive"}
+        />
+        <InfoRow
+          label="Provider Health"
+          value={
+            runtime?.llm_runtime?.health
+              ? `${runtime.llm_runtime.health.status} · ${runtime.llm_runtime.health.reason || "ready"}`
+              : "Waiting for runtime"
+          }
+        />
+        <InfoRow
           label="Manifest"
           value={runtime?.manifest_path ?? "Waiting for runtime"}
         />
@@ -54,6 +66,51 @@ export function RuntimeDock({
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             런타임 상태를 불러오지 못했습니다: {runtimeError}
           </p>
+        )}
+      </AppPanel>
+
+      <AppPanel
+        title="LLM Activity"
+        subtitle="Recent live cognition and fallback pressure"
+        className="min-h-0"
+        bodyClassName="space-y-3 overflow-y-auto pr-1"
+      >
+        <div className="grid grid-cols-2 gap-2">
+          <InfoRow
+            label="Recent Calls"
+            value={String(runtime?.llm_runtime?.health?.recent_call_count ?? 0)}
+          />
+          <InfoRow
+            label="Fallback Rate"
+            value={`${Math.round((runtime?.llm_runtime?.health?.recent_fallback_rate ?? 0) * 100)}%`}
+          />
+        </div>
+        {runtime?.llm_runtime?.recent_runs?.length ? (
+          runtime.llm_runtime.recent_runs.slice(-6).reverse().map((run, index) => (
+            <article
+              key={`${run.task}-${index}`}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-900">{run.task}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {run.provider} · {run.model} · p{run.task_priority}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                  {run.prompt_count_sent}/{run.prompt_count_in}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-slate-600">
+                {run.used_fallback ? `fallback · ${run.fallback_reason || "unknown"}` : "live llm"}
+              </p>
+            </article>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+            아직 LLM 호출 이력이 없습니다.
+          </div>
         )}
       </AppPanel>
 
