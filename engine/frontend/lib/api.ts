@@ -422,6 +422,7 @@ export type ReviewSummaryResponse = {
   group_analysis: Record<string, unknown>;
   group_tables: Record<string, unknown>;
   emergent_dynamics: Record<string, unknown>;
+  policy_mechanisms: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;

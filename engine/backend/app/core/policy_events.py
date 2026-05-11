@@ -16,6 +16,19 @@ def normalize_policy_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     target_zones = _clean_list(payload.get("target_zones"))
     scope = str(payload.get("scope") or ("world" if not target_zones else "zone")).strip() or "world"
     effect_profile = str(payload.get("effect_profile") or "mixed").strip() or "mixed"
+    energy_delta = float(payload.get("energy_delta_per_step", 0.18 * intensity))
+    cooperation_delta = float(payload.get("cooperation_delta_per_step", 0.012 * intensity))
+    sensitivity_delta = float(payload.get("policy_sensitivity_delta_per_step", 0.018 * intensity))
+    mobility_delta = float(payload.get("mobility_delta_per_step", -0.006 * intensity))
+    emotion_delta = float(payload.get("emotion_delta_per_step", 0.02 * intensity))
+    mechanism_channels = {
+        "resource": round(abs(energy_delta) * 0.9 + intensity * 0.1, 3),
+        "cooperation": round(abs(cooperation_delta) * 8.0 + intensity * 0.08, 3),
+        "policy_sensitivity": round(abs(sensitivity_delta) * 8.0 + intensity * 0.1, 3),
+        "mobility": round(abs(mobility_delta) * 10.0 + intensity * 0.06, 3),
+        "emotion": round(abs(emotion_delta) * 10.0 + intensity * 0.07, 3),
+    }
+    dominant_channel = max(mechanism_channels.items(), key=lambda item: (float(item[1]), str(item[0])))[0]
     return {
         "name": str(payload.get("name") or "policy_shift"),
         "summary": str(payload.get("summary") or "policy intervention"),
@@ -25,14 +38,14 @@ def normalize_policy_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         "target_roles": target_roles,
         "target_zones": target_zones,
         "effect_profile": effect_profile,
-        "energy_delta_per_step": float(payload.get("energy_delta_per_step", 0.18 * intensity)),
-        "cooperation_delta_per_step": float(payload.get("cooperation_delta_per_step", 0.012 * intensity)),
-        "policy_sensitivity_delta_per_step": float(
-            payload.get("policy_sensitivity_delta_per_step", 0.018 * intensity)
-        ),
-        "mobility_delta_per_step": float(payload.get("mobility_delta_per_step", -0.006 * intensity)),
+        "energy_delta_per_step": energy_delta,
+        "cooperation_delta_per_step": cooperation_delta,
+        "policy_sensitivity_delta_per_step": sensitivity_delta,
+        "mobility_delta_per_step": mobility_delta,
         "emotion_index": _bounded_int(payload.get("emotion_index"), default=5, low=0, high=7),
-        "emotion_delta_per_step": float(payload.get("emotion_delta_per_step", 0.02 * intensity)),
+        "emotion_delta_per_step": emotion_delta,
+        "mechanism_channels": mechanism_channels,
+        "dominant_channel": dominant_channel,
     }
 
 
@@ -127,6 +140,8 @@ def _apply_policy_effect(cell: Cell, payload: Dict[str, Any], *, current_t: floa
     action_state["policy_field_t"] = float(current_t)
     action_state["policy_field_scope"] = str(payload.get("scope") or "world")
     action_state["policy_field_profile"] = str(payload.get("effect_profile") or "mixed")
+    action_state["policy_field_dominant_channel"] = str(payload.get("dominant_channel") or "resource")
+    action_state["policy_field_channels"] = dict(payload.get("mechanism_channels") or {})
 
     return cell.copy(
         energy=max(0.0, float(cell.energy) + energy_delta),

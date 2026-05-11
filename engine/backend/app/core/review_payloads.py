@@ -100,6 +100,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "outcome": _classify_outcome(timeline_points),
     }
     policy_impact = _policy_impact_summary(key_events, belief_drift["groups"], zone_z_drift)
+    policy_mechanisms = _policy_mechanism_summary(key_events, belief_drift["groups"], zone_z_drift)
     group_analysis = _group_analysis_summary(belief_drift, zone_z_drift)
     group_tables = _group_tables_summary(belief_drift, zone_z_drift, notable_agents)
     emergent_dynamics = _emergent_dynamics_summary(
@@ -148,6 +149,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "emergent_dynamics": emergent_dynamics,
         "mechanism_summary": mechanism_summary,
         "policy_impact": policy_impact,
+        "policy_mechanisms": policy_mechanisms,
         "key_events": key_events,
         "notable_agents": notable_agents,
         "zone_z_drift": zone_z_drift,
@@ -477,6 +479,7 @@ def build_review_diff_payload(
         group_drift_deltas=group_drift_deltas,
         zone_z_delta=zone_z_delta,
     )
+    policy_mechanism_delta = _policy_mechanism_delta(base_payload=base_payload, target_payload=target_payload)
 
     timeline_turning_point_delta = {
         "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
@@ -509,6 +512,7 @@ def build_review_diff_payload(
         "zone_z_delta": zone_z_delta[:8],
         "policy_impact_delta": policy_impact_delta,
         "mechanism_delta": mechanism_delta,
+        "policy_mechanism_delta": policy_mechanism_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
             zone_z_delta=zone_z_delta,
@@ -816,6 +820,10 @@ def _policy_impact_summary(
         affected_zones.extend(list(event.get("target_zones") or []))
     strongest_group = drift_groups[0] if drift_groups else {}
     strongest_zone = zone_rows[0] if zone_rows else {}
+    channel_totals = defaultdict(float)
+    for event in key_events:
+        for channel, score in dict(event.get("mechanism_channels") or {}).items():
+            channel_totals[str(channel)] += float(score or 0.0)
     return {
         "event_count": len(key_events),
         "dominant_target_roles": list(dict.fromkeys(str(role) for role in affected_roles if str(role).strip()))[:5],
@@ -829,6 +837,79 @@ def _policy_impact_summary(
             "zone_label": strongest_zone.get("zone_label", ""),
             "avg_z_delta": strongest_zone.get("avg_z_delta", 0.0),
         },
+        "dominant_channels": [
+            {"channel": key, "score": round(value, 3)}
+            for key, value in sorted(channel_totals.items(), key=lambda item: (-float(item[1]), str(item[0])))[:5]
+        ],
+    }
+
+
+def _policy_mechanism_summary(
+    key_events: list[dict[str, Any]],
+    drift_groups: list[dict[str, Any]],
+    zone_rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    channel_scores: dict[str, float] = defaultdict(float)
+    propagation_paths: list[dict[str, Any]] = []
+    for event in key_events[:MAX_REVIEW_EVENTS]:
+        channels = dict(event.get("mechanism_channels") or {})
+        dominant = str(event.get("dominant_channel") or "resource")
+        for key, value in channels.items():
+            channel_scores[str(key)] += float(value or 0.0)
+        lead_group = next(
+            (group for group in drift_groups if not event.get("target_roles") or str(group.get("role_label") or "") in set(str(role) for role in list(event.get("target_roles") or []))),
+            drift_groups[0] if drift_groups else {},
+        )
+        lead_zone = next(
+            (zone for zone in zone_rows if not event.get("target_zones") or str(zone.get("zone_id") or "") in set(str(zone_id) for zone_id in list(event.get("target_zones") or []))),
+            zone_rows[0] if zone_rows else {},
+        )
+        propagation_paths.append(
+            {
+                "event_name": str(event.get("name") or event.get("event_type") or "policy"),
+                "dominant_channel": dominant,
+                "group_id": str((lead_group or {}).get("group_id") or ""),
+                "group_label": str((lead_group or {}).get("role_label") or "group"),
+                "zone_id": str((lead_zone or {}).get("zone_id") or ""),
+                "zone_label": str((lead_zone or {}).get("zone_label") or "zone"),
+                "group_tension_delta": float((lead_group or {}).get("tension_delta", 0.0)),
+                "group_cohesion_delta": float((lead_group or {}).get("cohesion_delta", 0.0)),
+                "zone_z_delta": float((lead_zone or {}).get("avg_z_delta", 0.0)),
+                "scope": str(event.get("impact_scope") or event.get("scope") or "world"),
+            }
+        )
+    sorted_channels = [
+        {"channel": key, "score": round(value, 3)}
+        for key, value in sorted(channel_scores.items(), key=lambda item: (-float(item[1]), str(item[0])))
+    ]
+    return {
+        "dominant_channels": sorted_channels[:5],
+        "propagation_paths": propagation_paths[:6],
+        "mechanism_count": len(propagation_paths),
+    }
+
+
+def _policy_mechanism_delta(*, base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+    def _channel_index(payload: dict[str, Any]) -> dict[str, float]:
+        rows = list((payload.get("policy_mechanisms") or {}).get("dominant_channels") or [])
+        return {str(item.get("channel") or "resource"): float(item.get("score") or 0.0) for item in rows}
+    base_idx = _channel_index(base_payload)
+    target_idx = _channel_index(target_payload)
+    channels = sorted(set(base_idx.keys()) | set(target_idx.keys()))
+    channel_gaps = [
+        {
+            "channel": channel,
+            "base_score": round(base_idx.get(channel, 0.0), 3),
+            "target_score": round(target_idx.get(channel, 0.0), 3),
+            "score_gap": round(target_idx.get(channel, 0.0) - base_idx.get(channel, 0.0), 3),
+        }
+        for channel in channels
+    ]
+    channel_gaps.sort(key=lambda item: abs(float(item["score_gap"])), reverse=True)
+    return {
+        "channel_gaps": channel_gaps[:6],
+        "base_paths": [dict(item) for item in list((base_payload.get("policy_mechanisms") or {}).get("propagation_paths") or [])[:4]],
+        "target_paths": [dict(item) for item in list((target_payload.get("policy_mechanisms") or {}).get("propagation_paths") or [])[:4]],
     }
 
 
@@ -862,6 +943,8 @@ def _build_highlights(
         )
     if key_events:
         lines.append(f"{key_events[0]['name']} is the most recent policy/event intervention")
+        dominant_channel = str((key_events[0].get("dominant_channel") or "resource"))
+        lines.append(f"policy channel emphasis: {dominant_channel}")
     return lines[:6]
 
 
@@ -937,6 +1020,7 @@ def _mechanism_summary(
 
     return {
         "primary_chain": primary_chain,
+        "policy_mechanisms": _policy_mechanism_summary(key_events, groups, zone_z_drift),
         "causal_hypotheses": causal_hypotheses[:4],
         "pressure_points": {
             "fracture_groups": [dict(item) for item in fracture_groups[:3]],

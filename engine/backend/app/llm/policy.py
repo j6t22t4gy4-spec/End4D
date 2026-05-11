@@ -57,6 +57,7 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
         float(current_action.get("policy_sensitivity", 0.5)) + float(interp["policy_sensitivity_shift"])
     )
     current_action["last_policy_summary"] = str(interp["memory_summary"])
+    current_action["last_policy_channel"] = str(interp["dominant_channel"])
 
     entry = memory_entry(
         t=float(cell.t),
@@ -64,8 +65,8 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
         summary=str(interp["memory_summary"]),
         importance=float(interp["importance"]),
         source="llm.policy",
-        payload=dict(interp),
-        tags=["llm", "policy", str(payload.get("name") or event_type)],
+        payload={**dict(interp), "policy_payload": dict(payload)},
+        tags=["llm", "policy", str(payload.get("name") or event_type), str(interp.get("dominant_channel") or "resource")],
     )
     behavior = behavior_event(
         t=float(cell.t),
@@ -73,7 +74,7 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
         source="llm.policy",
         summary=str(interp["memory_summary"]),
         quality_score=float(interp["importance"]),
-        payload=dict(interp),
+        payload={**dict(interp), "policy_payload": dict(payload)},
     )
     return append_memory(
         cell.copy(emotion_vec=ev, action_state=current_action),
@@ -94,6 +95,7 @@ def _parse_policy_state(text: str, payload: Dict) -> Dict[str, float | str | int
             "emotion_delta": 0.18 * intensity,
             "cooperation_shift": -0.05 + 0.1 * intensity,
             "policy_sensitivity_shift": 0.16 * intensity,
+            "dominant_channel": str(payload.get("dominant_channel") or "policy_sensitivity"),
             "importance": 0.72,
         }
     return {
@@ -105,6 +107,7 @@ def _parse_policy_state(text: str, payload: Dict) -> Dict[str, float | str | int
             parsed.get("policy_sensitivity_shift"),
             default=0.14 * intensity,
         ),
+        "dominant_channel": str(parsed.get("dominant_channel") or payload.get("dominant_channel") or "policy_sensitivity"),
         "importance": _clip01(float(parsed.get("importance", 0.72))),
     }
 

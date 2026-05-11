@@ -265,6 +265,24 @@ export function ReviewLabWorkspace({
     () => (data?.group_analysis ?? {}) as Record<string, unknown>,
     [data]
   );
+  const policyMechanisms = useMemo(
+    () => (data?.policy_mechanisms ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const policyMechanismRows = useMemo(
+    () =>
+      Array.isArray(policyMechanisms.dominant_channels)
+        ? (policyMechanisms.dominant_channels as Array<Record<string, unknown>>)
+        : [],
+    [policyMechanisms]
+  );
+  const propagationPaths = useMemo(
+    () =>
+      Array.isArray(policyMechanisms.propagation_paths)
+        ? (policyMechanisms.propagation_paths as Array<Record<string, unknown>>)
+        : [],
+    [policyMechanisms]
+  );
   const groupTables = useMemo(
     () => (data?.group_tables ?? {}) as Record<string, unknown>,
     [data]
@@ -326,6 +344,17 @@ export function ReviewLabWorkspace({
         ? (diffGroupTableDelta.persona_country_delta as Array<Record<string, unknown>>)
         : [],
     [diffGroupTableDelta]
+  );
+  const diffPolicyMechanismDelta = useMemo(
+    () => (diffMetrics.policy_mechanism_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
+  const diffPolicyChannelRows = useMemo(
+    () =>
+      Array.isArray(diffPolicyMechanismDelta.channel_gaps)
+        ? (diffPolicyMechanismDelta.channel_gaps as Array<Record<string, unknown>>)
+        : [],
+    [diffPolicyMechanismDelta]
   );
   const diffZoneTableRows = useMemo(
     () =>
@@ -739,6 +768,48 @@ export function ReviewLabWorkspace({
                 </p>
               ))}
             </div>
+          </div>
+        </div>
+      </AppPanel>
+
+      <AppPanel
+        title={isKo ? "정책 메커니즘" : "Policy Mechanisms"}
+        subtitle={isKo ? "정책이 어떤 채널로 집단과 구역에 전파됐는지" : "How policy propagated through channels into groups and zones"}
+        bodyClassName="space-y-3"
+      >
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <CompactGroupTable
+            title={isKo ? "지배 채널" : "Dominant Channels"}
+            emptyLabel={isKo ? "정책 채널 데이터가 아직 없습니다." : "No policy channel data yet."}
+            rows={policyMechanismRows}
+            columns={[
+              { key: "channel", label: isKo ? "채널" : "Channel" },
+              { key: "score", label: isKo ? "점수" : "Score", numeric: true },
+            ]}
+          />
+          <div className="grid gap-2">
+            {propagationPaths.length ? (
+              propagationPaths.slice(0, 6).map((item, index) => (
+                <div key={`path-${index}-${String(item.event_name ?? 'policy')}`} className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">{String(item.event_name ?? 'policy')}</p>
+                    <span className="session-thread-card__meta">{String(item.dominant_channel ?? 'resource')}</span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    {String(item.group_label ?? 'group')} → {String(item.zone_label ?? 'zone')} · cohesion {Number(item.group_cohesion_delta ?? 0).toFixed(2)} · tension {Number(item.group_tension_delta ?? 0).toFixed(2)} · zΔ {Number(item.zone_z_delta ?? 0).toFixed(2)}
+                  </p>
+                  {(item.group_id || item.zone_id) && data?.world_id ? (
+                    <div className="session-thread-card__actions">
+                      <button type="button" className="app-button app-button--ghost" onClick={() => onOpenWorldAt(data.world_id)}>
+                        {isKo ? "시뮬레이션에서 보기" : "Open in Simulation"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500">{isKo ? "정책 전파 경로가 아직 없습니다." : "No policy propagation paths yet."}</p>
+            )}
           </div>
         </div>
       </AppPanel>
@@ -1746,6 +1817,47 @@ export function ReviewLabWorkspace({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel
+          title={isKo ? "정책 메커니즘 차이" : "Policy Mechanism Delta"}
+          subtitle={isKo ? "baseline과 target 사이에 어떤 전파 채널이 달라졌는지" : "Which propagation channels changed between baseline and target"}
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+              <CompactGroupTable
+                title={isKo ? "채널 격차" : "Channel Gaps"}
+                emptyLabel={isKo ? "정책 채널 차이가 아직 없습니다." : "No policy channel gaps yet."}
+                rows={diffPolicyChannelRows}
+                columns={[
+                  { key: "channel", label: isKo ? "채널" : "Channel" },
+                  { key: "base_score", label: isKo ? "기준" : "Base", numeric: true },
+                  { key: "target_score", label: isKo ? "대상" : "Target", numeric: true },
+                  { key: "score_gap", label: isKo ? "격차" : "Gap", numeric: true },
+                ]}
+              />
+              <div className="grid gap-2">
+                {Array.isArray(diffPolicyMechanismDelta.target_paths) && (diffPolicyMechanismDelta.target_paths as Array<Record<string, unknown>>).length ? (
+                  (diffPolicyMechanismDelta.target_paths as Array<Record<string, unknown>>).slice(0, 4).map((item, index) => (
+                    <div key={`delta-path-${index}-${String(item.event_name ?? 'policy')}`} className="session-thread-card">
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">{String(item.event_name ?? 'policy')}</p>
+                        <span className="session-thread-card__meta">{String(item.dominant_channel ?? 'resource')}</span>
+                      </div>
+                      <p className="session-thread-card__prompt">
+                        {String(item.group_label ?? 'group')} · {String(item.zone_label ?? 'zone')} · tension {Number(item.group_tension_delta ?? 0).toFixed(2)} · zΔ {Number(item.zone_z_delta ?? 0).toFixed(2)}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">{isKo ? "정책 메커니즘 diff 경로가 아직 없습니다." : "No policy mechanism diff paths yet."}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 정책 메커니즘 차이를 볼 수 있습니다." : "Generate a diff report to inspect policy mechanism deltas."}</p>
+          )}
+        </AppPanel>
+
         <AppPanel
           title={isKo ? "디프 그룹 테이블" : "Diff Group Tables"}
           subtitle={isKo ? "baseline과 target의 역할, 국가 페르소나, 구역 차이" : "Role, persona-country, and zone deltas between baseline and target"}
