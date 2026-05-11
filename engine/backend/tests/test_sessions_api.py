@@ -59,3 +59,26 @@ def test_rename_and_delete_session():
 
     missing = client.get(f"/sessions/{session_id}")
     assert missing.status_code == 404
+
+
+def test_session_review_returns_multi_world_summary():
+    created = client.post("/sessions", json={"title": "Long horizon thread"})
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    for prompt in [
+        "청년 고용 정책의 장기 집단 분열을 본다",
+        "지역 불평등과 사회적 고도 변화를 본다",
+    ]:
+        world_res = client.post("/worlds", json={"prompt": prompt, "session_id": session_id})
+        assert world_res.status_code == 200
+        world_id = world_res.json()["world_id"]
+        assert client.post(f"/worlds/{world_id}/run", json={"stream": False}).status_code == 200
+
+    review = client.get(f"/sessions/{session_id}/review")
+    assert review.status_code == 200
+    payload = review.json()
+    assert payload["session_id"] == session_id
+    assert payload["summary"]
+    assert int(payload["metrics"]["world_count"]) >= 2
+    assert isinstance(payload["strongest_worlds"], list)

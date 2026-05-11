@@ -83,6 +83,18 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
     )
 
 
+def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
+    return build_prompt_contract(
+        "session_review",
+        [
+            ("session_title", str(payload.get("title") or "Session")),
+            ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
+            ("grounding", _compact(payload.get("grounding") or {})),
+        ],
+    )
+
+
 def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     summary_stats = dict(payload.get("summary_stats") or {})
     belief_drift = dict(payload.get("belief_drift") or {})
@@ -358,6 +370,29 @@ def heuristic_review_diff_query(diff_payload: Mapping[str, Any], question: str) 
     }
 
 
+def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
+    strongest = list(payload.get("strongest_worlds") or [])
+    top = dict(strongest[0] if strongest else {})
+    stats = dict(payload.get("summary_stats") or {})
+    return {
+        "headline": f"Session with {int(stats.get('world_count', 0))} worlds and avg split risk {float(stats.get('avg_split_risk', 0.0)):.2f}",
+        "executive_summary": (
+            f"이 세션은 {int(stats.get('world_count', 0))}개의 world를 포함하며, "
+            f"평균 split risk {float(stats.get('avg_split_risk', 0.0)):.2f}, "
+            f"평균 block divergence {float(stats.get('avg_block_divergence', 0.0)):.2f}, "
+            f"평균 cross-zone fracture {float(stats.get('avg_cross_zone_fracture', 0.0)):.2f}를 보였습니다."
+        ),
+        "key_findings": [
+            f"가장 극적인 world는 {top.get('world_id', 'n/a')}이며 signal={top.get('overall_signal', 'diffuse')}입니다.",
+            "세션 단위에서는 split risk와 cross-zone fracture가 높은 world를 우선 비교하는 것이 좋습니다.",
+        ],
+        "decision_implications": [
+            "같은 세션 내 strongest world와 baseline world를 붙여보면 정책 민감도 차이가 더 잘 드러납니다.",
+            "fracture score가 높은 world는 후속 intervention 실험의 우선 후보입니다.",
+        ],
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -455,6 +490,23 @@ def parse_review_diff_query(raw_text: str, diff_payload: Mapping[str, Any], ques
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+    }
+
+
+def parse_session_review(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_session_review(payload)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_session_review(payload)
+    fallback = heuristic_session_review(payload)
+    return {
+        "headline": str(parsed.get("headline") or fallback["headline"]),
+        "executive_summary": str(parsed.get("executive_summary") or fallback["executive_summary"]),
+        "key_findings": _string_list(parsed.get("key_findings"), fallback["key_findings"]),
+        "decision_implications": _string_list(parsed.get("decision_implications"), fallback["decision_implications"]),
     }
 
 

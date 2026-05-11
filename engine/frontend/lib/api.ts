@@ -213,6 +213,7 @@ export type TimelineAnnotation = {
 };
 
 export type ReviewGroundingItem = {
+  anchor_id: string;
   kind: string;
   label: string;
   reason: string;
@@ -220,6 +221,7 @@ export type ReviewGroundingItem = {
   group_id?: string | null;
   zone_id?: string | null;
   cell_id?: string | null;
+  world_id?: string | null;
 };
 
 export type ReviewSummaryResponse = {
@@ -241,6 +243,7 @@ export type ReviewSummaryResponse = {
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
+  belief_graph: Record<string, Array<Record<string, unknown>>>;
   grounding: Record<string, ReviewGroundingItem[]>;
   citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
@@ -282,6 +285,20 @@ export type ReviewDiffQueryResponse = {
   confidence_notes: string[];
   mode: string;
   grounding: Record<string, ReviewGroundingItem[]>;
+  review_meta: Record<string, unknown>;
+};
+
+export type SessionReviewResponse = {
+  session_id: string;
+  title: string;
+  headline: string;
+  summary: string;
+  review_mode: string;
+  key_findings: string[];
+  decision_implications: string[];
+  metrics: Record<string, unknown>;
+  strongest_worlds: Array<Record<string, unknown>>;
+  grounding: Record<string, Array<Record<string, unknown>>>;
   review_meta: Record<string, unknown>;
 };
 
@@ -383,6 +400,14 @@ export async function deleteSession(
     method: "DELETE",
   });
   if (!res.ok) throw new Error(`deleteSession: ${res.status}`);
+  return res.json();
+}
+
+export async function getSessionReview(
+  sessionId: string
+): Promise<SessionReviewResponse> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/review`);
+  if (!res.ok) throw new Error(`getSessionReview: ${res.status}`);
   return res.json();
 }
 

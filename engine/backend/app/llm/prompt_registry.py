@@ -229,6 +229,21 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "confidence_notes",
         ),
     ),
+    "session_review": PromptSpec(
+        task="session_review",
+        version="session-review-v1",
+        output_mode="json",
+        description="Summarize a session containing multiple world runs and identify the most decision-relevant contrasts.",
+        system_prompt=(
+            "Summarize a session of multiple simulation worlds. Return compact JSON only with a headline, summary, key findings, and recommended next comparisons."
+        ),
+        expected_keys=(
+            "headline",
+            "executive_summary",
+            "key_findings",
+            "decision_implications",
+        ),
+    ),
 }
 
 

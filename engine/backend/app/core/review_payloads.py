@@ -81,6 +81,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "key_events": key_events,
         "notable_agents": notable_agents,
         "zone_z_drift": zone_z_drift,
+        "belief_graph": _build_belief_graph(belief_drift),
         "grounding": _build_grounding(
             key_events=key_events,
             belief_drift=belief_drift,
@@ -94,6 +95,62 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "highlights": highlights,
         "annotation_candidates": build_timeline_annotation_candidates(timeline_points, key_events=key_events),
         "legacy_metrics": summary_stats,
+    }
+
+
+def build_session_review_payload(session: dict[str, Any], world_entries: list[dict[str, Any]]) -> dict[str, Any]:
+    world_payloads = [build_world_review_payload(entry) for entry in world_entries if entry]
+    if not world_payloads:
+        raise ValueError("No completed worlds available for session review")
+    outcomes = [str((payload.get("summary_stats") or {}).get("outcome") or "stable") for payload in world_payloads]
+    signals = [str((payload.get("belief_drift") or {}).get("overall_signal") or "diffuse") for payload in world_payloads]
+    split_risks = [float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0) for payload in world_payloads]
+    block_divergences = [float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0) for payload in world_payloads]
+    fracture_scores = [float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0) for payload in world_payloads]
+    ranked = sorted(
+        world_payloads,
+        key=lambda payload: (
+            float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0)
+            + float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0)
+            + float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0)
+        ),
+        reverse=True,
+    )
+    return {
+        "session_id": str(session.get("session_id") or ""),
+        "title": str(session.get("title") or "Session"),
+        "world_count": len(world_payloads),
+        "world_ids": [str(payload.get("world_id") or "") for payload in world_payloads],
+        "summary_stats": {
+            "world_count": len(world_payloads),
+            "dominant_outcomes": outcomes[:6],
+            "dominant_signals": signals[:6],
+            "avg_split_risk": round(float(np.mean(split_risks)) if split_risks else 0.0, 3),
+            "avg_block_divergence": round(float(np.mean(block_divergences)) if block_divergences else 0.0, 3),
+            "avg_cross_zone_fracture": round(float(np.mean(fracture_scores)) if fracture_scores else 0.0, 3),
+        },
+        "strongest_worlds": [
+            {
+                "world_id": str(payload.get("world_id") or ""),
+                "outcome": str((payload.get("summary_stats") or {}).get("outcome") or "stable"),
+                "overall_signal": str((payload.get("belief_drift") or {}).get("overall_signal") or "diffuse"),
+                "split_risk": float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0),
+                "block_divergence": float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0),
+                "cross_zone_fracture": float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
+            }
+            for payload in ranked[:5]
+        ],
+        "grounding": {
+            "worlds": [
+                {
+                    "kind": "world",
+                    "label": str(payload.get("world_id") or ""),
+                    "reason": str((payload.get("summary_stats") or {}).get("outcome") or "stable"),
+                    "world_id": str(payload.get("world_id") or ""),
+                }
+                for payload in ranked[:5]
+            ]
+        },
     }
 
 
@@ -642,6 +699,43 @@ def _build_grounding(
             for item in notable_agents[:5]
         ],
     }
+
+
+def _build_belief_graph(belief_drift: dict[str, Any]) -> dict[str, Any]:
+    groups = [dict(item) for item in list(belief_drift.get("groups") or [])[:8]]
+    nodes = [
+        {
+            "id": str(item.get("group_id") or ""),
+            "label": str(item.get("role_label") or "group"),
+            "stance": str(item.get("stance_after") or "diffuse"),
+            "cohesion": float(item.get("cohesion_after", 0.0)),
+            "tension": float(item.get("tension_after", 0.0)),
+            "polarization": float(item.get("polarization_after", 0.0)),
+            "split_risk": float(item.get("sub_coalition_split_risk", 0.0)),
+            "block_divergence": float(item.get("ideology_block_divergence", 0.0)),
+            "cross_zone_fracture": float(item.get("cross_zone_group_fracture", 0.0)),
+            "coalition_signal": str(item.get("coalition_signal") or ""),
+        }
+        for item in groups
+    ]
+    edges: list[dict[str, Any]] = []
+    for i, left in enumerate(groups):
+        for right in groups[i + 1 :]:
+            cohesion_similarity = 1.0 - abs(float(left.get("cohesion_after", 0.0)) - float(right.get("cohesion_after", 0.0)))
+            tension_similarity = 1.0 - abs(float(left.get("tension_after", 0.0)) - float(right.get("tension_after", 0.0)))
+            polarization_similarity = 1.0 - abs(float(left.get("polarization_after", 0.0)) - float(right.get("polarization_after", 0.0)))
+            weight = round(max(0.0, (cohesion_similarity + tension_similarity + polarization_similarity) / 3.0), 3)
+            if weight < 0.45:
+                continue
+            edges.append(
+                {
+                    "source": str(left.get("group_id") or ""),
+                    "target": str(right.get("group_id") or ""),
+                    "weight": weight,
+                    "relationship": "aligned" if str(left.get("stance_after")) == str(right.get("stance_after")) else "contested",
+                }
+            )
+    return {"nodes": nodes, "edges": edges[:16]}
 
 
 def _clip01(value: float) -> float:

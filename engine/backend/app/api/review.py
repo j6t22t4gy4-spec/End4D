@@ -21,6 +21,7 @@ class TimelineAnnotation(BaseModel):
 
 
 class ReviewGroundingItem(BaseModel):
+    anchor_id: str = ""
     kind: str
     label: str
     reason: str = ""
@@ -28,6 +29,7 @@ class ReviewGroundingItem(BaseModel):
     group_id: Optional[str] = None
     zone_id: Optional[str] = None
     cell_id: Optional[str] = None
+    world_id: Optional[str] = None
 
 
 class ReviewSummaryResponse(BaseModel):
@@ -49,6 +51,7 @@ class ReviewSummaryResponse(BaseModel):
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
+    belief_graph: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -134,6 +137,10 @@ def get_review_summary(world_id: str):
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
         top_z_movers=[dict(item) for item in list(payload.get("notable_agents") or [])],
         policy_events=[dict(item) for item in list(payload.get("key_events") or [])],
+        belief_graph={
+            "nodes": [dict(item) for item in list((payload.get("belief_graph") or {}).get("nodes") or [])],
+            "edges": [dict(item) for item in list((payload.get("belief_graph") or {}).get("edges") or [])],
+        },
         grounding={
             key: [
                 ReviewGroundingItem(
@@ -308,8 +315,9 @@ def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQu
     )
 
 
-def _ground_item(*, kind: str, label: str, reason: str = "", t: Optional[float] = None, group_id: Optional[str] = None, zone_id: Optional[str] = None, cell_id: Optional[str] = None) -> ReviewGroundingItem:
+def _ground_item(*, kind: str, label: str, reason: str = "", t: Optional[float] = None, group_id: Optional[str] = None, zone_id: Optional[str] = None, cell_id: Optional[str] = None, world_id: Optional[str] = None) -> ReviewGroundingItem:
     return ReviewGroundingItem(
+        anchor_id=f"{kind}:{label}:{int(t) if t is not None else 'static'}",
         kind=kind,
         label=label,
         reason=reason,
@@ -317,6 +325,7 @@ def _ground_item(*, kind: str, label: str, reason: str = "", t: Optional[float] 
         group_id=group_id,
         zone_id=zone_id,
         cell_id=cell_id,
+        world_id=world_id,
     )
 
 
@@ -362,6 +371,8 @@ def _build_summary_citations(payload: Dict[str, Any]) -> Dict[str, List[ReviewGr
 
 
 def _build_diff_citations(diff_payload: Dict[str, Any]) -> Dict[str, List[ReviewGroundingItem]]:
+    target_world_id = str(diff_payload.get("target_world_id") or "")
+    base_world_id = str(diff_payload.get("base_world_id") or "")
     groups = list(diff_payload.get("group_drift_deltas") or [])
     zones = list(diff_payload.get("zone_z_delta") or [])
     target_turning = list((diff_payload.get("timeline_turning_point_delta") or {}).get("target") or [])
@@ -387,12 +398,14 @@ def _build_diff_citations(diff_payload: Dict[str, Any]) -> Dict[str, List[Review
                 label=str(top_target.get("label") or "target shift"),
                 reason=str(top_target.get("reason") or ""),
                 t=float(top_target.get("t")) if top_target.get("t") is not None else None,
+                world_id=target_world_id or None,
             ),
             _ground_item(
                 kind="event",
                 label=str(top_base.get("label") or "baseline shift"),
                 reason=str(top_base.get("reason") or ""),
                 t=float(top_base.get("t")) if top_base.get("t") is not None else None,
+                world_id=base_world_id or None,
             ),
         ]
         if top_target or top_base

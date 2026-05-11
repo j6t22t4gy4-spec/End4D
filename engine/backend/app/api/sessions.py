@@ -6,8 +6,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.review_payloads import build_session_review_payload
 from app.core.session_store import session_store
 from app.core.store import world_store
+from app.llm.facade import llm_facade
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -38,6 +40,20 @@ class SessionResponse(BaseModel):
     world_count: int
     latest_world_id: str = ""
     worlds: List[SessionWorldSummary] = Field(default_factory=list)
+
+
+class SessionReviewResponse(BaseModel):
+    session_id: str
+    title: str
+    headline: str
+    summary: str
+    review_mode: str
+    key_findings: List[str] = Field(default_factory=list)
+    decision_implications: List[str] = Field(default_factory=list)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    strongest_worlds: List[Dict[str, Any]] = Field(default_factory=list)
+    grounding: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 def _world_summary(world_id: str) -> Optional[Dict[str, Any]]:
@@ -87,6 +103,40 @@ def get_session(session_id: str):
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return _session_response(session)
+
+
+@router.get("/{session_id}/review", response_model=SessionReviewResponse)
+def get_session_review(session_id: str):
+    session = session_store.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    world_entries = [world_store.get(wid) for wid in list(session.get("world_ids") or [])]
+    try:
+        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None])
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    summary = llm_facade.summarize_session_review(payload)
+    return SessionReviewResponse(
+        session_id=str(session.get("session_id") or ""),
+        title=str(session.get("title") or "Session"),
+        headline=str(summary["summary"].get("headline") or ""),
+        summary=str(summary["summary"].get("executive_summary") or ""),
+        review_mode=str(summary["mode"]),
+        key_findings=[str(item) for item in list(summary["summary"].get("key_findings") or [])],
+        decision_implications=[str(item) for item in list(summary["summary"].get("decision_implications") or [])],
+        metrics=dict(payload.get("summary_stats") or {}),
+        strongest_worlds=[dict(item) for item in list(payload.get("strongest_worlds") or [])],
+        grounding={key: [dict(item) for item in list(value or [])] for key, value in dict(payload.get("grounding") or {}).items()},
+        review_meta={
+            "summary": {
+                "prompt_version": str(summary.get("prompt_version") or ""),
+                "prompt_meta": dict(summary.get("prompt_meta") or {}),
+                "provider": str(summary.get("provider") or ""),
+                "model": str(summary.get("model") or ""),
+                "fallback_reason": str(summary.get("fallback_reason") or ""),
+            }
+        },
+    )
 
 
 @router.patch("/{session_id}", response_model=SessionResponse)

@@ -6,6 +6,7 @@ import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
   getReviewDiff,
   getReviewSummary,
+  getSessionReview,
   postReviewDiffQuery,
   postReviewQuery,
   type ReviewDiffResponse,
@@ -13,6 +14,7 @@ import {
   type ReviewGroundingItem,
   type ReviewQueryResponse,
   type ReviewSummaryResponse,
+  type SessionReviewResponse,
   type SessionSummary,
 } from "@/lib/api";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
@@ -45,6 +47,9 @@ export function ReviewLabWorkspace({
   const [diffQueryData, setDiffQueryData] = useState<ReviewDiffQueryResponse | null>(null);
   const [diffQueryLoading, setDiffQueryLoading] = useState(false);
   const [diffQueryError, setDiffQueryError] = useState<string | null>(null);
+  const [sessionReview, setSessionReview] = useState<SessionReviewResponse | null>(null);
+  const [sessionReviewLoading, setSessionReviewLoading] = useState(false);
+  const [sessionReviewError, setSessionReviewError] = useState<string | null>(null);
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -165,6 +170,31 @@ export function ReviewLabWorkspace({
     setDiffQueryData(null);
     setDiffQueryError(null);
   }, [worldId, baseWorldId]);
+
+  useEffect(() => {
+    const sessionId = currentSession?.session_id;
+    if (!sessionId) {
+      setSessionReview(null);
+      setSessionReviewError(null);
+      return;
+    }
+    let cancelled = false;
+    setSessionReviewLoading(true);
+    setSessionReviewError(null);
+    getSessionReview(sessionId)
+      .then((payload) => {
+        if (!cancelled) setSessionReview(payload);
+      })
+      .catch((reason: Error) => {
+        if (!cancelled) setSessionReviewError(reason.message);
+      })
+      .finally(() => {
+        if (!cancelled) setSessionReviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSession?.session_id]);
 
   if (!worldId) {
     return (
@@ -353,6 +383,44 @@ export function ReviewLabWorkspace({
           <p className="text-sm text-slate-500">
             질문을 입력하면 review payload를 기반으로 LLM 또는 heuristic analyst가 답변합니다.
           </p>
+        )}
+      </AppPanel>
+
+      <AppPanel
+        title="Session Review"
+        subtitle="Multi-world analyst summary"
+        bodyClassName="space-y-3"
+      >
+        {sessionReviewLoading ? <p className="text-sm text-slate-500">Session review loading…</p> : null}
+        {sessionReviewError ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            세션 리뷰를 불러오지 못했습니다: {sessionReviewError}
+          </p>
+        ) : null}
+        {sessionReview ? (
+          <>
+            <div className="session-thread-card">
+              <div className="session-thread-card__header">
+                <p className="session-thread-card__title">{sessionReview.headline}</p>
+                <span className="session-thread-card__meta">{sessionReview.review_mode}</span>
+              </div>
+              <p className="session-thread-card__prompt">{sessionReview.summary}</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <MetricCard label="Worlds" value={String(sessionReview.metrics.world_count ?? 0)} />
+              <MetricCard label="Avg Split Risk" value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
+              <MetricCard label="Avg Fracture" value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {sessionReview.key_findings.map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="inspector-body">{item}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-slate-500">같은 세션에 world가 쌓이면 세션 단위 리뷰를 제공합니다.</p>
         )}
       </AppPanel>
 
@@ -609,6 +677,51 @@ export function ReviewLabWorkspace({
           worldId={worldId}
         />
       </div>
+
+      <AppPanel
+        title="Coalition / Fracture Graph"
+        subtitle="Role nodes and relationship edges"
+        bodyClassName="space-y-3"
+      >
+        {Array.isArray(data?.belief_graph?.nodes) && data.belief_graph.nodes.length > 0 ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="grid gap-3 md:grid-cols-2">
+              {data.belief_graph.nodes.slice(0, 8).map((node, index) => {
+                const item = node as Record<string, unknown>;
+                return (
+                  <div key={`${index}-${String(item.id ?? item.label ?? "node")}`} className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">{String(item.label ?? "group")}</p>
+                      <span className="session-thread-card__meta">{String(item.stance ?? "diffuse")}</span>
+                    </div>
+                    <p className="session-thread-card__prompt">
+                      split {Number(item.split_risk ?? 0).toFixed(2)} · block {Number(item.block_divergence ?? 0).toFixed(2)} · fracture {Number(item.cross_zone_fracture ?? 0).toFixed(2)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-3">
+              {(data.belief_graph.edges ?? []).slice(0, 10).map((edge, index) => {
+                const item = edge as Record<string, unknown>;
+                return (
+                  <div key={`${index}-${String(item.source)}-${String(item.target)}`} className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">
+                        {String(item.source ?? "source")} → {String(item.target ?? "target")}
+                      </p>
+                      <span className="session-thread-card__meta">{String(item.relationship ?? "aligned")}</span>
+                    </div>
+                    <p className="session-thread-card__prompt">weight {Number(item.weight ?? 0).toFixed(2)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">belief graph가 아직 없습니다.</p>
+        )}
+      </AppPanel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel title="Group Drift Gaps" subtitle="Role-level differences" bodyClassName="space-y-3">
@@ -1025,7 +1138,7 @@ function GroundingPanel({
                 <button
                   type="button"
                   className="app-button app-button--ghost"
-                  onClick={() => onOpenWorldAt(worldId, item.t ?? null)}
+                  onClick={() => onOpenWorldAt(item.world_id ?? worldId, item.t ?? null)}
                 >
                   Open at t={item.t}
                 </button>
