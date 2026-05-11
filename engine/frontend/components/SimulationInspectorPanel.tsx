@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { AppPanel } from "@/components/app-shell/AppPanel";
-import type { CellSnapshot } from "@/lib/api";
+import { postAgentInterview, type AgentInterviewResponse, type CellSnapshot } from "@/lib/api";
 
 export type SelectedZone = {
   zoneId: string;
@@ -34,6 +36,9 @@ type SimulationInspectorPanelProps = {
     totalCount: number;
     sampled: boolean;
   };
+  agentRoster: CellSnapshot[];
+  onSelectAgent: (agent: CellSnapshot) => void;
+  onOpenWorldAt: (worldId: string, t?: number | null) => void;
   onClearSelection: () => void;
 };
 
@@ -42,6 +47,9 @@ export function SimulationInspectorPanel({
   selectedZone,
   selectedBand,
   worldSummary,
+  agentRoster,
+  onSelectAgent,
+  onOpenWorldAt,
   onClearSelection,
 }: SimulationInspectorPanelProps) {
   const hasSelection = Boolean(selectedAgent || selectedZone || selectedBand);
@@ -77,15 +85,82 @@ export function SimulationInspectorPanel({
       </div>
 
       {!hasSelection ? (
-        <EmptyState />
+        <div className="space-y-4">
+          <EmptyState />
+          <AgentDirectory agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+        </div>
       ) : (
         <div className="space-y-4">
-          {selectedAgent ? <AgentCard agent={selectedAgent} /> : null}
+          {selectedAgent ? (
+            <AgentCard
+              agent={selectedAgent}
+              worldId={worldSummary.worldId}
+              currentT={worldSummary.currentT}
+              onOpenWorldAt={onOpenWorldAt}
+            />
+          ) : null}
+          <AgentDirectory agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
           {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
           {selectedBand ? <BandCard band={selectedBand} /> : null}
         </div>
       )}
     </AppPanel>
+  );
+}
+
+function AgentDirectory({
+  agentRoster,
+  onSelectAgent,
+}: {
+  agentRoster: CellSnapshot[];
+  onSelectAgent: (agent: CellSnapshot) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const filtered = agentRoster.filter((agent) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return true;
+    return [
+      agent.cell_id,
+      agent.role_label,
+      agent.role_key,
+      agent.persona_country,
+      agent.zone_label,
+      agent.zone_id,
+    ]
+      .map((item) => String(item ?? "").toLowerCase())
+      .some((item) => item.includes(needle));
+  });
+  return (
+    <section className="inspector-card">
+      <InspectorHeading title="Agent Directory" subtitle="Query any persona agent in this snapshot" />
+      <textarea
+        className="app-input min-h-[56px]"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="role, country, zone, id로 검색"
+      />
+      <div className="grid gap-2">
+        {filtered.slice(0, 10).map((agent) => (
+          <button
+            key={agent.cell_id}
+            type="button"
+            className="session-thread-card text-left"
+            onClick={() => onSelectAgent(agent)}
+          >
+            <div className="session-thread-card__header">
+              <p className="session-thread-card__title">{agent.role_label ?? agent.role_key ?? "agent"}</p>
+              <span className="session-thread-card__meta">{agent.persona_country ?? "unknown"}</span>
+            </div>
+            <p className="session-thread-card__prompt">
+              {agent.zone_label ?? agent.zone_id ?? "zone"} · z {(agent.z ?? 0).toFixed(2)} · {agent.cell_id.slice(0, 8)}
+            </p>
+          </button>
+        ))}
+        {!filtered.length ? (
+          <p className="text-sm text-slate-500">검색 결과가 없습니다.</p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -98,9 +173,31 @@ function EmptyState() {
   );
 }
 
-function AgentCard({ agent }: { agent: CellSnapshot }) {
+function AgentCard({
+  agent,
+  worldId,
+  currentT,
+  onOpenWorldAt,
+}: {
+  agent: CellSnapshot;
+  worldId: string | null;
+  currentT: number;
+  onOpenWorldAt: (worldId: string, t?: number | null) => void;
+}) {
   const strategy = String(agent.action_state?.strategy_summary ?? "n/a");
   const zMode = String(agent.action_state?.z_mode ?? "hybrid");
+  const [question, setQuestion] = useState("지금 상황을 너의 입장에서 어떻게 보고 있어?");
+  const [response, setResponse] = useState<AgentInterviewResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const shortCount = Array.isArray(agent.short_memory) ? agent.short_memory.length : 0;
+  const longCount = Array.isArray(agent.long_memory) ? agent.long_memory.length : 0;
+
+  useEffect(() => {
+    setResponse(null);
+    setError(null);
+  }, [agent.cell_id]);
+
   return (
     <section className="inspector-card">
       <InspectorHeading
@@ -112,11 +209,84 @@ function AgentCard({ agent }: { agent: CellSnapshot }) {
         <MetricRow label="z" value={(agent.z ?? 0).toFixed(2)} />
         <MetricRow label="z mode" value={zMode} />
         <MetricRow label="zone influence" value={String(agent.zone_influence ?? 1)} />
+        <MetricRow label="short mem" value={String(shortCount)} />
+        <MetricRow label="long mem" value={String(longCount)} />
       </div>
       {agent.persona_text ? (
         <p className="inspector-body">{agent.persona_text}</p>
       ) : null}
       <p className="inspector-note">strategy: {strategy}</p>
+      <div className="grid gap-2 pt-2">
+        <textarea
+          className="app-input min-h-[84px]"
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          placeholder="필요할 때 이 에이전트에게 직접 질문할 수 있습니다."
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="app-button app-button--ghost"
+            onClick={() => {
+              if (!worldId || !question.trim()) return;
+              setLoading(true);
+              setError(null);
+              postAgentInterview(worldId, agent.cell_id, { question: question.trim(), t: currentT })
+                .then((payload) => setResponse(payload))
+                .catch((reason: Error) => setError(reason.message))
+                .finally(() => setLoading(false));
+            }}
+          >
+            Ask Agent
+          </button>
+        </div>
+        {loading ? <p className="text-sm text-slate-500">Agent interview loading…</p> : null}
+        {error ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            에이전트 질의를 처리하지 못했습니다: {error}
+          </p>
+        ) : null}
+        {response ? (
+          <div className="space-y-3 rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Agent Answer</p>
+              <span className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{response.mode}</span>
+            </div>
+            <p className="inspector-body">{response.answer}</p>
+            {response.evidence.length ? (
+              <div className="grid gap-2">
+                {response.evidence.map((item, index) => (
+                  <p key={`${index}-${item}`} className="inspector-note">{item}</p>
+                ))}
+              </div>
+            ) : null}
+            {response.citations.length ? (
+              <div className="grid gap-2">
+                {response.citations.map((item, index) => (
+                  <div key={`${index}-${item.anchor_id}`} className="session-thread-card">
+                    <div className="session-thread-card__header">
+                      <p className="session-thread-card__title">{item.label}</p>
+                      <span className="session-thread-card__meta">{item.kind}</span>
+                    </div>
+                    <p className="session-thread-card__prompt">{item.reason}</p>
+                    {typeof item.t === "number" && worldId ? (
+                      <div className="session-thread-card__actions">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => onOpenWorldAt(item.world_id ?? worldId, item.t ?? null)}
+                        >
+                          Open at t={item.t}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }

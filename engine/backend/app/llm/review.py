@@ -5,6 +5,7 @@ import json
 from typing import Any, Mapping
 
 from app.llm.prompt_registry import build_prompt_contract
+from app.models.cell import Cell
 
 
 def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
@@ -106,6 +107,49 @@ def build_session_review_query_prompt(payload: Mapping[str, Any], question: str)
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("grounding", _compact(payload.get("grounding") or {})),
+        ],
+    )
+
+
+def build_agent_interview_prompt(
+    *,
+    cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> str:
+    short_memory = " | ".join(
+        str(item.get("summary") or "")
+        for item in list(cell.short_memory or [])[-4:]
+        if str(item.get("summary") or "").strip()
+    ) or "none"
+    long_memory = " | ".join(
+        str(item.get("summary") or "")
+        for item in list(cell.long_memory or [])[-4:]
+        if str(item.get("summary") or "").strip()
+    ) or "none"
+    recent_behaviors = " | ".join(
+        str(item.get("summary") or item.get("event_type") or "")
+        for item in list(cell.behavior_log or [])[-4:]
+        if str(item.get("summary") or item.get("event_type") or "").strip()
+    ) or "none"
+    return build_prompt_contract(
+        "agent_interview",
+        [
+            ("question", question),
+            ("identity", f"role={cell.role_label or cell.role_key or 'agent'}; country={cell.persona_country or 'unknown'}; zone={cell.zone_label or cell.zone_id or 'zone'}"),
+            ("persona", str(cell.persona_text or "")[:420]),
+            ("persona_attrs", _compact(dict(cell.persona_attrs or {}))),
+            ("state", _compact({
+                "energy": f"{cell.energy:.2f}",
+                "z": f"{cell.z:.2f}",
+                "cooperation_bias": dict(cell.action_state).get("cooperation_bias", 0.5),
+                "policy_sensitivity": dict(cell.action_state).get("policy_sensitivity", 0.5),
+                "strategy_summary": dict(cell.action_state).get("strategy_summary", ""),
+            })),
+            ("recent_short_memory", short_memory[:420]),
+            ("salient_long_memory", long_memory[:420]),
+            ("recent_behaviors", recent_behaviors[:420]),
+            ("grounding", _compact(grounding)),
         ],
     )
 
@@ -445,6 +489,41 @@ def heuristic_session_review_query(payload: Mapping[str, Any], question: str) ->
     }
 
 
+def heuristic_agent_interview(
+    *,
+    cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> dict[str, Any]:
+    role = str(cell.role_label or cell.role_key or "agent")
+    strategy = str(dict(cell.action_state).get("strategy_summary") or "current_state_reflection")
+    memory_lines = [
+        str(item.get("summary") or "")
+        for item in list(cell.short_memory or [])[-2:] + list(cell.long_memory or [])[-2:]
+        if str(item.get("summary") or "").strip()
+    ]
+    memory_clause = memory_lines[0] if memory_lines else "최근 상호작용과 기억을 바탕으로 판단하고 있습니다."
+    persona = str(cell.persona_text or "").strip()
+    persona_clause = persona[:140] if persona else f"{role} 역할의 관점에서 생각하고 있습니다."
+    answer = (
+        f"저는 {role}로서 {persona_clause} "
+        f"지금은 {strategy} 방향으로 움직이고 있고, {memory_clause} "
+        f"질문하신 내용에 대해서는 제 현재 기억과 위치에서 그렇게 판단합니다."
+    )
+    evidence = [
+        f"role={role}, zone={cell.zone_label or cell.zone_id or 'zone'}, z={float(cell.z):.2f}",
+        f"strategy={strategy}",
+    ]
+    if memory_lines:
+        evidence.append(memory_lines[0])
+    return {
+        "answer": answer,
+        "evidence": evidence[:4],
+        "confidence_notes": ["heuristic agent interview used"],
+        "citations": _citation_ids(grounding, "memories", limit=2) or _citation_ids(grounding, "persona", limit=1),
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -585,6 +664,29 @@ def parse_session_review_query(raw_text: str, payload: Mapping[str, Any], questi
     }
 
 
+def parse_agent_interview(
+    raw_text: str,
+    *,
+    cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
+    fallback = heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
+    return {
+        "answer": str(parsed.get("answer") or fallback["answer"]),
+        "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
+        "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+    }
+
+
 def _compact(mapping: Mapping[str, Any]) -> str:
     return "; ".join(f"{key}={value}" for key, value in mapping.items())[:1800]
 
@@ -602,7 +704,7 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
 
 
 def _citation_ids(payload: Mapping[str, Any], section: str, *, limit: int) -> list[str]:
-    grounding = dict(payload.get("grounding") or {})
+    grounding = dict(payload.get("grounding") or payload or {})
     rows = list(grounding.get(section) or [])
     out = [str(item.get("anchor_id") or "") for item in rows if str(item.get("anchor_id") or "").strip()]
     return out[:limit]

@@ -17,6 +17,14 @@ LLM_TASK_NAMES = (
     "policy",
     "dialogue",
     "group_deliberation",
+    "review_summary",
+    "timeline_annotation",
+    "review_diff",
+    "review_query",
+    "review_diff_query",
+    "session_review",
+    "session_review_query",
+    "agent_interview",
 )
 
 _TASK_PRIORITY_DEFAULTS = {
@@ -27,6 +35,14 @@ _TASK_PRIORITY_DEFAULTS = {
     "dialogue": 2,
     "group_deliberation": 3,
     "worldview": 4,
+    "review_summary": 1,
+    "timeline_annotation": 2,
+    "review_diff": 1,
+    "review_query": 1,
+    "review_diff_query": 1,
+    "session_review": 1,
+    "session_review_query": 1,
+    "agent_interview": 1,
 }
 
 

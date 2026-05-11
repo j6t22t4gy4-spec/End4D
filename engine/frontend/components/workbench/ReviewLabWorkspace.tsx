@@ -454,6 +454,62 @@ export function ReviewLabWorkspace({
               <MetricCard label="Avg Split Risk" value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
               <MetricCard label="Avg Fracture" value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
             </div>
+            {sessionReview.ranked_worlds?.length ? (
+              <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ranked Worlds</p>
+                  {sessionReview.ranked_worlds.slice(0, 5).map((item, index) => (
+                    <div key={`${index}-${String(item.world_id ?? "world")}`} className="session-thread-card">
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">{String(item.world_id ?? "world")}</p>
+                        <span className="session-thread-card__meta">score {Number(item.score ?? 0).toFixed(2)}</span>
+                      </div>
+                      <p className="session-thread-card__prompt">
+                        {String(item.overall_signal ?? "diffuse")} · split {Number(item.split_risk ?? 0).toFixed(2)} · fracture {Number(item.cross_zone_fracture ?? 0).toFixed(2)}
+                      </p>
+                      <div className="session-thread-card__actions">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => onOpenWorldAt(String(item.world_id ?? worldId))}
+                        >
+                          Open World
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recommended Comparisons</p>
+                  {sessionReview.recommended_pairs?.slice(0, 4).map((item, index) => (
+                    <div key={`${index}-${String(item.target_world_id ?? "target")}-${String(item.base_world_id ?? "base")}`} className="session-thread-card">
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">
+                          {String(item.target_world_id ?? "target").slice(0, 8)} vs {String(item.base_world_id ?? "base").slice(0, 8)}
+                        </p>
+                      </div>
+                      <p className="session-thread-card__prompt">{String(item.reason ?? "comparison candidate")}</p>
+                      <div className="session-thread-card__actions">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => onOpenWorldAt(String(item.target_world_id ?? worldId))}
+                        >
+                          Open Target
+                        </button>
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => onOpenWorldAt(String(item.base_world_id ?? worldId))}
+                        >
+                          Open Base
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-3 md:grid-cols-2">
               {sessionReview.key_findings.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">

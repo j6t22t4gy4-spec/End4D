@@ -6,14 +6,16 @@ energy, emotion, and memory trajectories.
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.emotion import EMOTION_LABELS
+from app.core.memory_reflection import build_memory_reflection
 from app.core.store import world_store
+from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
 router = APIRouter(prefix="/worlds", tags=["agents"])
@@ -60,6 +62,34 @@ class AgentStanceSummaryResponse(BaseModel):
     groups: List[AgentStanceGroup]
 
 
+class AgentInterviewRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    t: Optional[float] = None
+
+
+class AgentInterviewGroundingItem(BaseModel):
+    anchor_id: str
+    kind: str
+    label: str
+    reason: str = ""
+    t: Optional[float] = None
+    cell_id: Optional[str] = None
+    world_id: Optional[str] = None
+
+
+class AgentInterviewResponse(BaseModel):
+    world_id: str
+    cell_id: str
+    question: str
+    answer: str
+    evidence: List[str] = Field(default_factory=list)
+    confidence_notes: List[str] = Field(default_factory=list)
+    mode: str
+    grounding: Dict[str, List[AgentInterviewGroundingItem]] = Field(default_factory=dict)
+    citations: List[AgentInterviewGroundingItem] = Field(default_factory=list)
+    interview_meta: Dict[str, Any] = Field(default_factory=dict)
+
+
 def _role_group_id(cell: Cell) -> str:
     role_key = (cell.role_key or "agent").strip() or "agent"
     role_label = (cell.role_label or role_key).strip() or role_key
@@ -80,6 +110,89 @@ def _resolve_snapshot(entry: dict, t: Optional[float]):
     if snap is None:
         raise HTTPException(status_code=404, detail="No snapshot available")
     return snap
+
+
+def _find_cell(snapshot, cell_id: str) -> Cell:
+    for cell in snapshot.cells:
+        if cell.cell_id == cell_id:
+            return cell
+    raise HTTPException(status_code=404, detail="Agent not found")
+
+
+def _build_agent_grounding(*, world_id: str, cell: Cell) -> dict[str, list[dict[str, Any]]]:
+    persona_attrs = dict(cell.persona_attrs or {})
+    return {
+        "persona": [
+            {
+                "anchor_id": f"persona:{world_id}:{cell.cell_id}",
+                "kind": "persona",
+                "label": str(cell.role_label or cell.role_key or "agent"),
+                "reason": str(cell.persona_text or ""),
+                "cell_id": cell.cell_id,
+                "world_id": world_id,
+            }
+        ],
+        "memories": [
+            {
+                "anchor_id": f"memory:{world_id}:{cell.cell_id}:{idx}",
+                "kind": "memory",
+                "label": str(item.get("summary") or "memory"),
+                "reason": str(item.get("payload", {}).get("belief_polarity") or item.get("summary") or ""),
+                "t": float(item.get("t")) if item.get("t") is not None else None,
+                "cell_id": cell.cell_id,
+                "world_id": world_id,
+            }
+            for idx, item in enumerate((list(cell.short_memory or [])[-3:] + list(cell.long_memory or [])[-3:]), start=1)
+            if str(item.get("summary") or "").strip()
+        ],
+        "behaviors": [
+            {
+                "anchor_id": f"behavior:{world_id}:{cell.cell_id}:{idx}",
+                "kind": "behavior",
+                "label": str(item.get("event_type") or "behavior"),
+                "reason": str(item.get("summary") or ""),
+                "t": float(item.get("t")) if item.get("t") is not None else None,
+                "cell_id": cell.cell_id,
+                "world_id": world_id,
+            }
+            for idx, item in enumerate(list(cell.behavior_log or [])[-4:], start=1)
+        ],
+        "state": [
+            {
+                "anchor_id": f"state:{world_id}:{cell.cell_id}",
+                "kind": "state",
+                "label": str(cell.zone_label or cell.zone_id or "zone"),
+                "reason": build_memory_reflection(cell)[:240],
+                "t": float(cell.t),
+                "cell_id": cell.cell_id,
+                "world_id": world_id,
+            }
+        ],
+        "attrs": [
+            {
+                "anchor_id": f"attrs:{world_id}:{cell.cell_id}",
+                "kind": "attrs",
+                "label": str(persona_attrs.get("occupation") or persona_attrs.get("region") or "persona_attrs"),
+                "reason": "; ".join(f"{key}={value}" for key, value in list(persona_attrs.items())[:6]),
+                "cell_id": cell.cell_id,
+                "world_id": world_id,
+            }
+        ] if persona_attrs else [],
+    }
+
+
+def _citation_items(grounding: dict[str, list[dict[str, Any]]], anchor_ids: list[str]) -> list[AgentInterviewGroundingItem]:
+    index = {
+        str(item.get("anchor_id") or ""): item
+        for values in grounding.values()
+        for item in list(values or [])
+        if str(item.get("anchor_id") or "").strip()
+    }
+    return [
+        AgentInterviewGroundingItem(**dict(index[anchor_id]))
+        for anchor_id in anchor_ids[:6]
+        if anchor_id in index
+    ]
 
 
 @router.get("/{world_id}/agents/summary", response_model=AgentSummaryResponse)
@@ -257,4 +370,39 @@ def get_agent_stance_summary(
         t=float(snap.t),
         overall_signal=overall_signal,
         groups=groups,
+    )
+
+
+@router.post("/{world_id}/agents/{cell_id}/query", response_model=AgentInterviewResponse)
+def post_agent_interview(world_id: str, cell_id: str, body: AgentInterviewRequest):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    snap = _resolve_snapshot(entry, body.t)
+    cell = _find_cell(snap, cell_id)
+    grounding = _build_agent_grounding(world_id=world_id, cell=cell)
+    interview = llm_facade.interview_agent(cell=cell, question=body.question, grounding=grounding)
+    answer = dict(interview.get("query") or {})
+    return AgentInterviewResponse(
+        world_id=world_id,
+        cell_id=cell_id,
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(interview.get("mode") or "heuristic"),
+        grounding={
+            key: [AgentInterviewGroundingItem(**dict(item)) for item in list(values or [])]
+            for key, values in grounding.items()
+        },
+        citations=_citation_items(grounding, [str(item) for item in list(answer.get("citations") or [])]),
+        interview_meta={
+            "query": {
+                "prompt_version": str(interview.get("prompt_version") or ""),
+                "prompt_meta": dict(interview.get("prompt_meta") or {}),
+                "provider": str(interview.get("provider") or ""),
+                "model": str(interview.get("model") or ""),
+                "fallback_reason": str(interview.get("fallback_reason") or ""),
+            }
+        },
     )

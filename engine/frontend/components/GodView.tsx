@@ -53,6 +53,7 @@ export default function GodView({
   const [availableT, setAvailableT] = useState<number[]>([]);
   const [currentT, setCurrentT] = useState(0);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [snapshotCells, setSnapshotCells] = useState<CellSnapshot[]>([]);
   const [visibleCells, setVisibleCells] = useState<CellSnapshot[]>([]);
   const [visualStats, setVisualStats] = useState<{
     totalCells: number;
@@ -188,6 +189,7 @@ export default function GodView({
       setAvailableT([]);
       setCurrentT(0);
       setVisibleCells([]);
+      setSnapshotCells([]);
       setVisualStats(null);
       setSelectedAgent(null);
       setSelectedZone(null);
@@ -264,8 +266,9 @@ export default function GodView({
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
       if (availableT.length === 0 && worldId) {
-        setVisibleCells([]);
-        setVisualStats(null);
+      setVisibleCells([]);
+      setSnapshotCells([]);
+      setVisualStats(null);
       }
       return;
     }
@@ -278,6 +281,7 @@ export default function GodView({
         const { cells, totalCells, sampled } = sampleCellsForVisualization(
           snap.cells
         );
+        setSnapshotCells(snap.cells);
         setVisibleCells(cells);
         setVisualStats({ totalCells, sampled });
       })
@@ -757,6 +761,11 @@ export default function GodView({
                     visibleCount: visibleCells.length,
                     totalCount: visualStats?.totalCells ?? visibleCells.length,
                     sampled: visualStats?.sampled ?? false,
+                  }}
+                  agentRoster={snapshotCells}
+                  onSelectAgent={setSelectedAgent}
+                  onOpenWorldAt={(_, t) => {
+                    if (typeof t === "number") setCurrentT(t);
                   }}
                   onClearSelection={clearSelection}
                 />

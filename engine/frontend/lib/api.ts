@@ -29,7 +29,23 @@ export type CellSnapshot = {
   zone_label?: string;
   zone_influence?: number;
   zone_friction?: number;
+  short_memory?: Array<Record<string, unknown>>;
+  long_memory?: Array<Record<string, unknown>>;
+  behavior_log?: Array<Record<string, unknown>>;
   action_state?: Record<string, unknown>;
+};
+
+export type AgentInterviewResponse = {
+  world_id: string;
+  cell_id: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+  confidence_notes: string[];
+  mode: string;
+  grounding: Record<string, ReviewGroundingItem[]>;
+  citations: ReviewGroundingItem[];
+  interview_meta: Record<string, unknown>;
 };
 
 export type SnapshotResponse = {
@@ -300,6 +316,8 @@ export type SessionReviewResponse = {
   decision_implications: string[];
   metrics: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
+  ranked_worlds: Array<Record<string, unknown>>;
+  recommended_pairs: Array<Record<string, unknown>>;
   grounding: Record<string, Array<Record<string, unknown>>>;
   citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
@@ -365,6 +383,23 @@ export async function getAgentSummary(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/summary${suffix}`
   );
   if (!res.ok) throw new Error(`getAgentSummary: ${res.status}`);
+  return res.json();
+}
+
+export async function postAgentInterview(
+  worldId: string,
+  cellId: string,
+  body: { question: string; t?: number | null }
+): Promise<AgentInterviewResponse> {
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/${encodeURIComponent(cellId)}/query`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) throw new Error(`postAgentInterview: ${res.status}`);
   return res.json();
 }
 

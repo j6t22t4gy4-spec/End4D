@@ -118,3 +118,33 @@ def test_review_diff_query_returns_answer_and_grounding():
     assert isinstance(payload["evidence"], list)
     assert "grounding" in payload
     assert "citations" in payload
+
+
+def test_agent_interview_returns_persona_grounded_answer():
+    created = client.post(
+        "/worlds",
+        json={"prompt": "지역 불평등과 개인 신념 변화를 함께 보는 시나리오"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+    assert client.post(f"/worlds/{world_id}/run", json={"stream": False}).status_code == 200
+
+    snapshot = client.get(f"/worlds/{world_id}/snapshots")
+    assert snapshot.status_code == 200
+    times = snapshot.json()["available_t"]
+    latest_t = times[-1]
+    latest = client.get(f"/worlds/{world_id}/snapshots", params={"t": latest_t})
+    assert latest.status_code == 200
+    cell_id = latest.json()["cells"][0]["cell_id"]
+
+    response = client.post(
+        f"/worlds/{world_id}/agents/{cell_id}/query",
+        json={"question": "지금 상황을 너의 입장에서 어떻게 보고 있어?", "t": latest_t},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["world_id"] == world_id
+    assert payload["cell_id"] == cell_id
+    assert payload["answer"]
+    assert isinstance(payload["grounding"], dict)
+    assert isinstance(payload["citations"], list)

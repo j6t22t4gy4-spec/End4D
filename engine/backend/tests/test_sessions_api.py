@@ -82,6 +82,8 @@ def test_session_review_returns_multi_world_summary():
     assert payload["summary"]
     assert int(payload["metrics"]["world_count"]) >= 2
     assert isinstance(payload["strongest_worlds"], list)
+    assert isinstance(payload["ranked_worlds"], list)
+    assert isinstance(payload["recommended_pairs"], list)
     assert "citations" in payload
 
 

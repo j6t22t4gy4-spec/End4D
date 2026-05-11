@@ -265,6 +265,23 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "citations",
         ),
     ),
+    "agent_interview": PromptSpec(
+        task="agent_interview",
+        version="agent-interview-v1",
+        output_mode="json",
+        description="Answer as a specific persona agent in first person using the agent's memory, role, and current state.",
+        system_prompt=(
+            "You are answering as the selected simulation agent in first person. "
+            "Stay faithful to the provided persona, memories, role, zone, and current action state. "
+            "Do not claim knowledge outside the provided evidence. Return compact JSON only."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "confidence_notes",
+            "citations",
+        ),
+    ),
 }
 
 

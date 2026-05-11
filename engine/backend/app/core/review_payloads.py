@@ -117,6 +117,37 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
         ),
         reverse=True,
     )
+    ranked_worlds = [
+        {
+            "world_id": str(payload.get("world_id") or ""),
+            "outcome": str((payload.get("summary_stats") or {}).get("outcome") or "stable"),
+            "overall_signal": str((payload.get("belief_drift") or {}).get("overall_signal") or "diffuse"),
+            "split_risk": float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0),
+            "block_divergence": float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0),
+            "cross_zone_fracture": float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
+            "score": round(
+                float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0)
+                + float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0)
+                + float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
+                3,
+            ),
+        }
+        for payload in ranked
+    ]
+    recommended_pairs: list[dict[str, Any]] = []
+    for idx, left in enumerate(ranked_worlds[:4]):
+        for right in ranked_worlds[idx + 1 : 5]:
+            recommended_pairs.append(
+                {
+                    "base_world_id": str(right.get("world_id") or ""),
+                    "target_world_id": str(left.get("world_id") or ""),
+                    "reason": (
+                        f"score gap {abs(float(left.get('score', 0.0)) - float(right.get('score', 0.0))):.2f}; "
+                        f"signal {left.get('overall_signal', 'diffuse')} vs {right.get('overall_signal', 'diffuse')}"
+                    ),
+                }
+            )
+    recommended_pairs.sort(key=lambda item: abs(next((float(w["score"]) for w in ranked_worlds if w["world_id"] == item["target_world_id"]), 0.0) - next((float(w["score"]) for w in ranked_worlds if w["world_id"] == item["base_world_id"]), 0.0)), reverse=True)
     return {
         "session_id": str(session.get("session_id") or ""),
         "title": str(session.get("title") or "Session"),
@@ -130,17 +161,9 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
             "avg_block_divergence": round(float(np.mean(block_divergences)) if block_divergences else 0.0, 3),
             "avg_cross_zone_fracture": round(float(np.mean(fracture_scores)) if fracture_scores else 0.0, 3),
         },
-        "strongest_worlds": [
-            {
-                "world_id": str(payload.get("world_id") or ""),
-                "outcome": str((payload.get("summary_stats") or {}).get("outcome") or "stable"),
-                "overall_signal": str((payload.get("belief_drift") or {}).get("overall_signal") or "diffuse"),
-                "split_risk": float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0),
-                "block_divergence": float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0),
-                "cross_zone_fracture": float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
-            }
-            for payload in ranked[:5]
-        ],
+        "strongest_worlds": ranked_worlds[:5],
+        "ranked_worlds": ranked_worlds[:8],
+        "recommended_pairs": recommended_pairs[:5],
         "grounding": {
             "worlds": [
                 {

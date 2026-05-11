@@ -52,6 +52,8 @@ class SessionReviewResponse(BaseModel):
     decision_implications: List[str] = Field(default_factory=list)
     metrics: Dict[str, Any] = Field(default_factory=dict)
     strongest_worlds: List[Dict[str, Any]] = Field(default_factory=list)
+    ranked_worlds: List[Dict[str, Any]] = Field(default_factory=list)
+    recommended_pairs: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     citations: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -144,6 +146,8 @@ def get_session_review(session_id: str):
         decision_implications=[str(item) for item in list(summary["summary"].get("decision_implications") or [])],
         metrics=dict(payload.get("summary_stats") or {}),
         strongest_worlds=[dict(item) for item in list(payload.get("strongest_worlds") or [])],
+        ranked_worlds=[dict(item) for item in list(payload.get("ranked_worlds") or [])],
+        recommended_pairs=[dict(item) for item in list(payload.get("recommended_pairs") or [])],
         grounding={key: [dict(item) for item in list(value or [])] for key, value in dict(payload.get("grounding") or {}).items()},
         citations=_session_citations(payload, dict((summary.get("summary") or {}).get("citations") or {})),
         review_meta={
