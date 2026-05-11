@@ -151,7 +151,7 @@ export default function HomeWithCanvas() {
         <AppToolbar
           locale={locale}
           onChangeLocale={setLocale}
-          runtimeProfile={runtime?.runtime_profile ?? "Booting"}
+          runtimeProfile={runtime?.runtime_profile ?? (isKo ? "부팅 중" : "Booting")}
           installedPackCount={runtime?.installed_pack_count ?? 0}
           countriesLabel={countriesLabel}
           activeView={activeView}
