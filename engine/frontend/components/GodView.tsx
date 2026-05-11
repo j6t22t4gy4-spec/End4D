@@ -929,7 +929,7 @@ export default function GodView({
             <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
           </div>
 
-          <div className="grid min-h-0 gap-4 xl:grid-rows-[minmax(0,1fr)_auto]">
+          <div className="grid min-h-0 gap-4 xl:grid-rows-[minmax(0,1fr)_minmax(320px,0.48fr)]">
             <AppPanel
               title="Simulation View"
               subtitle="Belief dynamics, selection, and map-driven inspection"
@@ -1018,7 +1018,7 @@ export default function GodView({
               </div>
             </AppPanel>
 
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(300px,0.42fr)_minmax(0,1fr)]">
               <AppPanel
                 title="Time Navigation"
                 subtitle="Browse saved snapshots"
@@ -1054,12 +1054,33 @@ export default function GodView({
                 </div>
               </AppPanel>
 
-              <ScenarioTimeline
-                worldId={worldId}
-                refreshKey={chartRefreshKey}
-                annotations={reviewSummary?.timeline_annotations ?? []}
-                onJumpToT={setCurrentT}
-              />
+              <div className="grid min-h-0 gap-3">
+                <ScenarioTimeline
+                  worldId={worldId}
+                  refreshKey={chartRefreshKey}
+                  annotations={reviewSummary?.timeline_annotations ?? []}
+                  onJumpToT={setCurrentT}
+                />
+                <AppPanel
+                  title="Analysis Graph"
+                  subtitle="A larger chart lane for long-run trend reading"
+                  bodyClassName="space-y-2"
+                >
+                  <p className="text-sm leading-6 text-slate-600">
+                    시간축 그래프를 별도 영역으로 분리해서, 실행 뷰와 시계열 분석을 동시에 보더라도
+                    흐름이 덜 답답하게 유지되도록 했습니다. annotation을 클릭하면 해당 시점으로 바로
+                    이동합니다.
+                  </p>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <MetricChip label="Frames" value={String(availableT.length)} />
+                    <MetricChip
+                      label="Annotations"
+                      value={String(reviewSummary?.timeline_annotations.length ?? 0)}
+                    />
+                    <MetricChip label="Current t" value={String(currentT)} />
+                  </div>
+                </AppPanel>
+              </div>
             </div>
           </div>
         </div>

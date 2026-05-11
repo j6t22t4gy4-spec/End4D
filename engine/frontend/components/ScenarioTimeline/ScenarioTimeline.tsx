@@ -79,7 +79,7 @@ export function ScenarioTimeline({
         <p className="text-xs text-slate-500">시뮬 실행 후 데이터가 표시됩니다.</p>
       )}
       {chartData.length > 0 && (
-        <div className="h-52 w-full min-w-0">
+        <div className="h-72 w-full min-w-0 xl:h-[20rem]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={chartData}
