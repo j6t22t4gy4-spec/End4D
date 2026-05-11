@@ -37,10 +37,12 @@ const PROMPT_PLACEHOLDER =
 
 export default function GodView({
   initialWorldId = null,
+  initialT = null,
   onOpenWorkbenchView,
   onWorldSelected,
 }: {
   initialWorldId?: string | null;
+  initialT?: number | null;
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
   onWorldSelected?: (worldId: string) => void;
 }) {
@@ -357,7 +359,14 @@ export default function GodView({
         setGenesisPrompt(meta.genesis_prompt ?? "");
         setAvailableT(snapshots.available_t);
         const lastT = snapshots.available_t[snapshots.available_t.length - 1] ?? 0;
-        setCurrentT(lastT);
+        if (typeof initialT === "number" && snapshots.available_t.length > 0) {
+          const nearest = snapshots.available_t.reduce((best, value) =>
+            Math.abs(value - initialT) < Math.abs(best - initialT) ? value : best
+          );
+          setCurrentT(nearest);
+        } else {
+          setCurrentT(lastT);
+        }
         setStage("run");
       })
       .catch((e) => {
@@ -366,7 +375,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [initialWorldId, onWorldSelected]);
+  }, [initialT, initialWorldId, onWorldSelected]);
 
   return (
     <div className="godview-staged">

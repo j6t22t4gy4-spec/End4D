@@ -16,12 +16,14 @@ type ReviewLabWorkspaceProps = {
   worldId: string | null;
   sessions: SessionSummary[];
   onOpenView: (view: WorkbenchView) => void;
+  onOpenWorldAt: (worldId: string, t?: number | null) => void;
 };
 
 export function ReviewLabWorkspace({
   worldId,
   sessions,
   onOpenView,
+  onOpenWorldAt,
 }: ReviewLabWorkspaceProps) {
   const [data, setData] = useState<ReviewSummaryResponse | null>(null);
   const [diff, setDiff] = useState<ReviewDiffResponse | null>(null);
@@ -213,6 +215,22 @@ export function ReviewLabWorkspace({
               <div className="session-thread-card">
                 <p className="session-thread-card__title">{diff.headline}</p>
                 <p className="session-thread-card__prompt">{diff.summary}</p>
+                <div className="session-thread-card__actions">
+                  <button
+                    type="button"
+                    className="app-button app-button--ghost"
+                    onClick={() => onOpenWorldAt(diff.target_world_id)}
+                  >
+                    Open Target
+                  </button>
+                  <button
+                    type="button"
+                    className="app-button app-button--ghost"
+                    onClick={() => onOpenWorldAt(diff.base_world_id)}
+                  >
+                    Open Baseline
+                  </button>
+                </div>
               </div>
               <div className="grid gap-3 md:grid-cols-3">
                 <MetricCard
@@ -264,6 +282,15 @@ export function ReviewLabWorkspace({
                   <span className="session-thread-card__meta">{item.severity}</span>
                 </div>
                 <p className="session-thread-card__prompt">{item.reason}</p>
+                <div className="session-thread-card__actions">
+                  <button
+                    type="button"
+                    className="app-button app-button--ghost"
+                    onClick={() => onOpenWorldAt(worldId, item.t)}
+                  >
+                    Open at t
+                  </button>
+                </div>
               </div>
             ))
           ) : (

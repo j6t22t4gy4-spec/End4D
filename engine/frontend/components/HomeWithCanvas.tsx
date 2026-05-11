@@ -34,6 +34,7 @@ export default function HomeWithCanvas() {
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<WorkbenchView>("overview");
   const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
+  const [selectedSnapshotT, setSelectedSnapshotT] = useState<number | null>(null);
   const [dataPackSyncing, setDataPackSyncing] = useState(false);
   const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
 
@@ -125,6 +126,7 @@ export default function HomeWithCanvas() {
                 onOpenView={setActiveView}
                 onOpenWorld={(worldId) => {
                   setSelectedWorldId(worldId);
+                  setSelectedSnapshotT(null);
                   setActiveView("simulation");
                 }}
                 onRenameSession={(sessionId, title) =>
@@ -138,9 +140,14 @@ export default function HomeWithCanvas() {
 
             {activeView === "simulation" ? (
               <GodView
+                key={`${selectedWorldId ?? "none"}:${selectedSnapshotT ?? "latest"}`}
                 initialWorldId={selectedWorldId}
+                initialT={selectedSnapshotT}
                 onOpenWorkbenchView={setActiveView}
-                onWorldSelected={(worldId) => setSelectedWorldId(worldId)}
+                onWorldSelected={(worldId) => {
+                  setSelectedWorldId(worldId);
+                  setSelectedSnapshotT(null);
+                }}
               />
             ) : null}
 
@@ -149,6 +156,11 @@ export default function HomeWithCanvas() {
                 worldId={selectedWorldId ?? sessions[0]?.latest_world_id ?? null}
                 sessions={sessions}
                 onOpenView={setActiveView}
+                onOpenWorldAt={(worldId, t) => {
+                  setSelectedWorldId(worldId);
+                  setSelectedSnapshotT(typeof t === "number" ? t : null);
+                  setActiveView("simulation");
+                }}
               />
             ) : null}
 
