@@ -25,6 +25,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
             ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
             ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
             ("zone_z_drift", _compact_list(payload.get("zone_z_drift") or [], limit=5)),
+            ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
         ],
@@ -58,6 +59,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("notable_agent_delta", _compact(diff_payload.get("notable_agent_delta") or {})),
             ("coalition_shift_delta", _compact(diff_payload.get("coalition_shift_delta") or {})),
+            ("anchor_candidates", _compact_anchor_candidates(diff_payload.get("grounding") or {})),
             ("grounding", _compact(diff_payload.get("grounding") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
@@ -77,6 +79,7 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("mechanism_summary", _compact(payload.get("mechanism_summary") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
             ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
+            ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
             ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=5)),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
@@ -98,6 +101,7 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
             ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
+            ("anchor_candidates", _compact_anchor_candidates(diff_payload.get("grounding") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
     )
@@ -112,6 +116,7 @@ def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
+            ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
     )
@@ -127,6 +132,7 @@ def build_session_review_query_prompt(payload: Mapping[str, Any], question: str)
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
+            ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
     )
@@ -748,7 +754,17 @@ def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str,
             fallback["decision_implications"],
         ),
         "watch_items": _string_list(parsed.get("watch_items"), fallback["watch_items"]),
-        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_map(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(payload),
+            required_keys=(
+                "headline",
+                "key_events.0",
+                "causal_analysis.0",
+                "decision_implications.0",
+            ),
+        ),
     }
 
 
@@ -792,7 +808,16 @@ def parse_review_diff(raw_text: str, diff_payload: Mapping[str, Any]) -> dict[st
             parsed.get("decision_implications"),
             fallback["decision_implications"],
         ),
-        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_map(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(diff_payload),
+            required_keys=(
+                "key_deltas.0",
+                "causal_comparison.0",
+                "decision_implications.0",
+            ),
+        ),
     }
 
 
@@ -810,7 +835,11 @@ def parse_review_query(raw_text: str, payload: Mapping[str, Any], question: str)
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
-        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_list(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(payload),
+        ),
     }
 
 
@@ -828,7 +857,11 @@ def parse_review_diff_query(raw_text: str, diff_payload: Mapping[str, Any], ques
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
-        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_list(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(diff_payload),
+        ),
     }
 
 
@@ -847,7 +880,15 @@ def parse_session_review(raw_text: str, payload: Mapping[str, Any]) -> dict[str,
         "key_findings": _string_list(parsed.get("key_findings"), fallback["key_findings"]),
         "decision_implications": _string_list(parsed.get("decision_implications"), fallback["decision_implications"]),
         "objective_explanation": str(parsed.get("objective_explanation") or fallback.get("objective_explanation") or ""),
-        "citations": _citation_map(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_map(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(payload),
+            required_keys=(
+                "key_findings.0",
+                "decision_implications.0",
+            ),
+        ),
     }
 
 
@@ -865,7 +906,11 @@ def parse_session_review_query(raw_text: str, payload: Mapping[str, Any], questi
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
-        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_list(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(payload),
+        ),
     }
 
 
@@ -888,7 +933,11 @@ def parse_agent_interview(
         "answer": str(parsed.get("answer") or fallback["answer"]),
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
-        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_list(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(grounding),
+        ),
     }
 
 
@@ -927,7 +976,11 @@ def parse_agent_interview_diff(
         "answer": str(parsed.get("answer") or fallback["answer"]),
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
         "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
-        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+        "citations": _validated_citation_list(
+            parsed.get("citations"),
+            fallback["citations"],
+            allowed_ids=_allowed_anchor_ids(grounding),
+        ),
     }
 
 
@@ -938,6 +991,22 @@ def _compact(mapping: Mapping[str, Any]) -> str:
 def _compact_list(items: list[Any], *, limit: int) -> str:
     sliced = items[:limit]
     return " | ".join(_compact(item) if isinstance(item, Mapping) else str(item) for item in sliced)[:1800]
+
+
+def _compact_anchor_candidates(grounding: Mapping[str, Any]) -> str:
+    candidates: list[str] = []
+    for section, rows in dict(grounding or {}).items():
+        for row in list(rows or [])[:3]:
+            anchor_id = str(row.get("anchor_id") or "").strip()
+            if not anchor_id:
+                continue
+            label = str(row.get("label") or row.get("role_label") or row.get("zone_label") or row.get("name") or section[:-1] or "evidence").strip()
+            reason = str(row.get("reason") or row.get("summary") or "").strip()
+            snippet = f"{anchor_id}::{label}"
+            if reason:
+                snippet += f"::{reason[:80]}"
+            candidates.append(snippet)
+    return " | ".join(candidates[:18])[:1800]
 
 
 def _string_list(value: Any, fallback: list[str]) -> list[str]:
@@ -964,6 +1033,52 @@ def _citation_map(value: Any, fallback: dict[str, list[str]]) -> dict[str, list[
             if items:
                 cleaned[str(key)] = items[:6]
     return cleaned or dict(fallback)
+
+
+def _allowed_anchor_ids(payload: Mapping[str, Any]) -> set[str]:
+    grounding = dict(payload.get("grounding") or payload or {})
+    out: set[str] = set()
+    for rows in grounding.values():
+        for row in list(rows or []):
+            anchor_id = str(row.get("anchor_id") or "").strip()
+            if anchor_id:
+                out.add(anchor_id)
+    return out
+
+
+def _validated_citation_map(
+    value: Any,
+    fallback: dict[str, list[str]],
+    *,
+    allowed_ids: set[str],
+    required_keys: tuple[str, ...] = (),
+) -> dict[str, list[str]]:
+    cleaned = _citation_map(value, fallback)
+    out: dict[str, list[str]] = {}
+    for key, rows in cleaned.items():
+        valid = [item for item in rows if item in allowed_ids]
+        if valid:
+            out[str(key)] = valid[:6]
+    for key, rows in fallback.items():
+        valid = [item for item in rows if item in allowed_ids]
+        if not valid:
+            continue
+        if key in required_keys or key not in out:
+            out.setdefault(key, valid[:6])
+    return out or {
+        key: [item for item in rows if item in allowed_ids][:6]
+        for key, rows in fallback.items()
+        if any(item in allowed_ids for item in rows)
+    }
+
+
+def _validated_citation_list(value: Any, fallback: list[str], *, allowed_ids: set[str]) -> list[str]:
+    candidate = _string_list(value, fallback)
+    valid = [item for item in candidate if item in allowed_ids]
+    if valid:
+        return valid[:6]
+    fallback_valid = [item for item in fallback if item in allowed_ids]
+    return fallback_valid[:6]
 
 
 def _severity(score: float) -> str:

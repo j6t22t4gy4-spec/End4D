@@ -617,6 +617,7 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
         actions.append(
             {
                 "kind": "jump",
+                "score": round(float(top.get("score", 0.0)) + 0.4, 3),
                 "label": f"Inspect t={int(float(top.get('t', 0.0)))}",
                 "description": str(top.get("reason") or top.get("label") or ""),
                 "world_id": world_id,
@@ -625,9 +626,16 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
         )
     if groups:
         top_group = dict(groups[0] or {})
+        group_score = (
+            abs(float(top_group.get("cohesion_delta", 0.0)))
+            + abs(float(top_group.get("tension_delta", 0.0)))
+            + abs(float(top_group.get("polarization_delta", 0.0)))
+            + abs(float(top_group.get("sub_coalition_split_risk", 0.0)))
+        )
         actions.append(
             {
                 "kind": "group_followup",
+                "score": round(group_score, 3),
                 "label": f"Probe {top_group.get('role_label', 'group')}",
                 "description": (
                     f"cohesion {float(top_group.get('cohesion_delta', 0.0)):+.2f}, "
@@ -643,6 +651,11 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
         actions.append(
             {
                 "kind": "lineage_followup",
+                "score": round(
+                    abs(float(top_role.get("lineage_score", 0.0)))
+                    + abs(float(top_role.get("transition_count", 0.0))) * 0.2,
+                    3,
+                ),
                 "label": f"Track {top_role.get('role_label', 'role')} transition",
                 "description": (
                     f"{top_role.get('first_stance', 'n/a')} -> {top_role.get('last_stance', 'n/a')} · "
@@ -657,6 +670,11 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
         actions.append(
             {
                 "kind": "zone_followup",
+                "score": round(
+                    abs(float(top_zone.get("avg_z_delta", 0.0)))
+                    + abs(float(top_zone.get("avg_energy_after", 0.0))) * 0.05,
+                    3,
+                ),
                 "label": f"Inspect {top_zone.get('zone_label', 'zone')}",
                 "description": f"avg z delta {float(top_zone.get('avg_z_delta', 0.0)):+.2f}",
                 "world_id": world_id,
@@ -665,9 +683,14 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
         )
     dominant_bridge = dict(policy_lineage.get("dominant_bridge") or {})
     if dominant_bridge:
+        bridge_score = (
+            abs(float(dominant_bridge.get("bridge_strength", 0.0))) * 1.4
+            + abs(float(dominant_bridge.get("transition_count", 0.0))) * 0.15
+        )
         actions.append(
             {
                 "kind": "policy_bridge_followup",
+                "score": round(bridge_score, 3),
                 "label": f"Replay {dominant_bridge.get('dominant_channel', 'policy')} bridge",
                 "description": (
                     f"{dominant_bridge.get('event_name', 'event')} -> {dominant_bridge.get('role_label', 'group')} -> "
@@ -679,6 +702,7 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
                 "t": float(dominant_bridge.get("t", 0.0)) if dominant_bridge.get("t") is not None else None,
             }
         )
+    actions.sort(key=lambda item: (float(item.get("score", 0.0)), str(item.get("kind") or "")), reverse=True)
     return actions[:5]
 
 
@@ -705,6 +729,12 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
         presets.append(
             {
                 "kind": "policy_shift",
+                "score": round(
+                    abs(float(top_group.get("tension_delta", 0.0)))
+                    + abs(float(top_group.get("polarization_delta", 0.0)))
+                    + abs(float(top_group.get("sub_coalition_split_risk", 0.0))),
+                    3,
+                ),
                 "label": f"Stabilize {str(top_group.get('role_label') or 'group')}",
                 "description": "Reduce tension and improve cooperation for the most fragile belief block.",
                 "t": suggested_t,
@@ -729,6 +759,7 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
         presets.append(
             {
                 "kind": "policy_shift",
+                "score": round(abs(float(dominant_bridge.get("bridge_strength", 0.0))) * 1.5, 3),
                 "label": f"Amplify {channel} bridge for {str(dominant_bridge.get('role_label') or 'group')}",
                 "description": "Replay the strongest policy-to-lineage bridge with a targeted intervention.",
                 "t": float(dominant_bridge.get("t", suggested_t)) if dominant_bridge.get("t") is not None else suggested_t,
@@ -749,6 +780,7 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
         presets.append(
             {
                 "kind": "policy_shift",
+                "score": round(abs(float(top_zone.get("avg_z_delta", 0.0))) + 0.25, 3),
                 "label": f"Support hotspot {str(top_zone.get('zone_label') or 'zone')}",
                 "description": "Focus policy support on the zone with the sharpest social-elevation drift.",
                 "t": suggested_t,
@@ -772,6 +804,11 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
         presets.append(
             {
                 "kind": "review_feedback",
+                "score": round(
+                    abs(float(top_group.get("cohesion_delta", 0.0)))
+                    + abs(float(top_group.get("tension_delta", 0.0))) * 0.8,
+                    3,
+                ),
                 "label": f"Feed analyst insight into {str(top_group.get('role_label') or 'group')}",
                 "description": "Push review insight back into long-term memory and cooperative behavior for the most unstable group.",
                 "t": suggested_t,
@@ -788,4 +825,5 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
                 "world_id": world_id,
             }
         )
+    presets.sort(key=lambda item: (float(item.get("score", 0.0)), str(item.get("kind") or "")), reverse=True)
     return presets[:4]

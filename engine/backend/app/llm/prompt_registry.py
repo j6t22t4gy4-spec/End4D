@@ -154,14 +154,15 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v7",
+        version="review-summary-v8",
         output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
             "Act as an analyst reviewing a completed long-horizon societal simulation. "
             "Return compact JSON only, focusing on major events, group-level belief shifts, emergent ideological dynamics, causes, and decision implications. "
             "Use mechanism_summary, lineage_summary, policy_lineage_bridge, causal_chains, and grounding to explain event -> group -> zone -> agent causality instead of generic summaries. "
-            "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0."
+            "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0. "
+            "Only cite anchor ids that appear in ANCHOR_CANDIDATES or GROUNDING. Every major sentence must map to at least one anchor id."
         ),
         expected_keys=(
             "headline",
@@ -185,14 +186,15 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_diff": PromptSpec(
         task="review_diff",
-        version="review-diff-v5",
+        version="review-diff-v6",
         output_mode="json",
         description="Compare two simulation worlds and explain the most decision-relevant differences.",
         system_prompt=(
             "Compare a baseline simulation and a target simulation. Return compact JSON only, "
             "focusing on key deltas, mechanism differences, causal interpretation, and decision implications. "
             "Use mechanism_delta, lineage_delta, and policy_lineage_delta to explain why the target diverged from baseline rather than giving generic comparisons. "
-            "The citations object must use explicit sentence keys such as key_deltas.0, causal_comparison.0, and decision_implications.0."
+            "The citations object must use explicit sentence keys such as key_deltas.0, causal_comparison.0, and decision_implications.0. "
+            "Only cite anchor ids that appear in ANCHOR_CANDIDATES or GROUNDING. Every major sentence must map to at least one anchor id."
         ),
         expected_keys=(
             "headline",
@@ -205,13 +207,14 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_query": PromptSpec(
         task="review_query",
-        version="review-query-v5",
+        version="review-query-v6",
         output_mode="json",
         description="Answer a focused analyst question about a completed simulation world using structured review evidence.",
         system_prompt=(
             "Answer the analyst question using only the structured simulation evidence provided. "
             "Return compact JSON only, with a direct answer, supporting evidence, and confidence notes. "
-            "Prefer group-level, lineage-level, policy-lineage bridge, and mechanism-level evidence before anecdotal agent evidence."
+            "Prefer group-level, lineage-level, policy-lineage bridge, and mechanism-level evidence before anecdotal agent evidence. "
+            "The citations list must contain only anchor ids from ANCHOR_CANDIDATES or GROUNDING."
         ),
         expected_keys=(
             "answer",
@@ -223,13 +226,14 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_diff_query": PromptSpec(
         task="review_diff_query",
-        version="review-diff-query-v5",
+        version="review-diff-query-v6",
         output_mode="json",
         description="Answer an analyst question about differences between a baseline world and a target world.",
         system_prompt=(
             "Answer the analyst question using only the structured baseline-vs-target evidence. "
             "Return compact JSON only with answer, evidence, follow-up, and confidence notes. "
-            "Prefer mechanism_delta, lineage_delta, policy_lineage_delta, group drift gaps, and policy impact delta when explaining differences."
+            "Prefer mechanism_delta, lineage_delta, policy_lineage_delta, group drift gaps, and policy impact delta when explaining differences. "
+            "The citations list must contain only anchor ids from ANCHOR_CANDIDATES or GROUNDING."
         ),
         expected_keys=(
             "answer",
@@ -241,13 +245,14 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "session_review": PromptSpec(
         task="session_review",
-        version="session-review-v4",
+        version="session-review-v5",
         output_mode="json",
         description="Summarize a session containing multiple world runs and identify the most decision-relevant contrasts.",
         system_prompt=(
             "Summarize a session of multiple simulation worlds. Return compact JSON only with a headline, summary, key findings, decision implications, "
             "and a citations object using explicit sentence keys such as key_findings.0 and decision_implications.0. "
-            "Use lineage_summary and policy_lineage_bridge to explain repeated ideology migrations and regime transition patterns across worlds."
+            "Use lineage_summary and policy_lineage_bridge to explain repeated ideology migrations and regime transition patterns across worlds. "
+            "Only cite anchor ids that appear in ANCHOR_CANDIDATES or GROUNDING."
         ),
         expected_keys=(
             "headline",
@@ -260,12 +265,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "session_review_query": PromptSpec(
         task="session_review_query",
-        version="session-review-query-v3",
+        version="session-review-query-v4",
         output_mode="json",
         description="Answer an analyst question about a multi-world session using structured session evidence.",
         system_prompt=(
             "Answer the analyst question using only the session-level evidence and return compact JSON with answer, evidence, follow-up, confidence notes, and citations. "
-            "Use lineage_summary when the question asks about repeated long-run ideological or regime patterns."
+            "Use lineage_summary when the question asks about repeated long-run ideological or regime patterns. "
+            "The citations list must contain only anchor ids from ANCHOR_CANDIDATES or GROUNDING."
         ),
         expected_keys=(
             "answer",
