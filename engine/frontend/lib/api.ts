@@ -212,6 +212,16 @@ export type TimelineAnnotation = {
   severity: string;
 };
 
+export type ReviewGroundingItem = {
+  kind: string;
+  label: string;
+  reason: string;
+  t?: number | null;
+  group_id?: string | null;
+  zone_id?: string | null;
+  cell_id?: string | null;
+};
+
 export type ReviewSummaryResponse = {
   world_id: string;
   headline: string;
@@ -231,6 +241,7 @@ export type ReviewSummaryResponse = {
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
+  grounding: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
 };
 
@@ -244,6 +255,18 @@ export type ReviewDiffResponse = {
   causal_comparison: string[];
   decision_implications: string[];
   compared_metrics: Record<string, unknown>;
+  review_meta: Record<string, unknown>;
+};
+
+export type ReviewQueryResponse = {
+  world_id: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+  follow_up: string[];
+  confidence_notes: string[];
+  mode: string;
+  grounding: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
 };
 
@@ -367,6 +390,22 @@ export async function getReviewDiff(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/diff?${q}`
   );
   if (!res.ok) throw new Error(`getReviewDiff: ${res.status}`);
+  return res.json();
+}
+
+export async function postReviewQuery(
+  worldId: string,
+  question: string
+): Promise<ReviewQueryResponse> {
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/review/query`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    }
+  );
+  if (!res.ok) throw new Error(`postReviewQuery: ${res.status}`);
   return res.json();
 }
 

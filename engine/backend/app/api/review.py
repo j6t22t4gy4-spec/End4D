@@ -1,7 +1,7 @@
 """Post-simulation review APIs."""
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -18,6 +18,16 @@ class TimelineAnnotation(BaseModel):
     label: str
     reason: str
     severity: str
+
+
+class ReviewGroundingItem(BaseModel):
+    kind: str
+    label: str
+    reason: str = ""
+    t: Optional[float] = None
+    group_id: Optional[str] = None
+    zone_id: Optional[str] = None
+    cell_id: Optional[str] = None
 
 
 class ReviewSummaryResponse(BaseModel):
@@ -39,6 +49,7 @@ class ReviewSummaryResponse(BaseModel):
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
+    grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -52,6 +63,22 @@ class ReviewDiffResponse(BaseModel):
     causal_comparison: List[str] = Field(default_factory=list)
     decision_implications: List[str] = Field(default_factory=list)
     compared_metrics: Dict[str, Any] = Field(default_factory=dict)
+    review_meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewQueryRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+
+
+class ReviewQueryResponse(BaseModel):
+    world_id: str
+    question: str
+    answer: str
+    evidence: List[str] = Field(default_factory=list)
+    follow_up: List[str] = Field(default_factory=list)
+    confidence_notes: List[str] = Field(default_factory=list)
+    mode: str
+    grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -88,6 +115,21 @@ def get_review_summary(world_id: str):
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
         top_z_movers=[dict(item) for item in list(payload.get("notable_agents") or [])],
         policy_events=[dict(item) for item in list(payload.get("key_events") or [])],
+        grounding={
+            key: [
+                ReviewGroundingItem(
+                    kind=str(item.get("kind") or key[:-1] or "evidence"),
+                    label=str(item.get("label") or item.get("role_label") or item.get("zone_label") or item.get("name") or "evidence"),
+                    reason=str(item.get("reason") or item.get("summary") or ""),
+                    t=float(item.get("t")) if item.get("t") is not None else None,
+                    group_id=str(item.get("group_id")) if item.get("group_id") is not None else None,
+                    zone_id=str(item.get("zone_id")) if item.get("zone_id") is not None else None,
+                    cell_id=str(item.get("cell_id")) if item.get("cell_id") is not None else None,
+                )
+                for item in list(value or [])
+            ]
+            for key, value in dict(payload.get("grounding") or {}).items()
+        },
         review_meta={
             "summary": {
                 "prompt_version": summary["prompt_version"],
@@ -156,6 +198,52 @@ def get_review_diff(world_id: str, base_world_id: str):
                 "provider": str(diff.get("provider") or ""),
                 "model": str(diff.get("model") or ""),
                 "fallback_reason": str(diff.get("fallback_reason") or ""),
+            }
+        },
+    )
+
+
+@router.post("/{world_id}/review/query", response_model=ReviewQueryResponse)
+def post_review_query(world_id: str, body: ReviewQueryRequest):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    try:
+        payload = build_world_review_payload(entry)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    query = llm_facade.query_review(payload, question=body.question)
+    answer = dict(query.get("query") or {})
+    return ReviewQueryResponse(
+        world_id=world_id,
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        follow_up=[str(item) for item in list(answer.get("follow_up") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(query.get("mode") or "heuristic"),
+        grounding={
+            key: [
+                ReviewGroundingItem(
+                    kind=str(item.get("kind") or key[:-1] or "evidence"),
+                    label=str(item.get("label") or item.get("role_label") or item.get("zone_label") or item.get("name") or "evidence"),
+                    reason=str(item.get("reason") or item.get("summary") or ""),
+                    t=float(item.get("t")) if item.get("t") is not None else None,
+                    group_id=str(item.get("group_id")) if item.get("group_id") is not None else None,
+                    zone_id=str(item.get("zone_id")) if item.get("zone_id") is not None else None,
+                    cell_id=str(item.get("cell_id")) if item.get("cell_id") is not None else None,
+                )
+                for item in list(value or [])
+            ]
+            for key, value in dict(payload.get("grounding") or {}).items()
+        },
+        review_meta={
+            "query": {
+                "prompt_version": str(query.get("prompt_version") or ""),
+                "prompt_meta": dict(query.get("prompt_meta") or {}),
+                "provider": str(query.get("provider") or ""),
+                "model": str(query.get("model") or ""),
+                "fallback_reason": str(query.get("fallback_reason") or ""),
             }
         },
     )

@@ -197,6 +197,22 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "decision_implications",
         ),
     ),
+    "review_query": PromptSpec(
+        task="review_query",
+        version="review-query-v1",
+        output_mode="json",
+        description="Answer a focused analyst question about a completed simulation world using structured review evidence.",
+        system_prompt=(
+            "Answer the analyst question using only the structured simulation evidence provided. "
+            "Return compact JSON only, with a direct answer, supporting evidence, and confidence notes."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "follow_up",
+            "confidence_notes",
+        ),
+    ),
 }
 
 

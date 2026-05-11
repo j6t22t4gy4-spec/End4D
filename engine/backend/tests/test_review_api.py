@@ -27,6 +27,7 @@ def test_review_summary_returns_summary_and_annotations():
     assert payload["summary_mode"] in {"heuristic", "llm"}
     assert isinstance(payload["timeline_annotations"], list)
     assert "metrics" in payload
+    assert "grounding" in payload
     assert "review_meta" in payload
 
 
@@ -58,3 +59,27 @@ def test_review_diff_returns_comparison():
     assert "timeline_turning_point_delta" in payload["compared_metrics"]
     assert "group_drift_deltas" in payload["compared_metrics"]
     assert "policy_impact_delta" in payload["compared_metrics"]
+
+
+def test_review_query_returns_answer_and_grounding():
+    created = client.post(
+        "/worlds",
+        json={"prompt": "지역 불평등과 정책 대상 집단 변화를 함께 본다"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+
+    ran = client.post(f"/worlds/{world_id}/run", json={"stream": False})
+    assert ran.status_code == 200
+
+    response = client.post(
+        f"/worlds/{world_id}/review/query",
+        json={"question": "어떤 집단의 신념 변화가 가장 컸고 왜 그런가?"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["world_id"] == world_id
+    assert payload["answer"]
+    assert isinstance(payload["evidence"], list)
+    assert "grounding" in payload
+    assert payload["mode"] in {"heuristic", "llm"}

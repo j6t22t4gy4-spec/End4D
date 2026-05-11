@@ -52,6 +52,21 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
     )
 
 
+def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
+    return build_prompt_contract(
+        "review_query",
+        [
+            ("question", question),
+            ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("policy_impact", _compact(payload.get("policy_impact") or {})),
+            ("grounding", _compact(payload.get("grounding") or {})),
+            ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=5)),
+            ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
+        ],
+    )
+
+
 def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     summary_stats = dict(payload.get("summary_stats") or {})
     belief_drift = dict(payload.get("belief_drift") or {})
@@ -180,6 +195,90 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    prompt = str(question or "").strip().lower()
+    belief_drift = dict(payload.get("belief_drift") or {})
+    groups = list(belief_drift.get("groups") or [])
+    zones = list(payload.get("zone_z_drift") or [])
+    agents = list(payload.get("notable_agents") or [])
+    events = list(payload.get("key_events") or [])
+
+    answer = "현재 리뷰 데이터에서 질문에 대한 명확한 근거를 찾지 못했습니다."
+    evidence: list[str] = []
+    follow_up: list[str] = []
+
+    if "집단" in prompt or "group" in prompt or "stance" in prompt:
+        top_group = dict(groups[0] if groups else {})
+        if top_group:
+            answer = (
+                f"{top_group.get('role_label', '핵심 집단')}이 가장 큰 집단 신념 변화를 보였습니다. "
+                f"stance는 {top_group.get('stance_before', 'n/a')}에서 {top_group.get('stance_after', 'n/a')}로 이동했고, "
+                f"cohesion {float(top_group.get('cohesion_delta', 0.0)):+.2f}, tension {float(top_group.get('tension_delta', 0.0)):+.2f}, "
+                f"polarization {float(top_group.get('polarization_delta', 0.0)):+.2f} 변화가 나타났습니다."
+            )
+            evidence.append(
+                f"group={top_group.get('role_label', 'n/a')} stance {top_group.get('stance_before', 'n/a')} -> {top_group.get('stance_after', 'n/a')}"
+            )
+            evidence.append(
+                f"cohesion_delta={float(top_group.get('cohesion_delta', 0.0)):+.2f}, tension_delta={float(top_group.get('tension_delta', 0.0)):+.2f}, polarization_delta={float(top_group.get('polarization_delta', 0.0)):+.2f}"
+            )
+    elif "지역" in prompt or "zone" in prompt or "고도" in prompt or "z" in prompt:
+        top_zone = dict(zones[0] if zones else {})
+        if top_zone:
+            answer = (
+                f"{top_zone.get('zone_label', '주요 zone')}이 가장 큰 social elevation 변화를 보였습니다. "
+                f"avg z delta는 {float(top_zone.get('avg_z_delta', 0.0)):+.2f}이고, "
+                f"final cell 수는 {int(top_zone.get('cell_count_after', 0))}입니다."
+            )
+            evidence.append(
+                f"zone={top_zone.get('zone_label', 'n/a')} avg_z_delta={float(top_zone.get('avg_z_delta', 0.0)):+.2f}"
+            )
+            evidence.append(
+                f"avg_energy_after={float(top_zone.get('avg_energy_after', 0.0)):.2f}, cell_count_after={int(top_zone.get('cell_count_after', 0))}"
+            )
+    elif "에이전트" in prompt or "agent" in prompt or "worldview" in prompt:
+        top_agent = dict(agents[0] if agents else {})
+        if top_agent:
+            answer = (
+                f"{top_agent.get('role_label', 'agent')} 에이전트가 가장 큰 개별 belief shift를 보였습니다. "
+                f"score는 {float(top_agent.get('belief_shift_score', 0.0)):.2f}, z delta는 {float(top_agent.get('z_delta', 0.0)):+.2f}입니다."
+            )
+            evidence.append(
+                f"agent_role={top_agent.get('role_label', 'n/a')} belief_shift_score={float(top_agent.get('belief_shift_score', 0.0)):.2f}"
+            )
+            evidence.append(
+                f"zone={top_agent.get('zone_label', 'n/a')}, worldview_shift={float(top_agent.get('worldview_shift', 0.0)):.2f}"
+            )
+    elif "정책" in prompt or "policy" in prompt or "이벤트" in prompt:
+        top_event = dict(events[0] if events else {})
+        if top_event:
+            answer = (
+                f"가장 최근 주요 정책/이벤트는 {top_event.get('name', 'event')}이며 "
+                f"target role {', '.join(list(top_event.get('target_roles') or [])[:3]) or 'n/a'}과 "
+                f"target zone {', '.join(list(top_event.get('target_zones') or [])[:3]) or 'n/a'}에 집중되었습니다."
+            )
+            evidence.append(
+                f"event={top_event.get('name', 'n/a')} t={float(top_event.get('t', 0.0)):.0f} type={top_event.get('event_type', 'event')}"
+            )
+            evidence.append(
+                f"roles={', '.join(list(top_event.get('target_roles') or [])[:4]) or 'n/a'}, zones={', '.join(list(top_event.get('target_zones') or [])[:4]) or 'n/a'}"
+            )
+
+    if not evidence:
+        highlights = list(payload.get("highlights") or [])
+        evidence = [str(item) for item in highlights[:2]]
+    follow_up = [
+        "Review diff와 함께 보면 baseline 대비 차이를 더 명확하게 해석할 수 있습니다.",
+        "관련 turning point로 이동해 해당 시점 snapshot을 직접 확인해보는 것이 좋습니다.",
+    ]
+    return {
+        "answer": answer,
+        "evidence": evidence[:4],
+        "follow_up": follow_up[:3],
+        "confidence_notes": ["heuristic fallback used" if evidence else "limited evidence available"],
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -243,6 +342,23 @@ def parse_review_diff(raw_text: str, diff_payload: Mapping[str, Any]) -> dict[st
             parsed.get("decision_implications"),
             fallback["decision_implications"],
         ),
+    }
+
+
+def parse_review_query(raw_text: str, payload: Mapping[str, Any], question: str) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_review_query(payload, question)
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_review_query(payload, question)
+    fallback = heuristic_review_query(payload, question)
+    return {
+        "answer": str(parsed.get("answer") or fallback["answer"]),
+        "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
+        "follow_up": _string_list(parsed.get("follow_up"), fallback["follow_up"]),
+        "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
     }
 
 

@@ -6,7 +6,10 @@ import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
   getReviewDiff,
   getReviewSummary,
+  postReviewQuery,
   type ReviewDiffResponse,
+  type ReviewGroundingItem,
+  type ReviewQueryResponse,
   type ReviewSummaryResponse,
   type SessionSummary,
 } from "@/lib/api";
@@ -32,6 +35,10 @@ export function ReviewLabWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [diffError, setDiffError] = useState<string | null>(null);
   const [baseWorldId, setBaseWorldId] = useState<string>("");
+  const [query, setQuery] = useState("어떤 집단의 신념 변화가 가장 컸고 왜 그런가?");
+  const [queryData, setQueryData] = useState<ReviewQueryResponse | null>(null);
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [queryError, setQueryError] = useState<string | null>(null);
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -143,6 +150,11 @@ export function ReviewLabWorkspace({
     };
   }, [baseWorldId, worldId]);
 
+  useEffect(() => {
+    setQueryData(null);
+    setQueryError(null);
+  }, [worldId]);
+
   if (!worldId) {
     return (
       <div className="workspace-grid">
@@ -242,7 +254,95 @@ export function ReviewLabWorkspace({
           >
             Open Snapshots
           </button>
+          <button
+            type="button"
+            className="app-button app-button--ghost"
+            onClick={() => {
+              if (!worldId || !query.trim()) return;
+              setQueryLoading(true);
+              setQueryError(null);
+              postReviewQuery(worldId, query.trim())
+                .then((payload) => setQueryData(payload))
+                .catch((reason: Error) => setQueryError(reason.message))
+                .finally(() => setQueryLoading(false));
+            }}
+          >
+            Ask Review
+          </button>
         </div>
+      </AppPanel>
+
+      <AppPanel
+        title="Review Query"
+        subtitle="Ask the simulation analyst"
+        bodyClassName="space-y-3"
+      >
+        <textarea
+          className="app-input min-h-[84px]"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="예: 어떤 지역의 social elevation이 가장 크게 흔들렸고, 그 원인은 무엇인가?"
+        />
+        {queryLoading ? <p className="text-sm text-slate-500">Review query loading…</p> : null}
+        {queryError ? (
+          <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            리뷰 질의를 처리하지 못했습니다: {queryError}
+          </p>
+        ) : null}
+        {queryData ? (
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+            <div className="space-y-3">
+              <div className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">Answer</p>
+                  <span className="session-thread-card__meta">{queryData.mode}</span>
+                </div>
+                <p className="session-thread-card__prompt">{queryData.answer}</p>
+              </div>
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                <div className="mt-2 grid gap-2">
+                  {queryData.evidence.map((item, index) => (
+                    <p key={`${index}-${item}`} className="inspector-body">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Follow-up</p>
+                <div className="mt-2 grid gap-2">
+                  {queryData.follow_up.map((item, index) => (
+                    <p key={`${index}-${item}`} className="inspector-body">
+                      {item}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <GroundingPanel
+                title="Grounding"
+                items={flattenGrounding(queryData.grounding)}
+                onOpenWorldAt={onOpenWorldAt}
+                worldId={worldId}
+              />
+              <div className="session-thread-card">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Query Provenance</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  prompt {String((queryData.review_meta.query as Record<string, unknown>)?.prompt_version ?? "n/a")}
+                </p>
+                <p className="text-sm text-slate-700">
+                  model {String((queryData.review_meta.query as Record<string, unknown>)?.model ?? "n/a")}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            질문을 입력하면 review payload를 기반으로 LLM 또는 heuristic analyst가 답변합니다.
+          </p>
+        )}
       </AppPanel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -356,6 +456,65 @@ export function ReviewLabWorkspace({
             <p className="text-sm text-slate-500">주요 시점 어노테이션이 아직 없습니다.</p>
           )}
         </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel
+          title="Belief State"
+          subtitle="Group-level stance, cohesion, tension, polarization"
+          bodyClassName="space-y-3"
+        >
+          {Array.isArray(data?.stance_groups) && data.stance_groups.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs text-slate-600">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                    <th className="px-2 py-2">Group</th>
+                    <th className="px-2 py-2">Stance</th>
+                    <th className="px-2 py-2">Cohesion</th>
+                    <th className="px-2 py-2">Tension</th>
+                    <th className="px-2 py-2">Polarization</th>
+                    <th className="px-2 py-2">Coalition</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.stance_groups.slice(0, 8).map((item, index) => {
+                    const row = item as Record<string, unknown>;
+                    return (
+                      <tr key={`${index}-${String(row.group_id ?? row.role_label ?? "group")}`} className="border-b border-slate-100">
+                        <td className="px-2 py-2 font-medium text-slate-800">{String(row.role_label ?? "group")}</td>
+                        <td className="px-2 py-2">
+                          {String(row.stance_before ?? "n/a")} → {String(row.stance_after ?? "n/a")}
+                        </td>
+                        <td className="px-2 py-2">
+                          {Number(row.cohesion_delta ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2">
+                          {Number(row.tension_delta ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2">
+                          {Number(row.polarization_delta ?? 0).toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2">
+                          {String(row.coalition_signal ?? "n/a")} · {Number(row.coalition_persistence ?? 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">집단 신념 상태 표가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <GroundingPanel
+          title="Review Grounding"
+          items={flattenGrounding(data?.grounding ?? {})}
+          onOpenWorldAt={onOpenWorldAt}
+          worldId={worldId}
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -720,6 +879,47 @@ export function ReviewLabWorkspace({
   );
 }
 
+function GroundingPanel({
+  title,
+  items,
+  onOpenWorldAt,
+  worldId,
+}: {
+  title: string;
+  items: ReviewGroundingItem[];
+  onOpenWorldAt: (worldId: string, t?: number | null) => void;
+  worldId: string;
+}) {
+  return (
+    <AppPanel title={title} subtitle="Evidence anchors" bodyClassName="space-y-3">
+      {items.length ? (
+        items.slice(0, 8).map((item, index) => (
+          <div key={`${index}-${item.kind}-${item.label}`} className="session-thread-card">
+            <div className="session-thread-card__header">
+              <p className="session-thread-card__title">{item.label}</p>
+              <span className="session-thread-card__meta">{item.kind}</span>
+            </div>
+            <p className="session-thread-card__prompt">{item.reason || "grounded evidence"}</p>
+            {typeof item.t === "number" ? (
+              <div className="session-thread-card__actions">
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() => onOpenWorldAt(worldId, item.t ?? null)}
+                >
+                  Open at t={item.t}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ))
+      ) : (
+        <p className="text-sm text-slate-500">근거 anchor가 아직 없습니다.</p>
+      )}
+    </AppPanel>
+  );
+}
+
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[16px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
@@ -821,4 +1021,12 @@ function recommendBaselineWorldId(session: SessionSummary, worldId: string | nul
     return ordered[currentIndex - 1]?.world_id ?? "";
   }
   return ordered.find((item) => item.world_id !== worldId)?.world_id ?? "";
+}
+
+function flattenGrounding(
+  grounding: Record<string, ReviewGroundingItem[]>
+): ReviewGroundingItem[] {
+  return Object.values(grounding)
+    .flat()
+    .filter(Boolean);
 }

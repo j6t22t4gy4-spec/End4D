@@ -25,7 +25,11 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     timeline_points = [_timeline_point(store.get(t)) for t in available_t if store.get(t) is not None]
     first_groups = _group_snapshot(first)
     latest_groups = _group_snapshot(latest)
-    belief_drift = _belief_drift_summary(first_groups, latest_groups)
+    belief_drift = _belief_drift_summary(
+        first_groups,
+        latest_groups,
+        coalition_state=dict(entry.get("coalition_state") or {}),
+    )
     zone_z_drift = _zone_z_drift(first, latest)
     notable_agents = _notable_agents(first, latest)
     key_events = [_event_summary(event) for event in list(world.nutrients or [])[-8:]]
@@ -77,6 +81,12 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "key_events": key_events,
         "notable_agents": notable_agents,
         "zone_z_drift": zone_z_drift,
+        "grounding": _build_grounding(
+            key_events=key_events,
+            belief_drift=belief_drift,
+            zone_z_drift=zone_z_drift,
+            notable_agents=notable_agents,
+        ),
         "coalition_shift": {
             "active": dict(entry.get("coalition_state") or {}),
             "history_tail": [dict(item) for item in list(entry.get("coalition_history") or [])[-8:]],
@@ -322,9 +332,14 @@ def _group_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
             "avg_z": round(_avg_z(cells), 3),
             "cohesion_score": round(cohesion, 3),
             "tension_score": round(tension, 3),
+            "trust_score": round(float(np.mean(trusts)) if trusts else 0.0, 3),
             "stance": stance,
             "worldview_norm": round(
                 float(np.mean([np.linalg.norm(cell.worldview_vec) for cell in cells])) if cells else 0.0,
+                3,
+            ),
+            "polarization_score": round(
+                float(np.std([np.linalg.norm(cell.worldview_vec) for cell in cells])) if len(cells) > 1 else 0.0,
                 3,
             ),
         }
@@ -334,14 +349,22 @@ def _group_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
 def _belief_drift_summary(
     first_groups: dict[str, dict[str, Any]],
     latest_groups: dict[str, dict[str, Any]],
+    *,
+    coalition_state: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     groups: list[dict[str, Any]] = []
+    coalition_index = {
+        str(role): dict(payload)
+        for role, payload in dict(coalition_state or {}).items()
+    }
     for group_id, latest in latest_groups.items():
         first = dict(first_groups.get(group_id) or {})
+        role_label = str(latest["role_label"])
+        coalition = dict(coalition_index.get(role_label) or {})
         groups.append(
             {
                 "group_id": group_id,
-                "role_label": latest["role_label"],
+                "role_label": role_label,
                 "stance_before": first.get("stance", "not_present"),
                 "stance_after": latest["stance"],
                 "cohesion_before": float(first.get("cohesion_score", 0.0)),
@@ -350,21 +373,50 @@ def _belief_drift_summary(
                 "tension_before": float(first.get("tension_score", 0.0)),
                 "tension_after": float(latest.get("tension_score", 0.0)),
                 "tension_delta": round(float(latest.get("tension_score", 0.0)) - float(first.get("tension_score", 0.0)), 3),
+                "trust_before": float(first.get("trust_score", 0.0)),
+                "trust_after": float(latest.get("trust_score", 0.0)),
+                "trust_delta": round(float(latest.get("trust_score", 0.0)) - float(first.get("trust_score", 0.0)), 3),
+                "polarization_before": float(first.get("polarization_score", 0.0)),
+                "polarization_after": float(latest.get("polarization_score", 0.0)),
+                "polarization_delta": round(
+                    float(latest.get("polarization_score", 0.0)) - float(first.get("polarization_score", 0.0)),
+                    3,
+                ),
                 "avg_z_delta": round(float(latest.get("avg_z", 0.0)) - float(first.get("avg_z", 0.0)), 3),
                 "cell_delta": int(latest.get("cell_count", 0)) - int(first.get("cell_count", 0)),
                 "worldview_norm_delta": round(
                     float(latest.get("worldview_norm", 0.0)) - float(first.get("worldview_norm", 0.0)),
                     3,
                 ),
+                "coalition_signal": str(coalition.get("coalition_signal") or ""),
+                "coalition_block_key": str(coalition.get("block_key") or ""),
+                "coalition_cycle_count": int(coalition.get("cycle_count", 0) or 0),
+                "coalition_persistence": round(
+                    min(1.0, int(coalition.get("cycle_count", 0) or 0) / 4.0),
+                    3,
+                ),
             }
         )
-    groups.sort(key=lambda item: (-abs(float(item["cohesion_delta"])) - abs(float(item["tension_delta"])), item["role_label"]))
+    groups.sort(
+        key=lambda item: (
+            -abs(float(item["cohesion_delta"]))
+            - abs(float(item["tension_delta"]))
+            - abs(float(item["polarization_delta"])),
+            item["role_label"],
+        )
+    )
     overall_signal = "diffuse"
     if any(group["stance_after"] == "contested" for group in groups):
         overall_signal = "contested"
     elif any(group["stance_after"] == "cohesive" for group in groups):
         overall_signal = "clustered"
-    return {"overall_signal": overall_signal, "groups": groups[:8]}
+    return {
+        "overall_signal": overall_signal,
+        "overall_polarization": round(float(np.mean([g["polarization_after"] for g in groups])) if groups else 0.0, 3),
+        "overall_cohesion": round(float(np.mean([g["cohesion_after"] for g in groups])) if groups else 0.0, 3),
+        "overall_tension": round(float(np.mean([g["tension_after"] for g in groups])) if groups else 0.0, 3),
+        "groups": groups[:8],
+    }
 
 
 def _zone_z_drift(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:
@@ -498,6 +550,63 @@ def _build_highlights(
     if key_events:
         lines.append(f"{key_events[0]['name']} is the most recent policy/event intervention")
     return lines[:6]
+
+
+def _build_grounding(
+    *,
+    key_events: list[dict[str, Any]],
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+    notable_agents: list[dict[str, Any]],
+) -> dict[str, Any]:
+    groups = list(belief_drift.get("groups") or [])
+    return {
+        "events": [
+            {
+                "kind": "event",
+                "label": str(item.get("name") or "event"),
+                "t": float(item.get("t", 0.0)),
+                "reason": str(item.get("summary") or item.get("event_type") or ""),
+                "target_roles": list(item.get("target_roles") or []),
+                "target_zones": list(item.get("target_zones") or []),
+            }
+            for item in key_events[:5]
+        ],
+        "groups": [
+            {
+                "kind": "group",
+                "group_id": str(item.get("group_id") or ""),
+                "label": str(item.get("role_label") or "group"),
+                "stance_after": str(item.get("stance_after") or ""),
+                "cohesion_delta": float(item.get("cohesion_delta", 0.0)),
+                "tension_delta": float(item.get("tension_delta", 0.0)),
+                "polarization_delta": float(item.get("polarization_delta", 0.0)),
+                "coalition_signal": str(item.get("coalition_signal") or ""),
+            }
+            for item in groups[:5]
+        ],
+        "zones": [
+            {
+                "kind": "zone",
+                "zone_id": str(item.get("zone_id") or ""),
+                "label": str(item.get("zone_label") or "zone"),
+                "avg_z_delta": float(item.get("avg_z_delta", 0.0)),
+                "cell_count_after": int(item.get("cell_count_after", 0)),
+            }
+            for item in zone_z_drift[:5]
+        ],
+        "agents": [
+            {
+                "kind": "agent",
+                "cell_id": str(item.get("cell_id") or ""),
+                "label": str(item.get("role_label") or "agent"),
+                "zone_label": str(item.get("zone_label") or ""),
+                "belief_shift_score": float(item.get("belief_shift_score", 0.0)),
+                "z_delta": float(item.get("z_delta", 0.0)),
+            }
+            for item in notable_agents[:5]
+        ],
+    }
 
 
 def _event_summary(event: Any) -> dict[str, Any]:
