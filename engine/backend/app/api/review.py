@@ -184,7 +184,17 @@ def get_review_summary(world_id: str):
             ]
             for key, value in dict(payload.get("grounding") or {}).items()
         },
-        citations=_build_summary_citations(payload, summary["summary"].get("citations")),
+        citations=_bind_sentence_citations(
+            payload,
+            sections={
+                "headline": [str(summary["summary"].get("headline") or "")],
+                "key_events": [str(item) for item in list(summary["summary"].get("key_events") or [])],
+                "causal_analysis": [str(item) for item in list(summary["summary"].get("causal_analysis") or [])],
+                "decision_implications": [str(item) for item in list(summary["summary"].get("decision_implications") or [])],
+            },
+            citation_ids=dict(summary["summary"].get("citations") or {}),
+            fallback_builder=_build_summary_citations,
+        ),
         review_meta={
             "summary": {
                 "prompt_version": summary["prompt_version"],
@@ -254,7 +264,16 @@ def get_review_diff(world_id: str, base_world_id: str):
         decision_implications=[str(item) for item in list(diff["diff"].get("decision_implications") or [])],
         compared_metrics=compared_metrics,
         causal_chains=[dict(item) for item in list(target_payload.get("causal_chains") or [])],
-        citations=_build_diff_citations(diff_payload, diff["diff"].get("citations")),
+        citations=_bind_sentence_citations(
+            diff_payload,
+            sections={
+                "key_deltas": [str(item) for item in list(diff["diff"].get("key_deltas") or [])],
+                "causal_comparison": [str(item) for item in list(diff["diff"].get("causal_comparison") or [])],
+                "decision_implications": [str(item) for item in list(diff["diff"].get("decision_implications") or [])],
+            },
+            citation_ids=dict(diff["diff"].get("citations") or {}),
+            fallback_builder=_build_diff_citations,
+        ),
         review_meta={
             "diff": {
                 "prompt_version": diff["prompt_version"],
@@ -527,11 +546,72 @@ def _citation_sections_from_ids(
     }
 
 
+def _bind_sentence_citations(
+    payload: Dict[str, Any],
+    *,
+    sections: Dict[str, List[str]],
+    citation_ids: Dict[str, List[str]],
+    fallback_builder,
+) -> Dict[str, List[ReviewGroundingItem]]:
+    fallback_sections = fallback_builder(payload, citation_ids)
+    out: Dict[str, List[ReviewGroundingItem]] = {}
+    grounding_rows = _grounding_rows(payload)
+    for section, items in sections.items():
+        section_items = list(items or [])
+        base_rows = list(fallback_sections.get(section) or [])
+        if base_rows:
+            out[section] = base_rows
+        for index, sentence in enumerate(section_items):
+            key = f"{section}.{index}"
+            explicit = _citations_from_ids(payload, list(citation_ids.get(key) or []))
+            if explicit:
+                out[key] = explicit
+                continue
+            matched = _match_sentence_grounding(sentence, grounding_rows)
+            out[key] = matched or base_rows[:2]
+    return out
+
+
+def _match_sentence_grounding(sentence: str, grounding_rows: List[Dict[str, Any]]) -> List[ReviewGroundingItem]:
+    text = str(sentence or "").strip().lower()
+    if not text:
+        return []
+    scored: List[tuple[int, Dict[str, Any]]] = []
+    for row in grounding_rows:
+        label = str(row.get("label") or row.get("role_label") or row.get("zone_label") or row.get("name") or "").strip()
+        reason = str(row.get("reason") or row.get("summary") or "").strip()
+        score = 0
+        if label and label.lower() in text:
+            score += 3
+        if reason:
+            reason_words = [part for part in reason.lower().replace(",", " ").split() if len(part) >= 3]
+            score += sum(1 for part in reason_words[:4] if part in text)
+        if score > 0:
+            scored.append((score, row))
+    scored.sort(key=lambda item: (-item[0], str(item[1].get("anchor_id") or "")))
+    return [
+        ReviewGroundingItem(
+            anchor_id=str(row.get("anchor_id") or ""),
+            kind=str(row.get("kind") or "evidence"),
+            label=str(row.get("label") or "evidence"),
+            reason=str(row.get("reason") or ""),
+            t=float(row.get("t")) if row.get("t") is not None else None,
+            group_id=str(row.get("group_id")) if row.get("group_id") is not None else None,
+            zone_id=str(row.get("zone_id")) if row.get("zone_id") is not None else None,
+            cell_id=str(row.get("cell_id")) if row.get("cell_id") is not None else None,
+            world_id=str(row.get("world_id")) if row.get("world_id") is not None else None,
+        )
+        for _score, row in scored[:3]
+    ]
+
+
 def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     annotations = list(payload.get("annotation_candidates") or [])
     groups = list((payload.get("belief_drift") or {}).get("groups") or [])
     zones = list(payload.get("zone_z_drift") or [])
+    lineage = dict(payload.get("lineage_summary") or {})
+    policy_lineage = dict(payload.get("policy_lineage_bridge") or {})
     if annotations:
         top = dict(annotations[0] or {})
         actions.append(
@@ -557,6 +637,21 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
                 "group_id": str(top_group.get("group_id") or ""),
             }
         )
+    tracked_roles = list(lineage.get("tracked_roles") or [])
+    if tracked_roles:
+        top_role = dict(tracked_roles[0] or {})
+        actions.append(
+            {
+                "kind": "lineage_followup",
+                "label": f"Track {top_role.get('role_label', 'role')} transition",
+                "description": (
+                    f"{top_role.get('first_stance', 'n/a')} -> {top_role.get('last_stance', 'n/a')} · "
+                    f"transitions {int(top_role.get('transition_count', 0))}"
+                ),
+                "world_id": world_id,
+                "group_id": str(top_role.get("group_id") or ""),
+            }
+        )
     if zones:
         top_zone = dict(zones[0] or {})
         actions.append(
@@ -568,7 +663,23 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
                 "zone_id": str(top_zone.get("zone_id") or ""),
             }
         )
-    return actions[:3]
+    dominant_bridge = dict(policy_lineage.get("dominant_bridge") or {})
+    if dominant_bridge:
+        actions.append(
+            {
+                "kind": "policy_bridge_followup",
+                "label": f"Replay {dominant_bridge.get('dominant_channel', 'policy')} bridge",
+                "description": (
+                    f"{dominant_bridge.get('event_name', 'event')} -> {dominant_bridge.get('role_label', 'group')} -> "
+                    f"{dominant_bridge.get('zone_label', 'zone')}"
+                ),
+                "world_id": world_id,
+                "group_id": str(dominant_bridge.get("group_id") or ""),
+                "zone_id": str(dominant_bridge.get("zone_id") or ""),
+                "t": float(dominant_bridge.get("t", 0.0)) if dominant_bridge.get("t") is not None else None,
+            }
+        )
+    return actions[:5]
 
 
 def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -577,9 +688,18 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
     zone_hotspots = list((payload.get("group_analysis") or {}).get("zone_hotspots") or [])
     top_group = groups[0] if groups else {}
     top_zone = zone_hotspots[0] if zone_hotspots else {}
+    policy_lineage = dict(payload.get("policy_lineage_bridge") or {})
+    dominant_bridge = dict(policy_lineage.get("dominant_bridge") or {})
     annotations = list(payload.get("annotation_candidates") or [])
     suggested_t = float((annotations[0] or {}).get("t", 0.0)) if annotations else 0.0
     presets: List[Dict[str, Any]] = []
+    channel_effect_profiles = {
+        "resource": {"energy_delta_per_step": 0.05, "cooperation_delta_per_step": 0.02},
+        "cooperation": {"cooperation_delta_per_step": 0.06, "emotion_delta_per_step": -0.02},
+        "policy_sensitivity": {"policy_sensitivity_delta_per_step": 0.06, "cooperation_delta_per_step": 0.02},
+        "mobility": {"mobility_delta_per_step": 0.05, "energy_delta_per_step": 0.02},
+        "emotion": {"emotion_delta_per_step": -0.05, "cooperation_delta_per_step": 0.03},
+    }
 
     if top_group:
         presets.append(
@@ -600,6 +720,27 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
                         "policy_sensitivity_delta_per_step": 0.03,
                         "emotion_delta_per_step": -0.02,
                     },
+                },
+                "world_id": world_id,
+            }
+        )
+    if dominant_bridge:
+        channel = str(dominant_bridge.get("dominant_channel") or "resource")
+        presets.append(
+            {
+                "kind": "policy_shift",
+                "label": f"Amplify {channel} bridge for {str(dominant_bridge.get('role_label') or 'group')}",
+                "description": "Replay the strongest policy-to-lineage bridge with a targeted intervention.",
+                "t": float(dominant_bridge.get("t", suggested_t)) if dominant_bridge.get("t") is not None else suggested_t,
+                "event_type": "policy_shift",
+                "payload": {
+                    "name": f"{channel} bridge follow-up for {str(dominant_bridge.get('role_label') or 'group').lower()}",
+                    "summary": "Bridge-aware intervention generated from policy-lineage review analysis.",
+                    "intensity": round(0.52 + min(0.28, float(dominant_bridge.get("bridge_strength", 0.0)) * 0.2), 2),
+                    "duration_steps": 16,
+                    "target_roles": [str(dominant_bridge.get("role_label") or "")],
+                    "target_zones": [str(dominant_bridge.get("zone_id") or "")] if str(dominant_bridge.get("zone_id") or "").strip() else [],
+                    "effect_profile": dict(channel_effect_profiles.get(channel, channel_effect_profiles["resource"])),
                 },
                 "world_id": world_id,
             }
@@ -647,4 +788,4 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
                 "world_id": world_id,
             }
         )
-    return presets[:3]
+    return presets[:4]

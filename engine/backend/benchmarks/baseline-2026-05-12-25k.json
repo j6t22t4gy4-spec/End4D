@@ -1,0 +1,53 @@
+{
+  "schema_version": "benchmark-report/v2",
+  "environment": {
+    "embed_backend": "stub",
+    "llm_chat_enabled": "0",
+    "snapshot_interval": "",
+    "include_review_payload": true
+  },
+  "summaries": [
+    {
+      "label": "25000c-2s",
+      "cells": 25000,
+      "steps": 2,
+      "repeat": 1,
+      "final_cells_last": 25000,
+      "snapshots_last": 3,
+      "elapsed_sec_avg": 15.456416,
+      "elapsed_sec_min": 15.456416,
+      "elapsed_sec_max": 15.456416,
+      "cell_steps_per_sec_avg": 3234.9026,
+      "cell_steps_per_sec_min": 3234.9026,
+      "cell_steps_per_sec_max": 3234.9026,
+      "peak_memory_mb_avg": 444.8534,
+      "peak_memory_mb_max": 444.8534,
+      "review_payload_sec_avg": 0.755402,
+      "review_payload_kb_avg": 12.678,
+      "review_annotation_count_max": 2,
+      "review_graph_edges_max": 0,
+      "review_chain_count_max": 0,
+      "review_curve_points_max": 3
+    }
+  ],
+  "samples": [
+    {
+      "label": "25000c-2s",
+      "cells": 25000,
+      "steps": 2,
+      "repeat_index": 1,
+      "final_cells": 25000,
+      "snapshots": 3,
+      "elapsed_sec": 15.456416,
+      "steps_per_sec": 0.1294,
+      "cell_steps_per_sec": 3234.9026,
+      "peak_memory_mb": 444.8534,
+      "review_payload_sec": 0.755402,
+      "review_payload_kb": 12.678,
+      "review_annotation_count": 2,
+      "review_graph_edges": 0,
+      "review_chain_count": 0,
+      "review_curve_points": 3
+    }
+  ]
+}

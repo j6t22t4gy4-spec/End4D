@@ -168,7 +168,14 @@ def get_session_review(
         ranked_worlds=[dict(item) for item in list(payload.get("ranked_worlds") or [])],
         recommended_pairs=[dict(item) for item in list(payload.get("recommended_pairs") or [])],
         grounding={key: [dict(item) for item in list(value or [])] for key, value in dict(payload.get("grounding") or {}).items()},
-        citations=_session_citations(payload, dict((summary.get("summary") or {}).get("citations") or {})),
+        citations=_bind_session_sentence_citations(
+            payload,
+            sections={
+                "key_findings": [str(item) for item in list(summary["summary"].get("key_findings") or [])],
+                "decision_implications": [str(item) for item in list(summary["summary"].get("decision_implications") or [])],
+            },
+            citation_ids=dict((summary.get("summary") or {}).get("citations") or {}),
+        ),
         review_meta={
             "summary": {
                 "prompt_version": str(summary.get("prompt_version") or ""),
@@ -260,3 +267,47 @@ def _session_citations(payload: Dict[str, Any], sections: Dict[str, List[str]]) 
         str(section): _session_query_citations(payload, [str(item) for item in list(anchor_ids or [])])
         for section, anchor_ids in sections.items()
     }
+
+
+def _bind_session_sentence_citations(
+    payload: Dict[str, Any],
+    *,
+    sections: Dict[str, List[str]],
+    citation_ids: Dict[str, List[str]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    fallback = _session_citations(payload, citation_ids)
+    rows = list(_session_grounding_index(payload).values())
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for section, items in sections.items():
+        base_rows = list(fallback.get(section) or [])
+        if base_rows:
+            out[section] = base_rows
+        for index, sentence in enumerate(list(items or [])):
+            key = f"{section}.{index}"
+            explicit = _session_query_citations(payload, [str(item) for item in list(citation_ids.get(key) or [])])
+            if explicit:
+                out[key] = explicit
+                continue
+            matched = _match_session_sentence_grounding(sentence, rows)
+            out[key] = matched or base_rows[:2]
+    return out
+
+
+def _match_session_sentence_grounding(sentence: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    text = str(sentence or "").strip().lower()
+    if not text:
+        return []
+    scored: List[tuple[int, Dict[str, Any]]] = []
+    for row in rows:
+        label = str(row.get("label") or "").strip()
+        reason = str(row.get("reason") or "").strip()
+        score = 0
+        if label and label.lower() in text:
+            score += 3
+        if reason:
+            reason_words = [part for part in reason.lower().replace(",", " ").split() if len(part) >= 3]
+            score += sum(1 for part in reason_words[:4] if part in text)
+        if score > 0:
+            scored.append((score, row))
+    scored.sort(key=lambda item: (-item[0], str(item[1].get("anchor_id") or "")))
+    return [dict(row) for _score, row in scored[:3]]

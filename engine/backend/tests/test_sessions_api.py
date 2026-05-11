@@ -88,6 +88,7 @@ def test_session_review_returns_multi_world_summary():
     assert "lineage_summary" in payload
     assert "policy_lineage_bridge" in payload
     assert "citations" in payload
+    assert "key_findings.0" in payload["citations"]
 
 
 def test_session_review_query_returns_answer_and_grounding():
