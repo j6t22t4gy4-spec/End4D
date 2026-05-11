@@ -23,6 +23,7 @@ type ScenarioTimelineProps = {
   worldId: string | null;
   refreshKey: number;
   annotations?: TimelineAnnotation[];
+  emergentCurve?: Array<{ t: number; avg_z: number; cell_count: number }>;
   onJumpToT?: (t: number) => void;
 };
 
@@ -30,11 +31,12 @@ export function ScenarioTimeline({
   worldId,
   refreshKey,
   annotations = [],
+  emergentCurve = [],
   onJumpToT,
 }: ScenarioTimelineProps) {
   const [points, setPoints] = useState<TimelinePoint[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [mode, setMode] = useState<"both" | "cells" | "energy" | "events">("both");
+  const [mode, setMode] = useState<"both" | "cells" | "energy" | "events" | "worldview">("both");
 
   useEffect(() => {
     if (!worldId) {
@@ -105,12 +107,13 @@ export function ScenarioTimeline({
           ["cells", "Cells"],
           ["energy", "Energy"],
           ["events", "Events"],
+          ["worldview", "Worldview"],
         ].map(([value, label]) => (
           <button
             key={value}
             type="button"
             className={`app-button ${mode === value ? "app-button--primary" : "app-button--ghost"}`}
-            onClick={() => setMode(value as "both" | "cells" | "energy" | "events")}
+            onClick={() => setMode(value as "both" | "cells" | "energy" | "events" | "worldview")}
           >
             {label}
           </button>
@@ -139,6 +142,36 @@ export function ScenarioTimeline({
                   />
                   <Bar dataKey="eventLoad" fill="#f59e0b" radius={[8, 8, 0, 0]} />
                 </BarChart>
+              ) : mode === "worldview" ? (
+                <LineChart
+                  data={emergentCurve.map((item) => ({
+                    t: item.t,
+                    avgZ: Math.round(item.avg_z * 100) / 100,
+                    cells: item.cell_count,
+                  }))}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <XAxis dataKey="t" stroke="#94a3b8" fontSize={11} />
+                  <YAxis stroke="#94a3b8" fontSize={11} />
+                  <Tooltip contentStyle={tooltipStyle} />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="avgZ"
+                    name="Avg social elevation"
+                    stroke="#0f766e"
+                    dot={false}
+                    strokeWidth={2.5}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="cells"
+                    name="Tracked cells"
+                    stroke="#1d4ed8"
+                    dot={false}
+                    strokeWidth={1.5}
+                  />
+                </LineChart>
               ) : (
                 <LineChart
                   data={chartData}
@@ -194,7 +227,7 @@ export function ScenarioTimeline({
                 Analysis Notes
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                `Overview`는 전체 추세, `Events`는 annotation이 집중된 시점을 별도로 읽기 위한 레이어입니다.
+                `Overview`는 전체 추세, `Events`는 annotation이 집중된 시점, `Worldview`는 사회적 고도와 장기 emergent dynamics를 따로 읽기 위한 레이어입니다.
               </p>
             </div>
             {latestAnnotations.length ? (

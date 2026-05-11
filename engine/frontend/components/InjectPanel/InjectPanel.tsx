@@ -38,6 +38,12 @@ type InjectPanelProps = {
   suggestedT: number;
   /** 시뮬 실행 중이면 비활성 */
   simRunning?: boolean;
+  preset?: {
+    label: string;
+    t: number;
+    eventType: string;
+    payload: Record<string, unknown>;
+  } | null;
   onInjected: (info: { t: number; eventType: string }) => Promise<void>;
 };
 
@@ -45,6 +51,7 @@ export function InjectPanel({
   worldId,
   suggestedT,
   simRunning = false,
+  preset = null,
   onInjected,
 }: InjectPanelProps) {
   const [injectT, setInjectT] = useState(0);
@@ -64,6 +71,15 @@ export function InjectPanel({
     const opt = EVENT_OPTIONS.find((o) => o.value === eventType);
     if (opt) setPayloadJson(opt.defaultPayload);
   }, [eventType]);
+
+  useEffect(() => {
+    if (!preset) return;
+    setInjectT(preset.t);
+    setEventType(preset.eventType);
+    setPayloadJson(JSON.stringify(preset.payload, null, 2));
+    setMsg(`리뷰 프리셋 적용됨 · ${preset.label}`);
+    setErr(null);
+  }, [preset]);
 
   const handleSubmit = useCallback(async () => {
     if (!worldId) return;
@@ -148,6 +164,11 @@ export function InjectPanel({
       >
         {busy ? "처리 중…" : "주입 실행"}
       </button>
+      {preset ? (
+        <p className="text-xs text-sky-700">
+          active preset: {preset.label} · t={preset.t}
+        </p>
+      ) : null}
       {err && (
         <p className="text-xs text-rose-700" role="alert">
           {err}

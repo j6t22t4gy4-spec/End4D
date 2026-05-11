@@ -106,6 +106,12 @@ export default function GodView({
   const [packActionStatus, setPackActionStatus] = useState<string | null>(null);
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
   const [packDiffPreview, setPackDiffPreview] = useState<DataPackDiffResponse | null>(null);
+  const [reviewInjectPreset, setReviewInjectPreset] = useState<{
+    label: string;
+    t: number;
+    eventType: string;
+    payload: Record<string, unknown>;
+  } | null>(null);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -1016,6 +1022,7 @@ export default function GodView({
               worldId={worldId}
               suggestedT={currentT}
               simRunning={isRunning}
+              preset={reviewInjectPreset}
               onInjected={async ({ t, eventType }) => {
                 setEventMarkers((prev) => [
                   ...prev,
@@ -1090,6 +1097,44 @@ export default function GodView({
                           <p className="session-thread-card__prompt">{item}</p>
                         </div>
                       ))}
+                      {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
+                        <div className="grid gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Review-driven Policy Presets
+                          </p>
+                          {reviewSummary.inject_presets.map((item, index) => (
+                            <div
+                              key={`${index}-${String(item.label ?? "preset")}`}
+                              className="session-thread-card"
+                            >
+                              <div className="session-thread-card__header">
+                                <p className="session-thread-card__title">{String(item.label ?? "Policy preset")}</p>
+                                <span className="session-thread-card__meta">
+                                  t={Number(item.t ?? currentT).toFixed(0)}
+                                </span>
+                              </div>
+                              <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
+                              <div className="session-thread-card__actions">
+                                <button
+                                  type="button"
+                                  className="app-button app-button--ghost"
+                                  onClick={() => {
+                                    setReviewInjectPreset({
+                                      label: String(item.label ?? "Policy preset"),
+                                      t: Number(item.t ?? currentT),
+                                      eventType: String(item.event_type ?? "policy_shift"),
+                                      payload: (item.payload as Record<string, unknown>) ?? {},
+                                    });
+                                    setCurrentT(Number(item.t ?? currentT));
+                                  }}
+                                >
+                                  Use in Injection Panel
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <button
                         type="button"
                         className="app-button app-button--ghost"
@@ -1163,6 +1208,16 @@ export default function GodView({
                   worldId={worldId}
                   refreshKey={chartRefreshKey}
                   annotations={reviewSummary?.timeline_annotations ?? []}
+                  emergentCurve={
+                    ((reviewSummary?.emergent_dynamics?.worldview_curve as
+                      | Array<Record<string, unknown>>
+                      | undefined) ?? []
+                    ).map((item) => ({
+                      t: Number(item.t ?? 0),
+                      avg_z: Number(item.avg_z ?? 0),
+                      cell_count: Number(item.cell_count ?? 0),
+                    }))
+                  }
                   onJumpToT={setCurrentT}
                 />
                 <AppPanel

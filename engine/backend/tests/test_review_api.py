@@ -33,6 +33,7 @@ def test_review_summary_returns_summary_and_annotations():
     assert "group_analysis" in payload
     assert "emergent_dynamics" in payload
     assert "next_actions" in payload
+    assert "inject_presets" in payload
 
 
 def test_review_diff_returns_comparison():

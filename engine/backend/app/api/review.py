@@ -58,6 +58,7 @@ class ReviewSummaryResponse(BaseModel):
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
     belief_graph: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
     next_actions: List[Dict[str, Any]] = Field(default_factory=list)
+    inject_presets: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
@@ -152,6 +153,7 @@ def get_review_summary(world_id: str):
             "edges": [dict(item) for item in list((payload.get("belief_graph") or {}).get("edges") or [])],
         },
         next_actions=_build_next_actions(world_id, payload),
+        inject_presets=_build_inject_presets(world_id, payload),
         grounding={
             key: [
                 ReviewGroundingItem(
@@ -546,3 +548,62 @@ def _build_next_actions(world_id: str, payload: Dict[str, Any]) -> List[Dict[str
             }
         )
     return actions[:3]
+
+
+def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    belief_drift = dict(payload.get("belief_drift") or {})
+    groups = list(belief_drift.get("groups") or [])
+    zone_hotspots = list((payload.get("group_analysis") or {}).get("zone_hotspots") or [])
+    top_group = groups[0] if groups else {}
+    top_zone = zone_hotspots[0] if zone_hotspots else {}
+    annotations = list(payload.get("annotation_candidates") or [])
+    suggested_t = float((annotations[0] or {}).get("t", 0.0)) if annotations else 0.0
+    presets: List[Dict[str, Any]] = []
+
+    if top_group:
+        presets.append(
+            {
+                "kind": "policy_shift",
+                "label": f"Stabilize {str(top_group.get('role_label') or 'group')}",
+                "description": "Reduce tension and improve cooperation for the most fragile belief block.",
+                "t": suggested_t,
+                "event_type": "policy_shift",
+                "payload": {
+                    "name": f"stabilize {str(top_group.get('role_label') or 'group').lower()} consensus",
+                    "summary": "Targeted stabilization policy generated from review analysis.",
+                    "intensity": 0.58,
+                    "duration_steps": 18,
+                    "target_roles": [str(top_group.get("role_label") or "")],
+                    "effect_profile": {
+                        "cooperation_delta_per_step": 0.05,
+                        "policy_sensitivity_delta_per_step": 0.03,
+                        "emotion_delta_per_step": -0.02,
+                    },
+                },
+                "world_id": world_id,
+            }
+        )
+    if top_zone:
+        presets.append(
+            {
+                "kind": "policy_shift",
+                "label": f"Support hotspot {str(top_zone.get('zone_label') or 'zone')}",
+                "description": "Focus policy support on the zone with the sharpest social-elevation drift.",
+                "t": suggested_t,
+                "event_type": "policy_shift",
+                "payload": {
+                    "name": f"zone support for {str(top_zone.get('zone_label') or 'zone').lower()}",
+                    "summary": "Zone-targeted support policy generated from review hotspot analysis.",
+                    "intensity": 0.62,
+                    "duration_steps": 14,
+                    "target_zones": [str(top_zone.get("zone_id") or "")],
+                    "effect_profile": {
+                        "energy_delta_per_step": 0.04,
+                        "mobility_delta_per_step": -0.01,
+                        "cooperation_delta_per_step": 0.04,
+                    },
+                },
+                "world_id": world_id,
+            }
+        )
+    return presets[:2]

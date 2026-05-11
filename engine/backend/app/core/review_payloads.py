@@ -899,7 +899,7 @@ def _emergent_dynamics_summary(
             reverse=True,
         )[:4]
     ]
-    timeline_tail = timeline_points[-5:]
+    timeline_tail = _sample_timeline_points(timeline_points, limit=18)
     worldview_curve = [
         {
             "t": float(item.get("t", 0.0)),
@@ -923,6 +923,20 @@ def _emergent_dynamics_summary(
         "worldview_curve": worldview_curve,
         "recent_events": [str(item.get("name") or item.get("event_type") or "event") for item in key_events[:4]],
     }
+
+
+def _sample_timeline_points(
+    timeline_points: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    if len(timeline_points) <= limit:
+        return list(timeline_points)
+    step = max(1, len(timeline_points) // max(1, limit - 1))
+    sampled = timeline_points[::step]
+    if sampled[-1] is not timeline_points[-1]:
+        sampled.append(timeline_points[-1])
+    return sampled[:limit]
 
 
 def _build_grounding(
