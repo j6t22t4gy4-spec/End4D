@@ -5,8 +5,10 @@ import { useState } from "react";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import type { LocalRuntimeStatus, SessionSummary } from "@/lib/api";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
+import type { UiLocale } from "@/lib/ui-language";
 
 type OverviewWorkspaceProps = {
+  locale?: UiLocale;
   runtime: LocalRuntimeStatus | null;
   runtimeError: string | null;
   sessions: SessionSummary[];
@@ -19,6 +21,7 @@ type OverviewWorkspaceProps = {
 };
 
 export function OverviewWorkspace({
+  locale = "ko",
   runtime,
   runtimeError,
   sessions,
@@ -29,6 +32,7 @@ export function OverviewWorkspace({
   onRenameSession,
   onDeleteSession,
 }: OverviewWorkspaceProps) {
+  const isKo = locale === "ko";
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
@@ -77,8 +81,8 @@ export function OverviewWorkspace({
   return (
     <div className="workspace-grid">
       <AppPanel
-        title="Start Here"
-        subtitle="Open the app like a real simulation workbench"
+        title={isKo ? "여기서 시작" : "Start Here"}
+        subtitle={isKo ? "실제 시뮬레이션 워크벤치처럼 앱을 엽니다" : "Open the app like a real simulation workbench"}
         className="workspace-grid__hero"
         bodyClassName="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]"
       >
@@ -94,97 +98,102 @@ export function OverviewWorkspace({
               className="app-button app-button--primary"
               onClick={() => onOpenView("simulation")}
             >
-              Open Simulation
+              {isKo ? "시뮬레이션 열기" : "Open Simulation"}
             </button>
             <button
               type="button"
               className="app-button app-button--secondary"
               onClick={() => onOpenView("data-packs")}
             >
-              Browse Data Packs
+              {isKo ? "데이터 팩 보기" : "Browse Data Packs"}
             </button>
             <button
               type="button"
               className="app-button app-button--secondary"
               onClick={() => onOpenView("policy-lab")}
             >
-              Open Policy Lab
+              {isKo ? "정책 실험실 열기" : "Open Policy Lab"}
             </button>
           </div>
         </div>
         <div className="grid gap-3">
-          <MetricCard label="Runtime" value={runtime?.runtime_profile ?? "Booting"} />
+          <MetricCard label={isKo ? "런타임" : "Runtime"} value={runtime?.runtime_profile ?? (isKo ? "부팅 중" : "Booting")} />
           <MetricCard
-            label="Installed Packs"
+            label={isKo ? "설치된 팩" : "Installed Packs"}
             value={String(runtime?.installed_pack_count ?? 0)}
           />
           <MetricCard
-            label="Regions"
+            label={isKo ? "지역" : "Regions"}
             value={
               runtime?.available_countries.length
                 ? runtime.available_countries.join(" · ").toUpperCase()
-                : "No regions"
+                : isKo ? "지역 없음" : "No regions"
             }
           />
         </div>
       </AppPanel>
 
       <AppPanel
-        title="Workbench Modules"
-        subtitle="Toolbar-driven navigation"
+        title={isKo ? "워크벤치 모듈" : "Workbench Modules"}
+        subtitle={isKo ? "툴바 중심 내비게이션" : "Toolbar-driven navigation"}
         bodyClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-5"
       >
         <ActionCard
-          title="Simulation"
-          body="Setup과 Run을 나눠 세계 생성과 실행을 분리"
+          title={isKo ? "시뮬레이션" : "Simulation"}
+          body={isKo ? "Setup과 Run을 나눠 세계 생성과 실행을 분리" : "Separate world setup from live execution"}
+          ctaLabel={isKo ? "열기" : "Open"}
           onClick={() => onOpenView("simulation")}
         />
         <ActionCard
-          title="Review"
-          body="추후 LLM 기반 결과 해석과 비교 채팅 워크스페이스"
+          title={isKo ? "리뷰" : "Review"}
+          body={isKo ? "LLM 기반 결과 해석과 비교 채팅 워크스페이스" : "LLM-driven analysis and comparison workspace"}
+          ctaLabel={isKo ? "열기" : "Open"}
           onClick={() => onOpenView("review-lab")}
         />
         <ActionCard
-          title="Data Packs"
-          body="국가별 페르소나 팩, 캐시, 라이선스 확인"
+          title={isKo ? "데이터 팩" : "Data Packs"}
+          body={isKo ? "국가별 페르소나 팩, 캐시, 라이선스 확인" : "Inspect packs, cache, and licenses by country"}
+          ctaLabel={isKo ? "열기" : "Open"}
           onClick={() => onOpenView("data-packs")}
         />
         <ActionCard
-          title="Snapshots"
-          body="저장된 t 프레임, 복원, what-if 흐름 설계"
+          title={isKo ? "스냅샷" : "Snapshots"}
+          body={isKo ? "저장된 t 프레임, 복원, what-if 흐름 설계" : "Restore points and what-if branching flows"}
+          ctaLabel={isKo ? "열기" : "Open"}
           onClick={() => onOpenView("snapshots")}
         />
         <ActionCard
-          title="Policy Lab"
-          body="주입 이벤트, 실험 설계, 변화 관찰"
+          title={isKo ? "정책 실험실" : "Policy Lab"}
+          body={isKo ? "주입 이벤트, 실험 설계, 변화 관찰" : "Interventions, experiment design, and outcome observation"}
+          ctaLabel={isKo ? "열기" : "Open"}
           onClick={() => onOpenView("policy-lab")}
         />
       </AppPanel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <AppPanel
-          title="Runtime Health"
-          subtitle="What the local app is connected to"
+          title={isKo ? "런타임 상태" : "Runtime Health"}
+          subtitle={isKo ? "현재 로컬 앱이 연결된 대상" : "What the local app is connected to"}
           bodyClassName="grid gap-3 md:grid-cols-2"
         >
-          <InfoCard label="API Endpoint" value={apiBase} />
+          <InfoCard label={isKo ? "API 엔드포인트" : "API Endpoint"} value={apiBase} />
           <InfoCard
-            label="Manifest"
-            value={runtime?.manifest_path ?? "Waiting for runtime"}
+            label={isKo ? "매니페스트" : "Manifest"}
+            value={runtime?.manifest_path ?? (isKo ? "런타임 대기 중" : "Waiting for runtime")}
           />
           <InfoCard
-            label="Cache"
-            value={runtime?.data_cache_dir ?? "Waiting for runtime"}
+            label={isKo ? "캐시" : "Cache"}
+            value={runtime?.data_cache_dir ?? (isKo ? "런타임 대기 중" : "Waiting for runtime")}
           />
           <InfoCard
-            label="State Dir"
-            value={runtime?.state_dir ?? "Waiting for runtime"}
+            label={isKo ? "상태 디렉터리" : "State Dir"}
+            value={runtime?.state_dir ?? (isKo ? "런타임 대기 중" : "Waiting for runtime")}
           />
         </AppPanel>
 
         <AppPanel
-          title="Session Threads"
-          subtitle="Persistent run history on this machine"
+          title={isKo ? "세션 스레드" : "Session Threads"}
+          subtitle={isKo ? "이 머신에 저장된 실행 이력" : "Persistent run history on this machine"}
           bodyClassName="space-y-3"
         >
           {sessionsError ? (
@@ -215,7 +224,7 @@ export function OverviewWorkspace({
                         value={draftTitle}
                         onChange={(event) => setDraftTitle(event.target.value)}
                         className="app-input"
-                        placeholder="Session title"
+                        placeholder={isKo ? "세션 제목" : "Session title"}
                       />
                     ) : (
                       <p className="session-thread-card__title">{session.title}</p>
@@ -229,7 +238,7 @@ export function OverviewWorkspace({
                             disabled={pendingSessionId === session.session_id}
                             onClick={() => submitRename(session.session_id)}
                           >
-                            Save
+                            {isKo ? "저장" : "Save"}
                           </button>
                           <button
                             type="button"
@@ -240,7 +249,7 @@ export function OverviewWorkspace({
                               setSessionActionError(null);
                             }}
                           >
-                            Cancel
+                            {isKo ? "취소" : "Cancel"}
                           </button>
                         </>
                       ) : (
@@ -251,7 +260,7 @@ export function OverviewWorkspace({
                             disabled={pendingSessionId === session.session_id}
                             onClick={() => startRename(session)}
                           >
-                            Rename
+                            {isKo ? "이름 변경" : "Rename"}
                           </button>
                           <button
                             type="button"
@@ -259,14 +268,14 @@ export function OverviewWorkspace({
                             disabled={pendingSessionId === session.session_id}
                             onClick={() => removeSession(session.session_id)}
                           >
-                            Delete
+                            {isKo ? "삭제" : "Delete"}
                           </button>
                         </>
                       )}
                     </div>
                   </div>
                   <p className="session-thread-card__meta">
-                    {session.world_count} worlds · latest {session.latest_world_id || "—"}
+                    {session.world_count} {isKo ? "월드" : "worlds"} · {isKo ? "최신" : "latest"} {session.latest_world_id || "—"}
                   </p>
                   {session.worlds[0]?.genesis_prompt ? (
                     <p className="session-thread-card__prompt">
@@ -275,7 +284,7 @@ export function OverviewWorkspace({
                   ) : null}
                   <div className="session-thread-card__footer">
                     <span className="session-thread-card__updated">
-                      updated {new Date(session.updated_at).toLocaleString()}
+                      {isKo ? "업데이트" : "updated"} {new Date(session.updated_at).toLocaleString()}
                     </span>
                     {session.latest_world_id ? (
                       <button
@@ -283,7 +292,7 @@ export function OverviewWorkspace({
                         className="app-button app-button--secondary"
                         onClick={() => onOpenWorld(session.latest_world_id)}
                       >
-                        Open Latest World
+                        {isKo ? "최신 월드 열기" : "Open Latest World"}
                       </button>
                     ) : null}
                   </div>
@@ -318,10 +327,12 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 function ActionCard({
   title,
   body,
+  ctaLabel,
   onClick,
 }: {
   title: string;
   body: string;
+  ctaLabel: string;
   onClick: () => void;
 }) {
   return (
@@ -332,7 +343,7 @@ function ActionCard({
     >
       <strong>{title}</strong>
       <p>{body}</p>
-      <span>Open</span>
+      <span>{ctaLabel}</span>
     </button>
   );
 }

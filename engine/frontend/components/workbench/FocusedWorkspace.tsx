@@ -2,8 +2,10 @@
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
+import type { UiLocale } from "@/lib/ui-language";
 
 type FocusedWorkspaceProps = {
+  locale?: UiLocale;
   title: string;
   subtitle: string;
   body: string;
@@ -13,6 +15,7 @@ type FocusedWorkspaceProps = {
 };
 
 export function FocusedWorkspace({
+  locale = "ko",
   title,
   subtitle,
   body,
@@ -20,6 +23,7 @@ export function FocusedWorkspace({
   onOpenView,
   targetView,
 }: FocusedWorkspaceProps) {
+  const isKo = locale === "ko";
   return (
     <div className="workspace-grid">
       <AppPanel
@@ -38,9 +42,9 @@ export function FocusedWorkspace({
           </button>
         </div>
         <div className="grid gap-3">
-          <StageItem index="01" label="Create or run a world" />
-          <StageItem index="02" label="Persist snapshots and memory" />
-          <StageItem index="03" label="Return here for comparison workflows" />
+          <StageItem index="01" label={isKo ? "월드를 생성하거나 실행합니다" : "Create or run a world"} />
+          <StageItem index="02" label={isKo ? "스냅샷과 메모리를 저장합니다" : "Persist snapshots and memory"} />
+          <StageItem index="03" label={isKo ? "비교 워크플로우를 위해 다시 돌아옵니다" : "Return here for comparison workflows"} />
         </div>
       </AppPanel>
     </div>
