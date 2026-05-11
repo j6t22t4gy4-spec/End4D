@@ -283,6 +283,29 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return res.json();
 }
 
+export async function renameSession(
+  sessionId: string,
+  title: string
+): Promise<SessionSummary> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(`renameSession: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteSession(
+  sessionId: string
+): Promise<{ session_id: string; deleted: boolean }> {
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`deleteSession: ${res.status}`);
+  return res.json();
+}
+
 export async function runSimulation(
   worldId: string,
   options?: { stream?: boolean }

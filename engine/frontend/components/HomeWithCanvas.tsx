@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  deleteSession,
   getApiBase,
   getLocalRuntimeStatus,
   listSessions,
+  renameSession,
   syncDataPacks,
   type LocalRuntimeStatus,
   type SessionSummary,
@@ -33,6 +35,16 @@ export default function HomeWithCanvas() {
   const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
   const [dataPackSyncing, setDataPackSyncing] = useState(false);
   const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
+
+  const refreshSessions = () =>
+    listSessions()
+      .then((items) => {
+        setSessions(items);
+        setSessionsError(null);
+      })
+      .catch((error: Error) => {
+        setSessionsError(error.message);
+      });
 
   const refreshRuntime = () =>
     getLocalRuntimeStatus()
@@ -114,6 +126,12 @@ export default function HomeWithCanvas() {
                   setSelectedWorldId(worldId);
                   setActiveView("simulation");
                 }}
+                onRenameSession={(sessionId, title) =>
+                  renameSession(sessionId, title).then(() => refreshSessions())
+                }
+                onDeleteSession={(sessionId) =>
+                  deleteSession(sessionId).then(() => refreshSessions())
+                }
               />
             ) : null}
 
@@ -171,7 +189,7 @@ export default function HomeWithCanvas() {
             ) : null}
           </section>
 
-          <aside className="hidden min-h-0 xl:block">
+          <aside className="hidden min-h-0 overflow-y-auto xl:block">
             <RuntimeDock
               runtime={runtime}
               runtimeError={runtimeError}

@@ -15,7 +15,7 @@
 html,
 body {
   min-height: 100vh;
-  overflow: hidden;
+  overflow: auto;
   background:
     radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 24%),
     radial-gradient(circle at top right, rgba(251, 191, 36, 0.08), transparent 18%),
@@ -45,7 +45,7 @@ textarea {
 
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  min-height: 100dvh;
   padding: 12px;
 }
 
@@ -55,14 +55,15 @@ textarea {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   width: 100%;
-  min-height: 0;
+  min-height: calc(100dvh - 24px);
 }
 
 .app-shell__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 264px;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
   gap: 10px;
   min-height: 0;
+  align-items: start;
 }
 
 .app-toolbar {
@@ -199,6 +200,10 @@ textarea {
   min-height: 0;
 }
 
+.workspace-grid > * {
+  min-width: 0;
+}
+
 .workspace-grid__hero {
   min-height: 0;
 }
@@ -266,6 +271,12 @@ textarea {
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.app-button--ghost-danger {
+  background: rgba(254, 242, 242, 0.9);
+  color: #b91c1c;
+  border: 1px solid rgba(248, 113, 113, 0.24);
+}
+
 .app-button--warning {
   background: #f59e0b;
   color: white;
@@ -328,6 +339,65 @@ textarea {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #0f172a;
+}
+
+.session-thread-list {
+  display: grid;
+  gap: 8px;
+  max-height: 56dvh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.session-thread-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid #dbe2ea;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.session-thread-card__header,
+.session-thread-card__footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-thread-card__title {
+  margin: 0;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.session-thread-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.session-thread-card__meta,
+.session-thread-card__updated {
+  margin: 0;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.session-thread-card__prompt {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #475569;
 }
 
 .simulation-map {
@@ -714,18 +784,21 @@ textarea {
 }
 
 @media (max-width: 1279px) {
-  html,
-  body {
-    overflow: auto;
-  }
-
   .app-shell {
     min-height: auto;
     padding: 10px;
   }
 
+  .app-shell__frame {
+    min-height: auto;
+  }
+
   .app-shell__workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .session-thread-list {
+    max-height: none;
   }
 
   .godview-layout,
@@ -753,6 +826,16 @@ textarea {
   }
 
   .simulation-map__meta {
+    justify-content: flex-start;
+  }
+
+  .session-thread-card__header,
+  .session-thread-card__footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .session-thread-card__actions {
     justify-content: flex-start;
   }
 }

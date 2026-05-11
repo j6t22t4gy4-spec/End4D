@@ -16,6 +16,10 @@ class CreateSessionRequest(BaseModel):
     title: str = Field(default="", max_length=200)
 
 
+class UpdateSessionRequest(BaseModel):
+    title: str = Field(default="", max_length=200)
+
+
 class SessionWorldSummary(BaseModel):
     world_id: str
     status: str
@@ -83,3 +87,19 @@ def get_session(session_id: str):
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return _session_response(session)
+
+
+@router.patch("/{session_id}", response_model=SessionResponse)
+def update_session(session_id: str, body: UpdateSessionRequest):
+    session = session_store.rename(session_id, body.title)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _session_response(session)
+
+
+@router.delete("/{session_id}")
+def delete_session(session_id: str):
+    session = session_store.delete(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"session_id": session_id, "deleted": True}

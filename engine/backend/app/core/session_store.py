@@ -88,6 +88,25 @@ class SessionStore:
         entry["updated_at"] = _now_iso()
         self._persist()
 
+    def rename(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
+        entry = self._sessions.get(session_id)
+        if entry is None:
+            return None
+        cleaned = title.strip()
+        if not cleaned:
+            cleaned = f"Session {str(entry.get('created_at') or _now_iso())[:16].replace('T', ' ')}"
+        entry["title"] = cleaned
+        entry["updated_at"] = _now_iso()
+        self._persist()
+        return dict(entry)
+
+    def delete(self, session_id: str) -> Optional[Dict[str, Any]]:
+        entry = self._sessions.pop(session_id, None)
+        if entry is None:
+            return None
+        self._persist()
+        return dict(entry)
+
     def list_sessions(self) -> List[Dict[str, Any]]:
         return [
             dict(item)

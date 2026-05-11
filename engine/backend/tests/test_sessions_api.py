@@ -42,3 +42,20 @@ def test_world_creation_attaches_to_session():
     assert session["world_count"] >= 1
     assert session["latest_world_id"] == world["world_id"]
     assert any(item["world_id"] == world["world_id"] for item in session["worlds"])
+
+
+def test_rename_and_delete_session():
+    created = client.post("/sessions", json={"title": "Initial session"})
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    renamed = client.patch(f"/sessions/{session_id}", json={"title": "Renamed session"})
+    assert renamed.status_code == 200
+    assert renamed.json()["title"] == "Renamed session"
+
+    deleted = client.delete(f"/sessions/{session_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+
+    missing = client.get(f"/sessions/{session_id}")
+    assert missing.status_code == 404
