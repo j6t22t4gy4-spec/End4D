@@ -26,6 +26,7 @@
 | 영역 | 현재 상태 | 우선순위 | 문제 |
 |------|-----------|----------|------|
 | persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 role mix까지는 일부 반영되지만 zone seed, initial energy/z bias, 장기 초기 조건 반영은 더 필요 |
+| LLM runtime stability / live dominance | 초기 구현 | 최상 | provider 연결은 가능하지만 task별 success rate, fallback reason, degraded task가 충분히 보이지 않아 실제로 LLM이 주도하는지 판단하기 어려움 |
 | LLM 호출 입구 (Facade / Engine API) | 초기 구현 | 최상 | abstraction은 있지만 엔진 개발자가 `think()`, `decide_actions()`처럼 일관되게 쓰는 공통 입구가 더 필요 |
 | Prompt Template 체계 | 부분 구현 | 높음 | registry와 contract가 생겼지만 평가 루프와 결과물 provenance 저장은 더 필요 |
 | group-level belief state | 부분 구현 | 최상 | 국가 단위 분석에 필요한 role/persona/zone 집단 stance/cohesion/tension drift와 비교 리포트가 아직 약함 |
@@ -121,6 +122,24 @@
 - causal insight generation
 - 자연어 review query (`review.ask(...)`)
 
+### 2.9 LLM 호출 안정화와 실제 주도성
+
+현재는 LLM 설정 입구와 `LLM-first` 프로필이 생겼지만, 여전히 아래 질문에 즉답하기 어렵다.
+
+- 어떤 task가 실제로 live provider를 가장 많이 타는가?
+- 어떤 task가 fallback pressure 때문에 degraded 되었는가?
+- provider 오류인지, budget cap인지, adaptive priority skip인지 원인이 무엇인가?
+- strict mode에서 review/action/dialogue가 안정적으로 유지되는가?
+
+이 결손이 크면, 기능은 많아 보여도 실제 실행은 heuristic fallback 비중이 높아지고, 제품 핵심 가치인 “LLM 기반 자율 에이전트 + 의미 있는 분석”이 약해진다.
+
+필수 산출물:
+- task별 success rate / fallback rate
+- top failure reason / degraded task 목록
+- recent live dominance와 task priority/budget의 상관관계
+- no-silent-fallback health 진단
+- 최소 1개 `LLM-first` 운영 프로필에서 안정적 success baseline
+
 ### 2.6 멀티 에이전트 대화 / 집단 상호작용
 
 현재 세포는 벡터와 규칙 상호작용에 더해, 주기적인 직접 대화(`agent_dialogue`)와 역할 집단 협상(`group_deliberation`)을 수행할 수 있다. 다음 단계는 이 결과를 UI와 장기 비교 리포트에 더 명확히 노출하는 것이다.
@@ -139,10 +158,10 @@
 | 순서 | 작업 | 이유 |
 |------|------|------|
 | 1 | persona-aware Genesis | 국가 단위 사회의 초기 조건 품질을 끌어올림 |
-| 2 | LLM 호출 입구 + Facade 표준화 | 기능이 늘어날수록 provider/prompt/budget 제어를 한곳으로 모아야 함 |
-| 3 | 비용 제어 & 호출 스케줄링 | 장시간 시뮬레이션과 로컬 하이브리드 방향의 핵심 |
-| 4 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
-| 5 | post-simulation LLM review layer | 결과를 자연어 요약·주석·비교 가능한 분석 워크플로우로 전환 |
+| 2 | LLM 호출 안정화 / live dominance | 실제로 LLM이 주도적으로 동작하는지 먼저 보이게 해야 함 |
+| 3 | post-simulation LLM review layer | 결과를 자연어 요약·주석·비교 가능한 분석 워크플로우로 전환 |
+| 4 | Review → Action 워크플로우 | 리뷰가 바로 다음 실험/주입/비교로 이어져야 함 |
+| 5 | group-level belief state | 개별 agent를 넘어 사회 집단 상태를 읽을 수 있게 함 |
 | 6 | policy/event semantics 강화 | 정책 시뮬레이터로서의 설명력을 높임 |
 | 7 | Storage Layer 고도화 | 스냅샷, 포크, 재현성, 무결성의 기반 |
 | 8 | session/world comparison | 장기 시나리오 실험을 전문가 워크플로우로 만듦 |
@@ -185,6 +204,8 @@
 ### 5.1 반드시 먼저 완성할 것
 
 - [ ] persona distribution이 Genesis 결과(`t_max`, role mix, nutrient scale, initial bias)에 반영된다
+- [ ] task별 `LLM success rate / fallback rate / top failure reason`이 runtime에서 보인다
+- [ ] degraded task와 live dominance가 action/dialogue/review 기준으로 진단된다
 - [ ] 엔진이 `llm_facade.think() / decide_actions() / interpret_policy()` 같은 일관된 LLM 입구를 사용한다
 - [ ] task별 budget, sampling, cadence가 메타와 함께 추적된다
 - [ ] role/persona group 기준의 stance/cohesion/tension drift가 저장·조회된다

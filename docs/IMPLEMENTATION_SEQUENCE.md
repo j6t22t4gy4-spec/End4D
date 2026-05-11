@@ -23,6 +23,8 @@
    - what-if, 복원, 비교, 리포트, 세션 스레드가 있어야 한다.
 5. **제품 셸**
    - 앱형 UI, 로컬 런처, 추후 네이티브 셸은 그 다음이다.
+6. **LLM 주도성의 실제 밀도**
+   - Thought / Action / Dialogue / Review가 실제 live provider 호출을 얼마나 타는지 측정 가능해야 한다.
 
 즉, **채팅형 데모**보다 먼저 **국가 단위 장기 시뮬레이션 엔진의 정확한 루프와 재현성**을 완성해야 한다.
 
@@ -271,6 +273,8 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 10B.3 | LLM budget & cadence 제어 | task batch cap, agent sample size, dialogue/deliberation interval |
 | 10B.4 | Provider / prompt / fallback provenance 저장 | snapshot·world·behavior payload 메타 |
 | 10B.5 | 엔진 모듈의 직접 provider 호출 제거 | thought/action/policy/dialogue/group_deliberation → facade 경유 |
+| 10B.6 | LLM 호출 안정화 진단 | task별 success rate, fallback reason, live dominance, degraded task 진단 |
+| 10B.7 | no-silent-fallback 운영 | provider 오류를 숨기지 않고 health/diagnostic에 드러냄 |
 
 ---
 
@@ -278,10 +282,10 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 | 우선순위 | 작업 | 이유 |
 |----------|------|------|
-| 1 | LLM Facade 표준화 | 개발자가 실제로 쓰기 편한 입구를 먼저 고정 |
-| 2 | 비용 제어 & 호출 스케줄링 | 장시간 로컬 시뮬레이션 안정성 확보 |
-| 3 | Storage Layer 고도화 | Snapshot/Fork/Versioning 무결성 강화 |
-| 4 | Nemotron Data Pack 운영 검증 | 실제 다국가 데이터 레이어 제품화 |
+| 1 | LLM 호출 안정화 | 실제로 live provider가 주요 task를 얼마나 타는지 먼저 보이게 해야 함 |
+| 2 | Review 품질 강화 | 인과 분석과 영향 평가의 깊이를 실질적으로 끌어올려야 함 |
+| 3 | Review → Action 워크플로우 | 리뷰를 보고 바로 재주입/분기/비교로 이어져야 함 |
+| 4 | Group-level 분석 강화 | 국가 규모 시뮬레이션의 핵심 설명력 |
 | 5 | 10k+ 성능 벤치 | 반복 실행·메모리·throughput 회귀까지 비교 가능한 하네스 확보 |
 
 ## Phase 10A (엔진/에이전트 데이터 플라이휠 기초)
@@ -333,6 +337,9 @@ Phase 14: 네이티브 앱 / 기관 배포
 | 11.4 | **prompt version + provider provenance 저장** | genesis/thought/worldview 결과에 LLM 메타 저장 | 장기 예측은 재현성과 감사 가능성이 필수 |
 | 11.5 | **session → world → snapshot 비교 루프 완성** | 세션 단위 비교, 최근 world reopen, fork lineage | 장기 시나리오 실험 워크플로우의 핵심 |
 | 11.6 | **long-horizon calibration hooks** | 시계열·정책·충격 입력용 calibration interface | 국가 단위 장기 예측으로 확장할 발판 |
+| 11.7 | **LLM-driven action density 강화** | action cadence, dialogue density, deliberation depth를 live provider 중심으로 조정 | “LLM이 붙어 있다”와 “LLM이 실제로 주도한다”는 다름 |
+| 11.8 | **policy mechanism layer** | 정책 영향이 group / zone / ideology block을 어떻게 타고 전파되는지 모델링 | 국가 규모 시뮬에서는 정책 메커니즘 설명력이 핵심 |
+| 11.9 | **emergent lineage / ideology transition** | sub-coalition lineage, ideology migration, regime shift 신호 | 장기 emergent dynamics를 서사적으로 추적하기 위해 필요 |
 
 ---
 
@@ -341,6 +348,7 @@ Phase 14: 네이티브 앱 / 기관 배포
 핵심 원칙:
 - 시뮬레이션 중 LLM보다 시뮬레이션 후 `무슨 일이 일어났고 왜 중요한지`를 설명하는 리뷰 레이어를 먼저 강화한다.
 - Review Lab은 `summary → annotation → diff → query` 흐름으로 자라야 한다.
+- 단, Review 품질은 `LLM success rate / fallback reason / task dominance` 진단이 먼저 안정돼야 한다.
 
 | 순서 | 작업 | 산출물 | 이유 |
 |------|------|--------|------|
@@ -379,15 +387,14 @@ Phase 14: 네이티브 앱 / 기관 배포
 
 아래는 **지금 당장 개발 집중도를 유지하기 위한 단기 체크리스트**다.
 
-- [ ] `persona-aware Genesis`가 occupation/region/age 분포를 role mix, zone seed, energy/z bias까지 실제 반영한다
+- [ ] task별 `LLM success rate / fallback rate / top failure reason`이 보인다
+- [ ] `LLM-first` 프로필에서 live provider 호출이 주요 cognition task를 실제로 지배한다
+- [ ] review payload가 group/zone/policy mechanism 중심으로 압축된다
+- [ ] review summary/diff가 generic 요약이 아니라 causal chain을 말한다
+- [ ] review 결과에서 바로 inject / branch / simulation jump로 이어진다
 - [ ] `group stance summary`가 role/persona/zone 기준으로 world/session 비교 가능한 구조로 저장된다
-- [ ] 시뮬 종료 후 자동 요약이 Review Lab에 노출된다
-- [ ] 주요 타임라인 변곡점이 자동 annotation된다
-- [ ] policy/event injection이 강도·범위·지속시간을 가진다
-- [ ] `session comparison` 화면에서 최소 2개 world를 나란히 볼 수 있다
-- [ ] LLM 결과에 `provider / model / prompt_version / timestamp`가 남는다
 - [ ] dataset source / license / version이 report payload까지 전달된다
-- [ ] 브라우저 런처가 아닌 네이티브 셸 PoC 방향이 문서화된다
+- [ ] 10k+ review/graph/interview workload 기준 baseline이 수집된다
 
 ---
 

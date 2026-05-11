@@ -169,9 +169,24 @@ export type RuntimeLlmHealth = {
   status: string;
   reason: string;
   recent_call_count: number;
+  live_call_count: number;
+  live_call_rate: number;
   recent_fallback_count: number;
   recent_fallback_rate: number;
   last_fallback_reason: string;
+  dominant_failure_reason: string;
+};
+
+export type RuntimeLlmTaskInsight = {
+  task: string;
+  calls: number;
+  live_calls: number;
+  fallback_calls: number;
+  live_call_rate: number;
+  prompt_live_rate: number;
+  status: string;
+  recommendation: string;
+  top_fallback_reasons: Array<{ reason: string; count: number }>;
 };
 
 export type RuntimeLlmRuntime = {
@@ -188,6 +203,10 @@ export type RuntimeLlmRuntime = {
   health: RuntimeLlmHealth;
   recent_runs: RuntimeLlmRun[];
   task_totals: Record<string, RuntimeLlmTotals>;
+  task_insights: RuntimeLlmTaskInsight[];
+  degraded_tasks: string[];
+  fallback_reason_counts: Record<string, number>;
+  recommended_actions: string[];
 };
 
 export type LocalRuntimeStatus = {

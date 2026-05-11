@@ -68,6 +68,8 @@
 | 4.7 | Thought/Worldview 생성 시 **역할**을 프롬프트·임베딩 맥락에 포함 | 역할 무시한 동일 프롬프트만 사용 | CONCEPT §2.3, §6 |
 | 4.8 | Genesis / Thought / Worldview는 provider·model·prompt_version을 추적 가능해야 한다 | 나중에 어떤 LLM 설정으로 결과가 나왔는지 알 수 없음 | IMPLEMENTATION_SEQUENCE Phase 11 |
 | 4.9 | 엔진 모듈은 가급적 `llm_facade` 같은 task-oriented 입구를 사용한다 | 각 모듈이 prompt 조립과 provider 호출을 제각각 수행 | IMPLEMENTATION_SEQUENCE Phase 10B |
+| 4.10 | runtime은 task별 success rate / fallback reason / live dominance를 관측 가능해야 한다 | LLM이 “붙어는 있는데 실제로 얼마나 작동하는지” 알 수 없음 | DEVELOPMENT_GAPS §2.9 |
+| 4.11 | provider 오류는 silent fallback으로 숨기지 않는다 | 테스트는 성공처럼 보이지만 실제 provider는 죽어 있음 | DEVELOPMENT_GAPS §2.9 |
 
 ---
 
@@ -141,6 +143,7 @@
 | 10.4 | dataset / prompt / provider provenance가 결과와 함께 남는다 | 장기 예측 결과의 재현·감사가 어려움 | PRODUCT_STRATEGY §6 |
 | 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | IMPLEMENTATION_SEQUENCE Phase 12 |
 | 10.6 | 장시간 실행에서는 LLM budget·snapshot cadence·sampling이 조절 가능해야 한다 | agent 수가 늘면 호출과 저장이 폭주함 | IMPLEMENTATION_SEQUENCE Phase 10B, 11 |
+| 10.7 | `LLM-first` 프로필은 실제로 action / dialogue / review에 live provider 호출이 지배적이어야 한다 | 설정만 LLM-first이고 실제론 heuristic fallback 비중이 큼 | DEVELOPMENT_GAPS §2.9 |
 
 ---
 

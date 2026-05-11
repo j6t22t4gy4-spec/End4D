@@ -85,10 +85,34 @@ export function RuntimeDock({
             value={String(runtime?.llm_runtime?.health?.recent_call_count ?? 0)}
           />
           <InfoRow
+            label={strings.liveRate}
+            value={`${Math.round((runtime?.llm_runtime?.health?.live_call_rate ?? 0) * 100)}%`}
+          />
+          <InfoRow
             label={strings.fallbackRate}
             value={`${Math.round((runtime?.llm_runtime?.health?.recent_fallback_rate ?? 0) * 100)}%`}
           />
+          <InfoRow
+            label={strings.dominantFailure}
+            value={runtime?.llm_runtime?.health?.dominant_failure_reason || "none"}
+          />
         </div>
+        {runtime?.llm_runtime?.degraded_tasks?.length ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+            <p className="font-semibold">{strings.degradedTasks}</p>
+            <p className="mt-1">{runtime.llm_runtime.degraded_tasks.join(", ")}</p>
+          </div>
+        ) : null}
+        {runtime?.llm_runtime?.recommended_actions?.length ? (
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+            <p className="font-semibold">{strings.recommendedActions}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              {runtime.llm_runtime.recommended_actions.map((item, index) => (
+                <li key={`${index}-${item}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {runtime?.llm_runtime?.recent_runs?.length ? (
           <>
             <div className="runtime-heatmap">
@@ -132,6 +156,40 @@ export function RuntimeDock({
                 </p>
               </article>
             ))}
+            {runtime.llm_runtime.task_insights?.length ? (
+              <div className="space-y-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    {strings.taskInsights}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{strings.taskInsightsSubtitle}</p>
+                </div>
+                {runtime.llm_runtime.task_insights.map((item) => (
+                  <article
+                    key={`insight-${item.task}`}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-900">{item.task}</p>
+                        <p className="truncate text-xs text-slate-500">
+                          live {Math.round((item.live_call_rate ?? 0) * 100)}% · prompts {Math.round((item.prompt_live_rate ?? 0) * 100)}%
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                        {item.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-600">{item.recommendation}</p>
+                    {item.top_fallback_reasons?.length ? (
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        {item.top_fallback_reasons.map((reason) => `${reason.reason}(${reason.count})`).join(" · ")}
+                      </p>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">

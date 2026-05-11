@@ -87,9 +87,29 @@ class RuntimeLlmHealthResponse(BaseModel):
     status: str = "disabled"
     reason: str = ""
     recent_call_count: int = 0
+    live_call_count: int = 0
+    live_call_rate: float = 0.0
     recent_fallback_count: int = 0
     recent_fallback_rate: float = 0.0
     last_fallback_reason: str = ""
+    dominant_failure_reason: str = ""
+
+
+class RuntimeLlmReasonCountResponse(BaseModel):
+    reason: str
+    count: int = 0
+
+
+class RuntimeLlmTaskInsightResponse(BaseModel):
+    task: str
+    calls: int = 0
+    live_calls: int = 0
+    fallback_calls: int = 0
+    live_call_rate: float = 0.0
+    prompt_live_rate: float = 0.0
+    status: str = "idle"
+    recommendation: str = ""
+    top_fallback_reasons: List[RuntimeLlmReasonCountResponse] = Field(default_factory=list)
 
 
 class RuntimeLlmRuntimeResponse(BaseModel):
@@ -106,6 +126,10 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     health: RuntimeLlmHealthResponse = Field(default_factory=RuntimeLlmHealthResponse)
     recent_runs: List[RuntimeLlmRunResponse] = Field(default_factory=list)
     task_totals: Dict[str, RuntimeLlmTotalsResponse] = Field(default_factory=dict)
+    task_insights: List[RuntimeLlmTaskInsightResponse] = Field(default_factory=list)
+    degraded_tasks: List[str] = Field(default_factory=list)
+    fallback_reason_counts: Dict[str, int] = Field(default_factory=dict)
+    recommended_actions: List[str] = Field(default_factory=list)
 
 
 class DataPackInstallRequest(BaseModel):
@@ -300,6 +324,13 @@ def get_local_runtime_status():
                 key: RuntimeLlmTotalsResponse(**value)
                 for key, value in dict((status.get("llm_runtime") or {}).get("task_totals") or {}).items()
             },
+            task_insights=[
+                RuntimeLlmTaskInsightResponse(**item)
+                for item in (status.get("llm_runtime") or {}).get("task_insights") or []
+            ],
+            degraded_tasks=list((status.get("llm_runtime") or {}).get("degraded_tasks") or []),
+            fallback_reason_counts=dict((status.get("llm_runtime") or {}).get("fallback_reason_counts") or {}),
+            recommended_actions=list((status.get("llm_runtime") or {}).get("recommended_actions") or []),
         ),
         installed_pack_count=int(status.get("installed_pack_count") or 0),
         available_countries=list(status.get("available_countries") or []),

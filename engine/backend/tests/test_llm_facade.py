@@ -51,6 +51,8 @@ def test_facade_think_calls_runtime(monkeypatch):
     assert stats["recent_runs"][-1]["task"] == "thought"
     assert stats["recent_runs"][-1]["prompt_output_mode"] == "text"
     assert stats["task_totals"]["thought"]["calls"] == 1
+    assert stats["health"]["live_call_rate"] == 1.0
+    assert stats["task_insights"][0]["task"] == "thought"
 
 
 def test_facade_exposes_convenient_task_methods(monkeypatch):
@@ -113,6 +115,7 @@ def test_facade_records_task_budget_fallback(monkeypatch):
     assert recent["prompt_count_skipped_by_task_budget"] == 1
     assert recent["used_fallback"] is True
     assert "task_budget_cap" in recent["fallback_reason"]
+    assert stats["fallback_reason_counts"]["task_budget_cap"] >= 1
 
 
 def test_facade_tracks_cycle_budget_and_priority(monkeypatch):

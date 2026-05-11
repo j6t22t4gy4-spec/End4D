@@ -1117,8 +1117,19 @@ export default function GodView({
                 <div className="grid gap-2 md:grid-cols-4">
                   <MetricChip label={isKo ? "상태" : "health"} value={llmHealth.status} />
                   <MetricChip label={isKo ? "최근 호출" : "recent calls"} value={String(llmHealth.recent_call_count)} />
+                  <MetricChip label={isKo ? "실시간 비율" : "live rate"} value={`${Math.round((llmHealth.live_call_rate ?? 0) * 100)}%`} />
                   <MetricChip label={isKo ? "폴백 비율" : "fallback rate"} value={`${Math.round((llmHealth.recent_fallback_rate ?? 0) * 100)}%`} />
-                  <MetricChip label={isKo ? "최근 폴백" : "last fallback"} value={llmHealth.last_fallback_reason || (isKo ? "없음" : "none")} />
+                  <MetricChip label={isKo ? "주요 실패" : "dominant failure"} value={llmHealth.dominant_failure_reason || (isKo ? "없음" : "none")} />
+                </div>
+              ) : null}
+              {runtimeStatus?.llm_runtime?.recommended_actions?.length ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
+                  <p className="font-semibold">{isKo ? "권장 조치" : "Recommended Actions"}</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {runtimeStatus.llm_runtime.recommended_actions.map((item, index) => (
+                      <li key={`${index}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
                 </div>
               ) : null}
               {recentFallbackRuns.length ? (

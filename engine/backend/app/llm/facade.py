@@ -385,7 +385,16 @@ class LLMFacade:
             fallback_runs = [item for item in recent_runs if bool(item.get("used_fallback"))]
             recent_count = len(recent_runs)
             fallback_rate = (len(fallback_runs) / recent_count) if recent_count else 0.0
+            live_runs = [item for item in recent_runs if not bool(item.get("used_fallback"))]
+            live_call_rate = (len(live_runs) / recent_count) if recent_count else 0.0
             last_fallback_reason = str(fallback_runs[-1].get("fallback_reason") or "") if fallback_runs else ""
+            fallback_reason_counts = self._aggregate_reason_counts(fallback_runs)
+            dominant_failure_reason = ""
+            if fallback_reason_counts:
+                dominant_failure_reason = max(
+                    fallback_reason_counts.items(),
+                    key=lambda item: (int(item[1]), str(item[0])),
+                )[0]
             provider = get_llm_provider()
             enabled = get_llm_chat_enabled()
             has_api_key = bool(get_llm_api_key())
@@ -398,6 +407,9 @@ class LLMFacade:
             elif recent_count == 0:
                 health_status = "ready"
                 health_reason = "awaiting_calls"
+            elif fallback_reason_counts.get("provider_error:RuntimeError", 0) or fallback_reason_counts.get("provider_error:URLError", 0):
+                health_status = "degraded"
+                health_reason = dominant_failure_reason or "provider_error"
             elif fallback_rate >= 0.6:
                 health_status = "degraded"
                 health_reason = last_fallback_reason or "fallback_pressure"
@@ -407,6 +419,16 @@ class LLMFacade:
             else:
                 health_status = "healthy"
                 health_reason = "live_llm_calls_dominant"
+            task_insights = self._build_task_insights(recent_runs=recent_runs)
+            degraded_tasks = [item["task"] for item in task_insights if item["status"] in {"warning", "degraded"}]
+            recommended_actions = self._build_recommendations(
+                enabled=enabled,
+                provider=provider,
+                has_api_key=has_api_key,
+                health_status=health_status,
+                dominant_failure_reason=dominant_failure_reason,
+                degraded_tasks=degraded_tasks,
+            )
             return {
                 "provider": provider,
                 "model": get_llm_model(),
@@ -423,13 +445,20 @@ class LLMFacade:
                     key: dict(value)
                     for key, value in self._task_totals.items()
                 },
+                "task_insights": task_insights,
+                "degraded_tasks": degraded_tasks,
+                "fallback_reason_counts": fallback_reason_counts,
+                "recommended_actions": recommended_actions,
                 "health": {
                     "status": health_status,
                     "reason": health_reason,
                     "recent_call_count": recent_count,
+                    "live_call_count": len(live_runs),
+                    "live_call_rate": round(live_call_rate, 4),
                     "recent_fallback_count": len(fallback_runs),
                     "recent_fallback_rate": round(fallback_rate, 4),
                     "last_fallback_reason": last_fallback_reason,
+                    "dominant_failure_reason": dominant_failure_reason,
                 },
             }
 
@@ -546,6 +575,92 @@ class LLMFacade:
         if ratio <= 0.50 and priority >= 4:
             return max(0, min(requested, requested // 2))
         return requested
+
+    def _aggregate_reason_counts(self, runs: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for run in runs:
+            reason_text = str(run.get("fallback_reason") or "").strip()
+            if not reason_text:
+                continue
+            for reason in [part.strip() for part in reason_text.split("|") if part.strip()]:
+                counts[reason] = counts.get(reason, 0) + 1
+        return counts
+
+    def _build_task_insights(self, *, recent_runs: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+        insights: list[dict[str, Any]] = []
+        task_reason_counts: dict[str, dict[str, int]] = {}
+        for run in recent_runs:
+            task = str(run.get("task") or "unknown")
+            bucket = task_reason_counts.setdefault(task, {})
+            reason_text = str(run.get("fallback_reason") or "").strip()
+            for reason in [part.strip() for part in reason_text.split("|") if part.strip()]:
+                bucket[reason] = bucket.get(reason, 0) + 1
+        for task, totals in sorted(self._task_totals.items(), key=lambda item: str(item[0])):
+            calls = int(totals.get("calls") or 0)
+            fallback_calls = int(totals.get("fallback_calls") or 0)
+            sent = int(totals.get("prompt_count_sent") or 0)
+            prompt_in = int(totals.get("prompt_count_in") or 0)
+            live_calls = max(0, calls - fallback_calls)
+            live_call_rate = (live_calls / calls) if calls else 0.0
+            prompt_live_rate = (sent / prompt_in) if prompt_in else 0.0
+            reason_counts = task_reason_counts.get(task, {})
+            top_reasons = [
+                {"reason": reason, "count": count}
+                for reason, count in sorted(reason_counts.items(), key=lambda item: (-int(item[1]), str(item[0])))[:3]
+            ]
+            if calls == 0:
+                status = "idle"
+                recommendation = "no_recent_calls"
+            elif live_call_rate < 0.4 or any(reason.startswith("provider_error:") for reason in reason_counts):
+                status = "degraded"
+                recommendation = "check_provider_connection"
+            elif prompt_live_rate < 0.65:
+                status = "warning"
+                recommendation = "raise_budget_or_reduce_sampling"
+            else:
+                status = "healthy"
+                recommendation = "live_llm_dominant"
+            insights.append(
+                {
+                    "task": task,
+                    "calls": calls,
+                    "live_calls": live_calls,
+                    "fallback_calls": fallback_calls,
+                    "live_call_rate": round(live_call_rate, 4),
+                    "prompt_live_rate": round(prompt_live_rate, 4),
+                    "status": status,
+                    "recommendation": recommendation,
+                    "top_fallback_reasons": top_reasons,
+                }
+            )
+        return insights
+
+    def _build_recommendations(
+        self,
+        *,
+        enabled: bool,
+        provider: str,
+        has_api_key: bool,
+        health_status: str,
+        dominant_failure_reason: str,
+        degraded_tasks: Sequence[str],
+    ) -> list[str]:
+        recommendations: list[str] = []
+        if not enabled:
+            recommendations.append("Enable live LLM cognition before expecting agent reasoning quality.")
+        if provider in ("openai", "openai-compatible") and not has_api_key:
+            recommendations.append("Add an API key for the selected provider to avoid auth-missing runtime health.")
+        if dominant_failure_reason.startswith("provider_error:"):
+            recommendations.append("Provider requests are failing. Re-check base URL, model name, and server health.")
+        if "task_budget_cap" in dominant_failure_reason or "cycle_budget_cap" in dominant_failure_reason:
+            recommendations.append("LLM budgets are clipping live cognition. Raise task/cycle budgets or lower sample sizes.")
+        if "adaptive_priority_skip" in dominant_failure_reason:
+            recommendations.append("Low-priority tasks are being skipped under pressure. Rebalance task priorities for LLM-first runs.")
+        if health_status == "healthy" and not recommendations:
+            recommendations.append("Live LLM calls are currently dominant. Keep this profile as the analyst baseline.")
+        if degraded_tasks:
+            recommendations.append(f"Focus on degraded tasks first: {', '.join(degraded_tasks[:4])}.")
+        return recommendations[:5]
 
     def _record_run(self, meta: Mapping[str, Any]) -> None:
         task = str(meta.get("task") or "unknown")
