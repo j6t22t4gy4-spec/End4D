@@ -587,8 +587,8 @@ export default function GodView({
         <div className="godview-setup">
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
             <AppPanel
-              title="Scenario Genesis"
-              subtitle="Prompt, persona packs, and world seed configuration"
+              title={isKo ? "시나리오 생성" : "Scenario Genesis"}
+              subtitle={isKo ? "프롬프트, 페르소나 팩, 월드 시드 구성을 먼저 정합니다" : "Prompt, persona packs, and world seed configuration"}
               bodyClassName="space-y-4"
               action={
                 <label className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
@@ -597,13 +597,13 @@ export default function GodView({
                     checked={godModeEnabled}
                     onChange={(e) => setGodModeEnabled(e.target.checked)}
                   />
-                  God Mode
+                  {isKo ? "갓 모드" : "God Mode"}
                 </label>
               }
             >
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                  Scenario prompt
+                  {isKo ? "시나리오 프롬프트" : "Scenario prompt"}
                 </span>
                 <textarea
                   value={genesisPrompt}
@@ -615,11 +615,11 @@ export default function GodView({
               </label>
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={handleCreateWorld} className="app-button app-button--primary">
-                  Create world
+                  {isKo ? "월드 생성" : "Create world"}
                 </button>
                 {worldId && (
                   <button type="button" onClick={() => setStage("run")} className="app-button app-button--secondary">
-                    Open Run Stage
+                    {isKo ? "실행 단계 열기" : "Open Run Stage"}
                   </button>
                 )}
               </div>
@@ -631,23 +631,23 @@ export default function GodView({
                       <input value={customTMax} onChange={(e) => setCustomTMax(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      initial cells
+                      {isKo ? "초기 에이전트 수" : "initial cells"}
                       <input value={customInitialCells} onChange={(e) => setCustomInitialCells(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
-                      roles (comma separated)
+                      {isKo ? "역할 목록 (쉼표 구분)" : "roles (comma separated)"}
                       <input value={customRoles} onChange={(e) => setCustomRoles(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      persona country
+                      {isKo ? "페르소나 국가" : "persona country"}
                       <input value={customCountry} onChange={(e) => setCustomCountry(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      nutrient / step
+                      {isKo ? "단계당 자원" : "nutrient / step"}
                       <input value={customNutrient} onChange={(e) => setCustomNutrient(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      time unit
+                      {isKo ? "시간 단위" : "time unit"}
                       <select value={customTUnit} onChange={(e) => setCustomTUnit(e.target.value)} className="app-input">
                         <option value="hour">hour</option>
                         <option value="day">day</option>
@@ -662,16 +662,16 @@ export default function GodView({
                         checked={autoRolesFromPersonas}
                         onChange={(e) => setAutoRolesFromPersonas(e.target.checked)}
                       />
-                      persona roles auto-merge
+                      {isKo ? "페르소나 역할 자동 병합" : "persona roles auto-merge"}
                     </label>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      zone count
+                      {isKo ? "구역 수" : "zone count"}
                       <input value={zoneCount} onChange={(e) => setZoneCount(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      zone layout
+                      {isKo ? "구역 레이아웃" : "zone layout"}
                       <select value={zoneLayout} onChange={(e) => setZoneLayout(e.target.value)} className="app-input">
                         <option value="grid">grid</option>
                         <option value="bands">bands</option>
@@ -679,21 +679,21 @@ export default function GodView({
                       </select>
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      zone spacing
+                      {isKo ? "구역 간격" : "zone spacing"}
                       <input value={zoneSpacing} onChange={(e) => setZoneSpacing(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      influence step
+                      {isKo ? "영향력 단계치" : "influence step"}
                       <input value={zoneInfluenceStep} onChange={(e) => setZoneInfluenceStep(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      friction step
+                      {isKo ? "마찰 단계치" : "friction step"}
                       <input value={zoneFrictionStep} onChange={(e) => setZoneFrictionStep(e.target.value)} className="app-input" />
                     </label>
                   </div>
                   <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 md:grid-cols-3">
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      z mode
+                      {isKo ? "z 모드" : "z mode"}
                       <select value={zMode} onChange={(e) => setZMode(e.target.value)} className="app-input">
                         <option value="hybrid">hybrid</option>
                         <option value="wealth">wealth</option>
@@ -704,15 +704,17 @@ export default function GodView({
                       </select>
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      z weight
+                      {isKo ? "z 가중치" : "z weight"}
                       <input value={zWeight} onChange={(e) => setZWeight(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      z scale
+                      {isKo ? "z 스케일" : "z scale"}
                       <input value={zScale} onChange={(e) => setZScale(e.target.value)} className="app-input" />
                     </label>
                     <p className="md:col-span-3 rounded-2xl bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
-                      `z` is treated as social elevation, not mesh height. Use `weight` to control how much elevation affects interaction distance, and `scale` to control field amplitude.
+                      {isKo
+                        ? "`z`는 메시 높이가 아니라 사회적 고도로 취급됩니다. `weight`는 상호작용 거리에서 고도가 얼마나 반영되는지, `scale`은 필드 진폭을 얼마나 크게 둘지 조절합니다."
+                        : "`z` is treated as social elevation, not mesh height. Use `weight` to control how much elevation affects interaction distance, and `scale` to control field amplitude."}
                     </p>
                   </div>
                 </div>
@@ -732,8 +734,12 @@ export default function GodView({
             <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
 
             <AppPanel
-              title="LLM Runtime Connection"
-              subtitle="Connect a real provider so agents think, decide, and act through live LLM calls"
+              title={isKo ? "LLM 런타임 연결" : "LLM Runtime Connection"}
+              subtitle={
+                isKo
+                  ? "실제 프로바이더를 연결해서 에이전트가 실시간 LLM 호출로 생각하고 행동하게 합니다"
+                  : "Connect a real provider so agents think, decide, and act through live LLM calls"
+              }
               bodyClassName="space-y-3"
             >
               <div className="grid gap-3 md:grid-cols-2">
@@ -743,19 +749,19 @@ export default function GodView({
                     checked={llmEnabled}
                     onChange={(event) => setLlmEnabled(event.target.checked)}
                   />
-                  enable live LLM cognition
+                  {isKo ? "실시간 LLM cognition 사용" : "enable live LLM cognition"}
                 </label>
                 <div className="grid gap-2 md:grid-cols-2">
-                  <MetricChip label="current provider" value={runtimeStatus?.llm?.provider ?? "stub"} />
+                  <MetricChip label={isKo ? "현재 프로바이더" : "current provider"} value={runtimeStatus?.llm?.provider ?? "stub"} />
                   <MetricChip
-                    label="api key"
-                    value={runtimeStatus?.llm?.has_api_key ? "configured" : "missing"}
+                    label={isKo ? "API 키" : "api key"}
+                    value={runtimeStatus?.llm?.has_api_key ? (isKo ? "설정됨" : "configured") : isKo ? "없음" : "missing"}
                   />
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  provider
+                  {isKo ? "프로바이더" : "provider"}
                   <select className="app-input" value={llmProvider} onChange={(event) => setLlmProvider(event.target.value)}>
                     <option value="openai">OpenAI</option>
                     <option value="openai-compatible">OpenAI-compatible</option>
@@ -764,30 +770,30 @@ export default function GodView({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  model
+                  {isKo ? "모델" : "model"}
                   <input className="app-input" value={llmModel} onChange={(event) => setLlmModel(event.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  base url
+                  {isKo ? "베이스 URL" : "base url"}
                   <input
                     className="app-input"
                     value={llmBaseUrl}
                     onChange={(event) => setLlmBaseUrl(event.target.value)}
-                    placeholder="https://api.openai.com/v1 or http://127.0.0.1:11434"
+                    placeholder={isKo ? "https://api.openai.com/v1 또는 http://127.0.0.1:11434" : "https://api.openai.com/v1 or http://127.0.0.1:11434"}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  api key
+                  {isKo ? "API 키" : "api key"}
                   <input
                     type="password"
                     className="app-input"
                     value={llmApiKey}
                     onChange={(event) => setLlmApiKey(event.target.value)}
-                    placeholder="sk-... or local token"
+                    placeholder={isKo ? "sk-... 또는 로컬 토큰" : "sk-... or local token"}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  runtime profile
+                  {isKo ? "런타임 프로필" : "runtime profile"}
                   <select className="app-input" value={llmRuntimeProfile} onChange={(event) => setLlmRuntimeProfile(event.target.value)}>
                     <option value="rules-first">Rules-first</option>
                     <option value="balanced">Balanced</option>
@@ -795,7 +801,7 @@ export default function GodView({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  strict mode
+                  {isKo ? "엄격 모드" : "strict mode"}
                   <select className="app-input" value={llmStrictMode} onChange={(event) => setLlmStrictMode(event.target.value)}>
                     <option value="adaptive">Adaptive</option>
                     <option value="llm-preferred">LLM-preferred</option>
@@ -803,36 +809,38 @@ export default function GodView({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  temperature
+                  {isKo ? "온도" : "temperature"}
                   <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  timeout (s)
+                  {isKo ? "타임아웃(초)" : "timeout (s)"}
                   <input className="app-input" value={llmTimeout} onChange={(event) => setLlmTimeout(event.target.value)} />
                 </label>
               </div>
               <div className="grid gap-3 md:grid-cols-4">
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  cycle prompt budget
+                  {isKo ? "사이클 프롬프트 예산" : "cycle prompt budget"}
                   <input className="app-input" value={llmCycleBudget} onChange={(event) => setLlmCycleBudget(event.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  agent sample size
+                  {isKo ? "에이전트 샘플 수" : "agent sample size"}
                   <input className="app-input" value={llmAgentSampleSize} onChange={(event) => setLlmAgentSampleSize(event.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  dialogue max pairs
+                  {isKo ? "대화 최대 페어" : "dialogue max pairs"}
                   <input className="app-input" value={llmDialoguePairs} onChange={(event) => setLlmDialoguePairs(event.target.value)} />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  deliberation groups
+                  {isKo ? "협의 그룹 수" : "deliberation groups"}
                   <input className="app-input" value={llmDeliberationGroups} onChange={(event) => setLlmDeliberationGroups(event.target.value)} />
                 </label>
               </div>
               <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Task Budgets</p>
-                  <span className="text-xs text-slate-500">Mirofish-like mode: keep thought/action/dialogue high</span>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
+                  <span className="text-xs text-slate-500">
+                    {isKo ? "Mirofish처럼 thought/action/dialogue 비중을 높게 유지합니다" : "Mirofish-like mode: keep thought/action/dialogue high"}
+                  </span>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                   {llmTaskRows.map((row) => (
@@ -845,7 +853,7 @@ export default function GodView({
                       </div>
                       <div className="mt-2 grid gap-2 grid-cols-2">
                         <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                          budget
+                          {isKo ? "예산" : "budget"}
                           <input
                             className="app-input"
                             value={row.budget}
@@ -855,7 +863,7 @@ export default function GodView({
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                          priority
+                          {isKo ? "우선순위" : "priority"}
                           <input
                             className="app-input"
                             value={row.priority}
@@ -866,7 +874,7 @@ export default function GodView({
                         </label>
                       </div>
                       <p className="mt-2 text-[11px] text-slate-500">
-                        fallback {row.totals?.fallback_calls ?? 0} · skipped task {row.totals?.prompt_count_skipped_by_task_budget ?? 0}
+                        {isKo ? "폴백" : "fallback"} {row.totals?.fallback_calls ?? 0} · {isKo ? "태스크 예산 초과" : "skipped task"} {row.totals?.prompt_count_skipped_by_task_budget ?? 0}
                       </p>
                     </div>
                   ))}
@@ -877,7 +885,7 @@ export default function GodView({
                   type="button"
                   className="app-button app-button--ghost"
                   onClick={async () => {
-                    setLlmConfigStatus("saving llm runtime config…");
+                    setLlmConfigStatus(isKo ? "LLM 런타임 설정 저장 중…" : "saving llm runtime config…");
                     try {
                       await updateRuntimeLlmConfig({
                         enabled: llmEnabled,
@@ -901,43 +909,49 @@ export default function GodView({
                         ),
                       });
                       setRuntimeStatus(await getLocalRuntimeStatus());
-                      setLlmConfigStatus("llm runtime saved");
+                      setLlmConfigStatus(isKo ? "LLM 런타임 저장 완료" : "llm runtime saved");
                     } catch (reason) {
-                      setLlmConfigStatus(reason instanceof Error ? reason.message : "llm config save failed");
+                      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 설정 저장 실패" : "llm config save failed");
                     }
                   }}
                 >
-                  Save LLM Config
+                  {isKo ? "LLM 설정 저장" : "Save LLM Config"}
                 </button>
                 <button
                   type="button"
                   className="app-button app-button--ghost"
                   onClick={async () => {
-                    setLlmConfigStatus("testing llm connection…");
+                    setLlmConfigStatus(isKo ? "LLM 연결 테스트 중…" : "testing llm connection…");
                     try {
                       const result = await testRuntimeLlmConfig();
                       setLlmTestResult(result);
                       setRuntimeStatus(await getLocalRuntimeStatus());
-                      setLlmConfigStatus(result.ok ? "llm test completed" : `llm test fallback: ${result.fallback_reason}`);
+                      setLlmConfigStatus(
+                        result.ok
+                          ? isKo
+                            ? "LLM 테스트 완료"
+                            : "llm test completed"
+                          : `${isKo ? "LLM 테스트 실패" : "llm test failed"}: ${result.fallback_reason}`
+                      );
                     } catch (reason) {
-                      setLlmConfigStatus(reason instanceof Error ? reason.message : "llm test failed");
+                      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 테스트 실패" : "llm test failed");
                     }
                   }}
                 >
-                  Test Connection
+                  {isKo ? "연결 테스트" : "Test Connection"}
                 </button>
               </div>
               {llmTestResult ? (
                 <div className="session-thread-card">
                   <div className="session-thread-card__header">
-                    <p className="session-thread-card__title">LLM Test Result</p>
+                    <p className="session-thread-card__title">{isKo ? "LLM 테스트 결과" : "LLM Test Result"}</p>
                     <span className="session-thread-card__meta">
                       {llmTestResult.provider} · {llmTestResult.model}
                     </span>
                   </div>
                   <p className="session-thread-card__prompt">{llmTestResult.preview}</p>
                   <p className="text-xs text-slate-500">
-                    mode={llmTestResult.mode} · fallback={String(llmTestResult.used_fallback)}
+                    mode={llmTestResult.mode} · {isKo ? "폴백" : "fallback"}={String(llmTestResult.used_fallback)}
                     {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
                   </p>
                 </div>
@@ -963,19 +977,21 @@ export default function GodView({
                 </div>
               ) : null}
               <p className="text-xs text-slate-500">
-                `LLM-first`를 선택하면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation의 샘플링과 예산이 더 공격적으로 올라가서 규칙 fallback보다 실제 provider 호출이 주가 되도록 맞춥니다.
+                {isKo
+                  ? "`LLM-first`를 선택하면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation의 샘플링과 예산이 더 공격적으로 올라가서 규칙보다 실제 provider 호출이 주가 되도록 맞춥니다."
+                  : "`LLM-first` raises sampling and budgets for Thought, Worldview, Action, Policy, Dialogue, and Group Deliberation so live provider calls dominate over rule-based execution."}
               </p>
               {llmHealth ? (
                 <div className="grid gap-2 md:grid-cols-4">
-                  <MetricChip label="health" value={llmHealth.status} />
-                  <MetricChip label="recent calls" value={String(llmHealth.recent_call_count)} />
-                  <MetricChip label="fallback rate" value={`${Math.round((llmHealth.recent_fallback_rate ?? 0) * 100)}%`} />
-                  <MetricChip label="last fallback" value={llmHealth.last_fallback_reason || "none"} />
+                  <MetricChip label={isKo ? "상태" : "health"} value={llmHealth.status} />
+                  <MetricChip label={isKo ? "최근 호출" : "recent calls"} value={String(llmHealth.recent_call_count)} />
+                  <MetricChip label={isKo ? "폴백 비율" : "fallback rate"} value={`${Math.round((llmHealth.recent_fallback_rate ?? 0) * 100)}%`} />
+                  <MetricChip label={isKo ? "최근 폴백" : "last fallback"} value={llmHealth.last_fallback_reason || (isKo ? "없음" : "none")} />
                 </div>
               ) : null}
               {recentFallbackRuns.length ? (
                 <div className="grid gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Fallback Pressure</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">{isKo ? "폴백 압력" : "Fallback Pressure"}</p>
                   {recentFallbackRuns.map((run, index) => (
                     <div key={`${run.task}-${index}`} className="session-thread-card">
                       <div className="session-thread-card__header">
@@ -984,7 +1000,7 @@ export default function GodView({
                           {run.prompt_count_sent}/{run.prompt_count_in} · p{run.task_priority}
                         </span>
                       </div>
-                      <p className="session-thread-card__prompt">{run.fallback_reason || "fallback"}</p>
+                      <p className="session-thread-card__prompt">{run.fallback_reason || (isKo ? "폴백" : "fallback")}</p>
                     </div>
                   ))}
                 </div>
@@ -993,11 +1009,11 @@ export default function GodView({
             </AppPanel>
 
             <AppPanel
-              title="Data Pack Lifecycle"
-              subtitle="Prepare persona packs before long-run simulation"
+              title={isKo ? "데이터 팩 라이프사이클" : "Data Pack Lifecycle"}
+              subtitle={isKo ? "장기 시뮬레이션 전에 페르소나 팩 상태를 준비합니다" : "Prepare persona packs before long-run simulation"}
               bodyClassName="space-y-3"
             >
-              {runtimeLoading ? <p className="text-sm text-slate-500">Runtime status loading…</p> : null}
+              {runtimeLoading ? <p className="text-sm text-slate-500">{isKo ? "런타임 상태 불러오는 중…" : "Runtime status loading…"}</p> : null}
               {runtimeError ? (
                 <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                   runtime/data-pack 상태를 읽지 못했습니다: {runtimeError}
@@ -1018,13 +1034,13 @@ export default function GodView({
                       ))}
                     </select>
                     <div className="grid gap-2 md:grid-cols-3">
-                      <MetricChip label="installed" value={selectedPack?.installed ? "yes" : "no"} />
+                      <MetricChip label={isKo ? "설치됨" : "installed"} value={selectedPack?.installed ? (isKo ? "예" : "yes") : isKo ? "아니오" : "no"} />
                       <MetricChip
-                        label="pinned"
-                        value={selectedPack?.pinned ? String(selectedPack?.pinned_version || "yes") : "no"}
+                        label={isKo ? "고정 버전" : "pinned"}
+                        value={selectedPack?.pinned ? String(selectedPack?.pinned_version || (isKo ? "예" : "yes")) : isKo ? "아니오" : "no"}
                       />
                       <MetricChip
-                        label="genesis ready"
+                        label={isKo ? "생성 준비" : "genesis ready"}
                         value={String((selectedPack?.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "unknown")}
                       />
                     </div>
@@ -1046,7 +1062,7 @@ export default function GodView({
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="flex flex-col gap-1 text-xs text-slate-500">
-                          install source path
+                          {isKo ? "설치 소스 경로" : "install source path"}
                           <input
                             value={installSourcePath}
                             onChange={(event) => setInstallSourcePath(event.target.value)}
@@ -1055,7 +1071,7 @@ export default function GodView({
                           />
                         </label>
                         <label className="flex flex-col gap-1 text-xs text-slate-500">
-                          pin version
+                          {isKo ? "고정할 버전" : "pin version"}
                           <input
                             value={pinVersion}
                             onChange={(event) => setPinVersion(event.target.value)}
@@ -1079,7 +1095,7 @@ export default function GodView({
                             }
                           }}
                         >
-                          Sync Manifest
+                          {isKo ? "매니페스트 동기화" : "Sync Manifest"}
                         </button>
                         <button
                           type="button"
@@ -1096,7 +1112,7 @@ export default function GodView({
                             }
                           }}
                         >
-                          Verify
+                          {isKo ? "검증" : "Verify"}
                         </button>
                         <button
                           type="button"
@@ -1113,7 +1129,7 @@ export default function GodView({
                             }
                           }}
                         >
-                          Pin Version
+                          {isKo ? "버전 고정" : "Pin Version"}
                         </button>
                         <button
                           type="button"
@@ -1136,13 +1152,13 @@ export default function GodView({
                             }
                           }}
                         >
-                          Install / Refresh
+                          {isKo ? "설치 / 새로고침" : "Install / Refresh"}
                         </button>
                       </div>
                       {Array.isArray(selectedPack.history) && selectedPack.history.length ? (
                         <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Lifecycle History
+                            {isKo ? "라이프사이클 이력" : "Lifecycle History"}
                           </p>
                           {selectedPack.history
                             .slice()
@@ -1180,7 +1196,7 @@ export default function GodView({
                                         }
                                       }}
                                     >
-                                      Preview
+                                      {isKo ? "미리보기" : "Preview"}
                                     </button>
                                     <button
                                       type="button"
@@ -1199,7 +1215,7 @@ export default function GodView({
                                         }
                                       }}
                                     >
-                                      Rollback
+                                      {isKo ? "롤백" : "Rollback"}
                                     </button>
                                   </div>
                                 </div>
@@ -1210,10 +1226,10 @@ export default function GodView({
                       {selectedHistoryEntry ? (
                         <div className="grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
-                            Version Diff Preview
+                            {isKo ? "버전 차이 미리보기" : "Version Diff Preview"}
                           </p>
                           <p className="text-sm text-slate-600">
-                            selected history entry: {String(selectedHistoryEntry.action ?? "event")} · {String(selectedHistoryEntry.at ?? "")}
+                            {isKo ? "선택한 이력 항목" : "selected history entry"}: {String(selectedHistoryEntry.action ?? "event")} · {String(selectedHistoryEntry.at ?? "")}
                           </p>
                           {packDiffPreview?.changes.length ? (
                             <div className="grid gap-2">
@@ -1229,12 +1245,12 @@ export default function GodView({
                               ))}
                             </div>
                           ) : (
-                            <p className="text-xs text-slate-500">현재 상태와 달라지는 주요 필드가 없습니다.</p>
+                            <p className="text-xs text-slate-500">{isKo ? "현재 상태와 달라지는 주요 필드가 없습니다." : "No major fields change from the current state."}</p>
                           )}
                           {packDiffPreview?.verification_changes.length ? (
                             <div className="grid gap-2">
                               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                Verification Delta
+                                {isKo ? "검증 차이" : "Verification Delta"}
                               </p>
                               {packDiffPreview.verification_changes.map((item) => (
                                 <div key={`verify-${String(item.field ?? "field")}`} className="session-thread-card">
@@ -1253,7 +1269,7 @@ export default function GodView({
                       {verificationHistory.length ? (
                         <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Verification Timeline
+                            {isKo ? "검증 타임라인" : "Verification Timeline"}
                           </p>
                           {verificationHistory.slice().reverse().slice(0, 4).map((item, index) => (
                             <div key={`${index}-${String((item as Record<string, unknown>).at ?? "")}`} className="session-thread-card">
@@ -1278,32 +1294,32 @@ export default function GodView({
 
           <div className="grid min-h-0 gap-4">
             <AppPanel
-              title="Setup Checklist"
-              subtitle="Prepare the world before entering live simulation"
+              title={isKo ? "설정 체크리스트" : "Setup Checklist"}
+              subtitle={isKo ? "실시간 시뮬레이션에 들어가기 전에 월드를 준비합니다" : "Prepare the world before entering live simulation"}
               bodyClassName="grid gap-3 md:grid-cols-2"
             >
-              <SetupItem index="01" title="Scenario Prompt" body="장기 정책/시장/사회 시나리오를 먼저 정의합니다." />
-              <SetupItem index="02" title="Persona & Data Packs" body="국가별 persona pack과 source attribution을 확인합니다." />
-              <SetupItem index="03" title="Genesis Controls" body="필요하면 God Mode에서 zone/z/role seed를 미세 조정합니다." />
-              <SetupItem index="04" title="Enter Run Stage" body="world가 생성되면 Run 단계에서 실행·주입·탐색을 시작합니다." />
+              <SetupItem index="01" title={isKo ? "시나리오 프롬프트" : "Scenario Prompt"} body={isKo ? "장기 정책/시장/사회 시나리오를 먼저 정의합니다." : "Define the long-run policy, market, and social scenario first."} />
+              <SetupItem index="02" title={isKo ? "페르소나와 데이터 팩" : "Persona & Data Packs"} body={isKo ? "국가별 persona pack과 source attribution을 확인합니다." : "Check country packs and source attribution before genesis."} />
+              <SetupItem index="03" title={isKo ? "생성 제어" : "Genesis Controls"} body={isKo ? "필요하면 God Mode에서 zone/z/role seed를 미세 조정합니다." : "Use God Mode to fine-tune zone, z, and role seeds when needed."} />
+              <SetupItem index="04" title={isKo ? "실행 단계 진입" : "Enter Run Stage"} body={isKo ? "world가 생성되면 Run 단계에서 실행·주입·탐색을 시작합니다." : "Once the world is created, start execution, injection, and exploration in Run."} />
             </AppPanel>
 
             {lastGenesis ? (
-              <GenesisMeta lastGenesis={lastGenesis} />
+              <GenesisMeta locale={locale} lastGenesis={lastGenesis} />
             ) : (
               <AppPanel
-                title="Next Stage"
-                subtitle="What unlocks after world creation"
+                title={isKo ? "다음 단계" : "Next Stage"}
+                subtitle={isKo ? "월드를 만든 뒤 열리는 기능" : "What unlocks after world creation"}
                 bodyClassName="space-y-3"
               >
                 <p className="text-sm leading-7 text-slate-600">
-                  world를 만든 뒤에는 실행 패널, 시뮬레이션 맵, 선택 상세 패널, 시간축 북마크,
-                  정책 주입 패널이 모두 `Run` 단계에서 열립니다. 지금은 설정에 집중하고,
-                  실행 중 분석은 다음 단계에서 분리해서 보게 됩니다.
+                  {isKo
+                    ? "world를 만든 뒤에는 실행 패널, 시뮬레이션 맵, 선택 상세 패널, 시간축 북마크, 정책 주입 패널이 모두 `Run` 단계에서 열립니다. 지금은 설정에 집중하고, 실행 중 분석은 다음 단계에서 분리해서 보게 됩니다."
+                    : "After world creation, execution controls, the simulation map, the selection inspector, timeline bookmarks, and policy injection all open in Run. Stay focused on setup first, then move into live analysis."}
                 </p>
                 <div className="grid gap-2 md:grid-cols-2">
-                  <MetricChip label="Run stage" value="Execution + Map + Timeline" />
-                  <MetricChip label="Review stage" value="Future LLM analysis workspace" />
+                  <MetricChip label={isKo ? "실행 단계" : "Run stage"} value={isKo ? "실행 + 맵 + 타임라인" : "Execution + Map + Timeline"} />
+                  <MetricChip label={isKo ? "리뷰 단계" : "Review stage"} value={isKo ? "향후 LLM 분석 워크스페이스" : "Future LLM analysis workspace"} />
                 </div>
               </AppPanel>
             )}
@@ -1321,8 +1337,8 @@ export default function GodView({
         >
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
             <AppPanel
-              title="Run Controls"
-              subtitle="Execution, injections, and time navigation"
+              title={isKo ? "실행 제어" : "Run Controls"}
+              subtitle={isKo ? "실행, 주입, 시간 탐색" : "Execution, injections, and time navigation"}
               bodyClassName="flex flex-wrap gap-2"
               action={
                 <button
@@ -1411,14 +1427,14 @@ export default function GodView({
 
           <div className="grid min-h-0 gap-4 xl:grid-rows-[minmax(0,1fr)_minmax(320px,0.48fr)]">
             <AppPanel
-              title="Simulation View"
-              subtitle="Belief dynamics, selection, and map-driven inspection"
+              title={isKo ? "시뮬레이션 뷰" : "Simulation View"}
+              subtitle={isKo ? "신념 동학, 선택 상태, 맵 기반 검사" : "Belief dynamics, selection, and map-driven inspection"}
               className="min-h-0"
               bodyClassName="flex h-full min-h-0 flex-col gap-4"
               action={
                 visualStats?.sampled ? (
                   <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                    sampled {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
+                    {isKo ? "샘플링" : "sampled"} {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
                   </span>
                 ) : undefined
               }
@@ -1453,11 +1469,11 @@ export default function GodView({
                 </div>
 
                 <div className="grid gap-3 content-start">
-                  {lastGenesis ? <GenesisMeta lastGenesis={lastGenesis} /> : null}
+                  {lastGenesis ? <GenesisMeta locale={locale} lastGenesis={lastGenesis} /> : null}
                   {reviewSummary ? (
                     <AppPanel
-                      title="Review Snapshot"
-                      subtitle={reviewLoading ? "Refreshing analyst summary…" : reviewSummary.headline}
+                      title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
+                      subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
                       bodyClassName="space-y-3"
                     >
                       <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
@@ -1469,7 +1485,7 @@ export default function GodView({
                       {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
                         <div className="grid gap-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Review-driven Policy Presets
+                            {isKo ? "리뷰 기반 정책 프리셋" : "Review-driven Policy Presets"}
                           </p>
                           {reviewSummary.inject_presets.map((item, index) => (
                             <div
@@ -1497,7 +1513,7 @@ export default function GodView({
                                     setCurrentT(Number(item.t ?? currentT));
                                   }}
                                 >
-                                  Use in Injection Panel
+                                  {isKo ? "주입 패널로 사용" : "Use in Injection Panel"}
                                 </button>
                               </div>
                             </div>
@@ -1509,7 +1525,7 @@ export default function GodView({
                         className="app-button app-button--ghost"
                         onClick={() => onOpenWorkbenchView?.("review-lab")}
                       >
-                        Open Full Review
+                        {isKo ? "전체 리뷰 열기" : "Open Full Review"}
                       </button>
                     </AppPanel>
                   ) : null}
@@ -1539,8 +1555,8 @@ export default function GodView({
 
             <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(300px,0.42fr)_minmax(0,1fr)]">
               <AppPanel
-                title="Time Navigation"
-                subtitle="Browse saved snapshots"
+                title={isKo ? "시간 탐색" : "Time Navigation"}
+                subtitle={isKo ? "저장된 스냅샷 탐색" : "Browse saved snapshots"}
                 bodyClassName="space-y-3"
               >
                 <TimeSlider
@@ -1569,7 +1585,7 @@ export default function GodView({
                         ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
                         : "저장된 t 시점을 탐색합니다."}
                   </span>
-                  <span>{availableT.length} frames</span>
+                  <span>{availableT.length} {isKo ? "프레임" : "frames"}</span>
                 </div>
               </AppPanel>
 
@@ -1592,8 +1608,8 @@ export default function GodView({
                   onJumpToT={setCurrentT}
                 />
                 <AppPanel
-                  title="Analysis Graph"
-                  subtitle="A larger chart lane for long-run trend reading"
+                  title={isKo ? "분석 그래프" : "Analysis Graph"}
+                  subtitle={isKo ? "장기 추세를 읽기 위한 확장 차트 레인" : "A larger chart lane for long-run trend reading"}
                   bodyClassName="space-y-2"
                 >
                   <p className="text-sm leading-6 text-slate-600">
@@ -1602,12 +1618,12 @@ export default function GodView({
                     이동합니다.
                   </p>
                   <div className="grid gap-2 md:grid-cols-3">
-                    <MetricChip label="Frames" value={String(availableT.length)} />
+                    <MetricChip label={isKo ? "프레임 수" : "Frames"} value={String(availableT.length)} />
                     <MetricChip
-                      label="Annotations"
+                      label={isKo ? "어노테이션 수" : "Annotations"}
                       value={String(reviewSummary?.timeline_annotations.length ?? 0)}
                     />
-                    <MetricChip label="Current t" value={String(currentT)} />
+                    <MetricChip label={isKo ? "현재 t" : "Current t"} value={String(currentT)} />
                   </div>
                 </AppPanel>
               </div>
@@ -1700,22 +1716,23 @@ function RunPanel({
   );
 }
 
-function GenesisMeta({ lastGenesis }: { lastGenesis: CreateWorldResult }) {
+function GenesisMeta({ locale = "ko", lastGenesis }: { locale?: UiLocale; lastGenesis: CreateWorldResult }) {
+  const isKo = locale === "ko";
   return (
     <AppPanel
-      title="World Proposal"
-      subtitle="Initial simulation parameters and persona-aware genesis"
+      title={isKo ? "월드 제안" : "World Proposal"}
+      subtitle={isKo ? "초기 시뮬레이션 파라미터와 persona-aware genesis" : "Initial simulation parameters and persona-aware genesis"}
       bodyClassName="grid gap-3"
     >
       <MetricChip label="t_max" value={String(lastGenesis.t_max)} />
-      <MetricChip label="Initial agents" value={String(lastGenesis.initial_cell_count)} />
-      <MetricChip label="Step meaning" value={`${lastGenesis.t_step_semantic} (${lastGenesis.t_step_unit})`} />
-      <MetricChip label="Nutrient" value={String(lastGenesis.nutrient_per_step)} />
-      <MetricChip label="Roles" value={lastGenesis.role_catalog.join(", ")} />
+      <MetricChip label={isKo ? "초기 에이전트" : "Initial agents"} value={String(lastGenesis.initial_cell_count)} />
+      <MetricChip label={isKo ? "스텝 의미" : "Step meaning"} value={`${lastGenesis.t_step_semantic} (${lastGenesis.t_step_unit})`} />
+      <MetricChip label={isKo ? "자원" : "Nutrient"} value={String(lastGenesis.nutrient_per_step)} />
+      <MetricChip label={isKo ? "역할" : "Roles"} value={lastGenesis.role_catalog.join(", ")} />
       {lastGenesis.persona_distribution_summary ? (
         <MetricChip
-          label="Persona seed"
-          value={`${Number(lastGenesis.persona_distribution_summary.persona_count ?? 0)} personas`}
+          label={isKo ? "페르소나 시드" : "Persona seed"}
+          value={`${Number(lastGenesis.persona_distribution_summary.persona_count ?? 0)} ${isKo ? "페르소나" : "personas"}`}
         />
       ) : null}
       <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
