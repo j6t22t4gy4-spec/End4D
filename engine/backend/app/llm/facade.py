@@ -391,6 +391,8 @@ class LLMFacade:
             live_call_rate = (len(live_runs) / recent_count) if recent_count else 0.0
             last_fallback_reason = str(fallback_runs[-1].get("fallback_reason") or "") if fallback_runs else ""
             fallback_reason_counts = self._aggregate_reason_counts(fallback_runs)
+            live_streak = self._tail_streak(recent_runs, target_live=True)
+            fallback_streak = self._tail_streak(recent_runs, target_live=False)
             dominant_failure_reason = ""
             if fallback_reason_counts:
                 dominant_failure_reason = max(
@@ -423,6 +425,14 @@ class LLMFacade:
                 health_reason = "live_llm_calls_dominant"
             task_insights = self._build_task_insights(recent_runs=recent_runs)
             degraded_tasks = [item["task"] for item in task_insights if item["status"] in {"warning", "degraded"}]
+            stability_score = self._stability_score(
+                live_call_rate=live_call_rate,
+                fallback_rate=fallback_rate,
+                live_streak=live_streak,
+                provider_error_count=sum(
+                    count for reason, count in fallback_reason_counts.items() if reason.startswith("provider_error:")
+                ),
+            )
             recommended_actions = self._build_recommendations(
                 enabled=enabled,
                 provider=provider,
@@ -430,6 +440,7 @@ class LLMFacade:
                 health_status=health_status,
                 dominant_failure_reason=dominant_failure_reason,
                 degraded_tasks=degraded_tasks,
+                stability_score=stability_score,
             )
             return {
                 "provider": provider,
@@ -466,6 +477,9 @@ class LLMFacade:
                     "recent_fallback_rate": round(fallback_rate, 4),
                     "last_fallback_reason": last_fallback_reason,
                     "dominant_failure_reason": dominant_failure_reason,
+                    "live_streak": live_streak,
+                    "fallback_streak": fallback_streak,
+                    "stability_score": round(stability_score, 4),
                 },
             }
 
@@ -672,6 +686,7 @@ class LLMFacade:
         health_status: str,
         dominant_failure_reason: str,
         degraded_tasks: Sequence[str],
+        stability_score: float,
     ) -> list[str]:
         recommendations: list[str] = []
         if not enabled:
@@ -686,9 +701,37 @@ class LLMFacade:
             recommendations.append("Low-priority tasks are being skipped under pressure. Rebalance task priorities for LLM-first runs.")
         if health_status == "healthy" and not recommendations:
             recommendations.append("Live LLM calls are currently dominant. Keep this profile as the analyst baseline.")
+        if stability_score < 0.55:
+            recommendations.append("Long-run LLM stability is low. Reduce provider errors or lower task pressure before long simulations.")
         if degraded_tasks:
             recommendations.append(f"Focus on degraded tasks first: {', '.join(degraded_tasks[:4])}.")
         return recommendations[:5]
+
+    def _tail_streak(self, recent_runs: Sequence[Mapping[str, Any]], *, target_live: bool) -> int:
+        streak = 0
+        for run in reversed(list(recent_runs)):
+            used_fallback = bool(run.get("used_fallback"))
+            if target_live and not used_fallback:
+                streak += 1
+                continue
+            if (not target_live) and used_fallback:
+                streak += 1
+                continue
+            break
+        return streak
+
+    def _stability_score(
+        self,
+        *,
+        live_call_rate: float,
+        fallback_rate: float,
+        live_streak: int,
+        provider_error_count: int,
+    ) -> float:
+        score = live_call_rate * 0.6 + min(1.0, live_streak / 8.0) * 0.25 + (1.0 - min(1.0, fallback_rate)) * 0.15
+        if provider_error_count:
+            score -= min(0.35, provider_error_count * 0.08)
+        return max(0.0, min(1.0, score))
 
     def _record_run(self, meta: Mapping[str, Any]) -> None:
         task = str(meta.get("task") or "unknown")

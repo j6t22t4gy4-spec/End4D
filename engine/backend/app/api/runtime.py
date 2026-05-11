@@ -93,6 +93,9 @@ class RuntimeLlmHealthResponse(BaseModel):
     recent_fallback_rate: float = 0.0
     last_fallback_reason: str = ""
     dominant_failure_reason: str = ""
+    live_streak: int = 0
+    fallback_streak: int = 0
+    stability_score: float = 0.0
 
 
 class RuntimeLlmReasonCountResponse(BaseModel):
@@ -123,6 +126,7 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     group_deliberation_max_groups: int = 0
     task_priorities: Dict[str, int] = Field(default_factory=dict)
     task_budgets: Dict[str, int] = Field(default_factory=dict)
+    task_live_floors: Dict[str, int] = Field(default_factory=dict)
     scheduler: Dict[str, Any] = Field(default_factory=dict)
     health: RuntimeLlmHealthResponse = Field(default_factory=RuntimeLlmHealthResponse)
     recent_runs: List[RuntimeLlmRunResponse] = Field(default_factory=list)
@@ -316,6 +320,7 @@ def get_local_runtime_status():
             group_deliberation_max_groups=int((status.get("llm_runtime") or {}).get("group_deliberation_max_groups") or 0),
             task_priorities=dict((status.get("llm_runtime") or {}).get("task_priorities") or {}),
             task_budgets=dict((status.get("llm_runtime") or {}).get("task_budgets") or {}),
+            task_live_floors=dict((status.get("llm_runtime") or {}).get("task_live_floors") or {}),
             scheduler=dict((status.get("llm_runtime") or {}).get("scheduler") or {}),
             health=RuntimeLlmHealthResponse(**dict((status.get("llm_runtime") or {}).get("health") or {})),
             recent_runs=[

@@ -68,10 +68,12 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert data["llm"]["provider"] == "ollama"
     assert data["llm"]["model"] == "llama3.1"
     assert "task_budgets" in data["llm_runtime"]
+    assert "task_live_floors" in data["llm_runtime"]
     assert "task_priorities" in data["llm_runtime"]
     assert data["llm_runtime"]["density_profile"] == "llm-first"
     assert int(data["llm_runtime"]["cycle_prompt_budget"]) >= 640
     assert "health" in data["llm_runtime"]
+    assert "stability_score" in data["llm_runtime"]["health"]
     assert data["installed_pack_count"] == 1
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"
@@ -343,6 +345,7 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert data["llm_runtime"]["recent_runs"][-1]["task"] == "action"
     assert data["llm_runtime"]["health"]["recent_call_count"] >= 2
     assert data["llm_runtime"]["health"]["live_call_rate"] == 1.0
+    assert "stability_score" in data["llm_runtime"]["health"]
     assert "task_insights" in data["llm_runtime"]
     assert isinstance(data["llm_runtime"]["recommended_actions"], list)
 

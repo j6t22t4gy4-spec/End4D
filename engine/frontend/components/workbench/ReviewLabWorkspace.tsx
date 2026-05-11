@@ -317,6 +317,10 @@ export function ReviewLabWorkspace({
     () => (sessionReview?.group_tables ?? {}) as Record<string, unknown>,
     [sessionReview]
   );
+  const sessionLineage = useMemo(
+    () => (sessionReview?.lineage_summary ?? {}) as Record<string, unknown>,
+    [sessionReview]
+  );
   const sessionRoleRows = useMemo(
     () =>
       Array.isArray(sessionGroupTables.role_table)
@@ -337,6 +341,20 @@ export function ReviewLabWorkspace({
         ? (sessionGroupTables.zone_table as Array<Record<string, unknown>>)
         : [],
     [sessionGroupTables]
+  );
+  const sessionLineageRows = useMemo(
+    () =>
+      Array.isArray(sessionLineage.tracked_roles)
+        ? (sessionLineage.tracked_roles as Array<Record<string, unknown>>)
+        : [],
+    [sessionLineage]
+  );
+  const sessionMigrationRows = useMemo(
+    () =>
+      Array.isArray(sessionLineage.ideology_migrations)
+        ? (sessionLineage.ideology_migrations as Array<Record<string, unknown>>)
+        : [],
+    [sessionLineage]
   );
   const diffGroupTableDelta = useMemo(
     () => (diffMetrics.group_table_delta ?? {}) as Record<string, unknown>,
@@ -1287,6 +1305,20 @@ export function ReviewLabWorkspace({
               <MetricCard label={isKo ? "평균 분열 위험" : "Avg Split Risk"} value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
               <MetricCard label={isKo ? "평균 fracture" : "Avg Fracture"} value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
             </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <MetricCard
+                label={isKo ? "주요 체제 전이" : "Dominant Regime"}
+                value={String(sessionLineage.dominant_regime_transition ?? "stable")}
+              />
+              <MetricCard
+                label={isKo ? "추적 역할" : "Tracked Roles"}
+                value={String(sessionLineageRows.length)}
+              />
+              <MetricCard
+                label={isKo ? "이념 이동" : "Migrations"}
+                value={String(sessionMigrationRows.length)}
+              />
+            </div>
             <div className="grid gap-2 md:grid-cols-[200px_minmax(0,1fr)]">
               <select
                 className="app-input"
@@ -1381,6 +1413,30 @@ export function ReviewLabWorkspace({
                   <p className="inspector-body">{item}</p>
                 </div>
               ))}
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <CompactGroupTable
+                title={isKo ? "세션 Lineage 역할" : "Session Lineage Roles"}
+                emptyLabel={isKo ? "세션 lineage 역할 데이터가 아직 없습니다." : "No session lineage role data yet."}
+                rows={sessionLineageRows}
+                columns={[
+                  { key: "role_label", label: isKo ? "역할" : "Role" },
+                  { key: "avg_lineage_score", label: isKo ? "평균 점수" : "Avg Score", numeric: true },
+                  { key: "avg_transition_count", label: isKo ? "평균 전이" : "Avg Transition", numeric: true },
+                  { key: "world_coverage", label: isKo ? "월드 수" : "Worlds", numeric: true },
+                ]}
+              />
+              <CompactGroupTable
+                title={isKo ? "세션 이념 이동" : "Session Ideology Migrations"}
+                emptyLabel={isKo ? "세션 이념 이동 데이터가 아직 없습니다." : "No session migration data yet."}
+                rows={sessionMigrationRows}
+                columns={[
+                  { key: "role_label", label: isKo ? "역할" : "Role" },
+                  { key: "from_stance", label: isKo ? "이전" : "From" },
+                  { key: "to_stance", label: isKo ? "이후" : "To" },
+                  { key: "transition_count", label: isKo ? "전이 수" : "Transitions", numeric: true },
+                ]}
+              />
             </div>
             <textarea
               className="app-input min-h-[84px]"

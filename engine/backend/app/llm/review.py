@@ -105,6 +105,7 @@ def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
         [
             ("session_title", str(payload.get("title") or "Session")),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
@@ -118,6 +119,7 @@ def build_session_review_query_prompt(payload: Mapping[str, Any], question: str)
             ("question", question),
             ("session_title", str(payload.get("title") or "Session")),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
+            ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
@@ -567,6 +569,7 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
     strongest = list(payload.get("strongest_worlds") or [])
     top = dict(strongest[0] if strongest else {})
     stats = dict(payload.get("summary_stats") or {})
+    lineage = dict(payload.get("lineage_summary") or {})
     objective_explanation = str(payload.get("objective_explanation") or "")
     return {
         "headline": f"Session with {int(stats.get('world_count', 0))} worlds and avg split risk {float(stats.get('avg_split_risk', 0.0)):.2f}",
@@ -574,22 +577,27 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
             f"이 세션은 {int(stats.get('world_count', 0))}개의 world를 포함하며, "
             f"평균 split risk {float(stats.get('avg_split_risk', 0.0)):.2f}, "
             f"평균 block divergence {float(stats.get('avg_block_divergence', 0.0)):.2f}, "
-            f"평균 cross-zone fracture {float(stats.get('avg_cross_zone_fracture', 0.0)):.2f}를 보였습니다."
+            f"평균 cross-zone fracture {float(stats.get('avg_cross_zone_fracture', 0.0)):.2f}를 보였습니다. "
+            f"세션 전반의 regime transition은 {str(lineage.get('dominant_regime_transition') or 'stable')}입니다."
         ),
         "key_findings": [
             f"가장 극적인 world는 {top.get('world_id', 'n/a')}이며 signal={top.get('overall_signal', 'diffuse')}입니다.",
             "세션 단위에서는 split risk와 cross-zone fracture가 높은 world를 우선 비교하는 것이 좋습니다.",
+            f"lineage 관점에서는 {str(((lineage.get('tracked_roles') or [{}])[0] or {}).get('role_label') or '핵심 집단')}이 가장 자주 재편됩니다.",
         ],
         "decision_implications": [
             "같은 세션 내 strongest world와 baseline world를 붙여보면 정책 민감도 차이가 더 잘 드러납니다.",
             "fracture score가 높은 world는 후속 intervention 실험의 우선 후보입니다.",
+            "lineage score가 높은 역할 집단은 장기 정책 실험에서 별도 추적 대상으로 삼는 것이 좋습니다.",
         ],
         "objective_explanation": objective_explanation,
         "citations": {
             "key_findings.0": _citation_ids(payload, "worlds", limit=1),
             "key_findings.1": _citation_ids(payload, "worlds", limit=1),
+            "key_findings.2": _citation_ids(payload, "worlds", limit=1),
             "decision_implications.0": _citation_ids(payload, "worlds", limit=1),
             "decision_implications.1": _citation_ids(payload, "worlds", limit=1),
+            "decision_implications.2": _citation_ids(payload, "worlds", limit=1),
         },
     }
 

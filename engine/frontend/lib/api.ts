@@ -175,6 +175,9 @@ export type RuntimeLlmHealth = {
   recent_fallback_rate: number;
   last_fallback_reason: string;
   dominant_failure_reason: string;
+  live_streak: number;
+  fallback_streak: number;
+  stability_score: number;
 };
 
 export type RuntimeLlmTaskInsight = {
@@ -490,6 +493,7 @@ export type SessionReviewResponse = {
   objective_explanation: string;
   metrics: Record<string, unknown>;
   group_tables: Record<string, unknown>;
+  lineage_summary: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
   ranked_worlds: Array<Record<string, unknown>>;
   recommended_pairs: Array<Record<string, unknown>>;

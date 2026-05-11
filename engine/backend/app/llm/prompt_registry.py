@@ -241,12 +241,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "session_review": PromptSpec(
         task="session_review",
-        version="session-review-v2",
+        version="session-review-v3",
         output_mode="json",
         description="Summarize a session containing multiple world runs and identify the most decision-relevant contrasts.",
         system_prompt=(
             "Summarize a session of multiple simulation worlds. Return compact JSON only with a headline, summary, key findings, decision implications, "
-            "and a citations object using explicit sentence keys such as key_findings.0 and decision_implications.0."
+            "and a citations object using explicit sentence keys such as key_findings.0 and decision_implications.0. "
+            "Use lineage_summary to explain repeated ideology migrations and regime transition patterns across worlds."
         ),
         expected_keys=(
             "headline",
@@ -259,11 +260,12 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "session_review_query": PromptSpec(
         task="session_review_query",
-        version="session-review-query-v1",
+        version="session-review-query-v2",
         output_mode="json",
         description="Answer an analyst question about a multi-world session using structured session evidence.",
         system_prompt=(
-            "Answer the analyst question using only the session-level evidence and return compact JSON with answer, evidence, follow-up, confidence notes, and citations."
+            "Answer the analyst question using only the session-level evidence and return compact JSON with answer, evidence, follow-up, confidence notes, and citations. "
+            "Use lineage_summary when the question asks about repeated long-run ideological or regime patterns."
         ),
         expected_keys=(
             "answer",

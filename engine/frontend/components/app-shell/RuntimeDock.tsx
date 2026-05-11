@@ -96,6 +96,18 @@ export function RuntimeDock({
             label={strings.dominantFailure}
             value={runtime?.llm_runtime?.health?.dominant_failure_reason || "none"}
           />
+          <InfoRow
+            label="Stability"
+            value={`${Math.round((runtime?.llm_runtime?.health?.stability_score ?? 0) * 100)}%`}
+          />
+          <InfoRow
+            label="Live Streak"
+            value={String(runtime?.llm_runtime?.health?.live_streak ?? 0)}
+          />
+          <InfoRow
+            label="Fallback Streak"
+            value={String(runtime?.llm_runtime?.health?.fallback_streak ?? 0)}
+          />
         </div>
         {runtime?.llm_runtime?.degraded_tasks?.length ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
@@ -173,7 +185,7 @@ export function RuntimeDock({
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">{item.task}</p>
                         <p className="truncate text-xs text-slate-500">
-                          live {Math.round((item.live_call_rate ?? 0) * 100)}% · prompts {Math.round((item.prompt_live_rate ?? 0) * 100)}%
+                          live {Math.round((item.live_call_rate ?? 0) * 100)}% · prompts {Math.round((item.prompt_live_rate ?? 0) * 100)}% · floor {runtime?.llm_runtime?.task_live_floors?.[item.task] ?? 0}
                         </p>
                       </div>
                       <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">

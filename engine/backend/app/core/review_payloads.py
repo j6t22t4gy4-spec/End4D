@@ -264,6 +264,7 @@ def build_session_review_payload(
         "ranked_worlds": ranked_worlds[:8],
         "recommended_pairs": recommended_pairs[:5],
         "group_tables": _session_group_tables(world_payloads),
+        "lineage_summary": _session_lineage_summary(world_payloads),
         "grounding": {
             "worlds": [
                 {
@@ -1360,6 +1361,58 @@ def _session_group_tables(world_payloads: list[dict[str, Any]]) -> dict[str, Any
         "role_table": role_table[:6],
         "persona_country_table": persona_country_table[:6],
         "zone_table": zone_table[:6],
+    }
+
+
+def _session_lineage_summary(world_payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    transition_buckets: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"count": 0.0, "score": 0.0, "transitions": 0.0}
+    )
+    regime_counts: dict[str, int] = defaultdict(int)
+    migrations: list[dict[str, Any]] = []
+    for payload in world_payloads:
+        lineage = dict(payload.get("lineage_summary") or {})
+        regime = str(lineage.get("regime_transition_signal") or "stable")
+        regime_counts[regime] += 1
+        for row in list(lineage.get("tracked_roles") or []):
+            role_label = str(row.get("role_label") or "group")
+            bucket = transition_buckets[role_label]
+            bucket["count"] += 1.0
+            bucket["score"] += float(row.get("lineage_score", 0.0))
+            bucket["transitions"] += float(row.get("transition_count", 0.0))
+        for row in list(lineage.get("ideology_migrations") or []):
+            migrations.append(dict(row))
+    tracked_roles = [
+        {
+            "role_label": role,
+            "avg_lineage_score": round(values["score"] / max(values["count"], 1.0), 3),
+            "avg_transition_count": round(values["transitions"] / max(values["count"], 1.0), 3),
+            "world_coverage": int(values["count"]),
+        }
+        for role, values in transition_buckets.items()
+    ]
+    tracked_roles.sort(
+        key=lambda item: (
+            -float(item.get("avg_lineage_score", 0.0)),
+            -float(item.get("avg_transition_count", 0.0)),
+            str(item.get("role_label") or ""),
+        )
+    )
+    migrations.sort(
+        key=lambda item: (
+            -int(item.get("transition_count", 0)),
+            -float(item.get("lineage_score", 0.0)),
+            str(item.get("role_label") or ""),
+        )
+    )
+    dominant_regime = "stable"
+    if regime_counts:
+        dominant_regime = max(regime_counts.items(), key=lambda item: (int(item[1]), str(item[0])))[0]
+    return {
+        "dominant_regime_transition": dominant_regime,
+        "regime_transition_counts": dict(sorted(regime_counts.items())),
+        "tracked_roles": tracked_roles[:6],
+        "ideology_migrations": migrations[:8],
     }
 
 
