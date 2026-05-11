@@ -144,6 +144,20 @@ export function ReviewLabWorkspace({
     () => (policyImpactDelta.largest_zone_shift_gap ?? {}) as Record<string, unknown>,
     [policyImpactDelta]
   );
+  const baseWorldviewCurve = useMemo(
+    () =>
+      Array.isArray(diffMetrics.base_worldview_curve)
+        ? (diffMetrics.base_worldview_curve as Array<Record<string, unknown>>)
+        : [],
+    [diffMetrics]
+  );
+  const targetWorldviewCurve = useMemo(
+    () =>
+      Array.isArray(diffMetrics.target_worldview_curve)
+        ? (diffMetrics.target_worldview_curve as Array<Record<string, unknown>>)
+        : [],
+    [diffMetrics]
+  );
   const graphNodes = useMemo(
     () =>
       Array.isArray(data?.belief_graph?.nodes)
@@ -236,6 +250,13 @@ export function ReviewLabWorkspace({
   );
   const groupAnalysis = useMemo(
     () => (data?.group_analysis ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const causalChains = useMemo(
+    () =>
+      Array.isArray(data?.causal_chains)
+        ? (data?.causal_chains as Array<Record<string, unknown>>)
+        : [],
     [data]
   );
 
@@ -605,6 +626,48 @@ export function ReviewLabWorkspace({
             </div>
           </div>
         </div>
+      </AppPanel>
+
+      <AppPanel
+        title="Causal Chains"
+        subtitle="Event → group → zone → agent grounding for the strongest shifts"
+        bodyClassName="space-y-3"
+      >
+        {causalChains.length ? (
+          <div className="grid gap-3 xl:grid-cols-3">
+            {causalChains.slice(0, 3).map((chain, index) => {
+              const event = (chain.event ?? {}) as Record<string, unknown>;
+              const group = (chain.group ?? {}) as Record<string, unknown>;
+              const zone = (chain.zone ?? {}) as Record<string, unknown>;
+              const agent = (chain.agent ?? {}) as Record<string, unknown>;
+              return (
+                <div key={`${index}-${String(chain.anchor_id ?? "chain")}`} className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">{String(chain.label ?? "causal chain")}</p>
+                    <span className="session-thread-card__meta">t={Number(chain.t ?? 0).toFixed(0)}</span>
+                  </div>
+                  <div className="grid gap-2">
+                    <p className="inspector-body">event: {String(event.label ?? "event")}</p>
+                    <p className="inspector-body">group: {String(group.label ?? "group")} · {String(group.stance_after ?? "n/a")}</p>
+                    <p className="inspector-body">zone: {String(zone.label ?? "zone")} · zΔ {Number(zone.avg_z_delta ?? 0).toFixed(2)}</p>
+                    <p className="inspector-body">agent: {String(agent.label ?? "agent")} · shift {Number(agent.belief_shift_score ?? 0).toFixed(2)}</p>
+                  </div>
+                  <div className="session-thread-card__actions">
+                    <button
+                      type="button"
+                      className="app-button app-button--ghost"
+                      onClick={() => onOpenWorldAt(String(chain.world_id ?? worldId), Number(chain.t ?? 0) || null)}
+                    >
+                      Open Causal Chain
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">원인 사슬이 아직 생성되지 않았습니다.</p>
+        )}
       </AppPanel>
 
       <AppPanel
@@ -1457,6 +1520,93 @@ export function ReviewLabWorkspace({
             ))
           ) : (
             <p className="text-sm text-slate-500">zone z 차이가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel
+          title="Side-by-Side Worldview Lane"
+          subtitle="Baseline and target emergent curves in one comparison lane"
+          bodyClassName="space-y-3"
+        >
+          {baseWorldviewCurve.length || targetWorldviewCurve.length ? (
+            <div className="grid gap-3">
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Baseline Curve</p>
+                    <span className="session-thread-card__meta">{diff?.base_world_id ?? "base"}</span>
+                  </div>
+                  <div className="grid gap-1">
+                    {baseWorldviewCurve.slice(-6).map((item, index) => (
+                      <p key={`base-curve-${index}`} className="inspector-body">
+                        t={Number(item.t ?? 0).toFixed(0)} · avg z {Number(item.avg_z ?? 0).toFixed(2)} · cells {Number(item.cell_count ?? 0)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Target Curve</p>
+                    <span className="session-thread-card__meta">{diff?.target_world_id ?? "target"}</span>
+                  </div>
+                  <div className="grid gap-1">
+                    {targetWorldviewCurve.slice(-6).map((item, index) => (
+                      <p key={`target-curve-${index}`} className="inspector-body">
+                        t={Number(item.t ?? 0).toFixed(0)} · avg z {Number(item.avg_z ?? 0).toFixed(2)} · cells {Number(item.cell_count ?? 0)}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="session-thread-card">
+                <p className="inspector-body">
+                  baseline과 target의 worldview/elevation curve를 같은 레인에서 읽으면서, 어느 시점부터 장기 drift가 갈라졌는지 빠르게 확인할 수 있습니다.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">나란히 비교할 worldview curve가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title="Diff-to-Action"
+          subtitle="Use diff and review insight to decide the next intervention"
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <div className="grid gap-2">
+              <div className="session-thread-card">
+                <p className="inspector-body">
+                  strongest group gap: {String(largestGroupShiftGap.target_role_label ?? largestGroupShiftGap.base_role_label ?? "n/a")} · cohesion {Number(largestGroupShiftGap.cohesion_gap ?? 0).toFixed(2)} · tension {Number(largestGroupShiftGap.tension_gap ?? 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="session-thread-card">
+                <p className="inspector-body">
+                  strongest zone gap: {String(largestZoneShiftGap.target_zone_label ?? largestZoneShiftGap.base_zone_label ?? "n/a")} · avg z {Number(largestZoneShiftGap.avg_z_gap ?? 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="session-thread-card__actions">
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() => onOpenWorldAt(diff.target_world_id, Number((targetTurningPoints[0] as Record<string, unknown> | undefined)?.t ?? 0) || null)}
+                >
+                  Open Target Turning Point
+                </button>
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() => onOpenView("simulation")}
+                >
+                  Return to Simulation
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">diff를 만든 뒤 다음 실험 액션을 정할 수 있습니다.</p>
           )}
         </AppPanel>
       </div>

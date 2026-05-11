@@ -113,6 +113,46 @@ def test_policy_shift_persists_across_duration_for_target_role():
     assert by_id["firm-1"].energy > by_id["citizen-1"].energy
 
 
+def test_review_feedback_updates_memory_and_action_bias():
+    wid = world_store.create(t_max=4, initial_cell_count=2)
+    entry = world_store.get(wid)
+    store = entry["snapshot_store"]
+    graph = create_time_flow_graph()
+    graph.invoke(
+        {
+            "t_max": 4.0,
+            "initial_cells": [
+                _cell(cell_id="citizen-1", role="시민", zone_id="zone-1"),
+                _cell(cell_id="market-1", role="시장참여자", zone_id="zone-2", x=1.0),
+            ],
+            "snapshot_store": store,
+        },
+        config={"recursion_limit": 20},
+    )
+
+    r = client.post(
+        f"/worlds/{wid}/inject",
+        json={
+            "t": 2.0,
+            "event_type": "review_feedback",
+            "payload": {
+                "text": "analyst follow-up: stabilize contested citizen housing sentiment",
+                "target_roles": ["시민"],
+                "worldview_shift": 0.02,
+                "cooperation_delta": 0.05,
+            },
+        },
+    )
+    assert r.status_code == 200
+    snap2 = store.get(2.0)
+    assert snap2 is not None
+    by_id = {cell.cell_id: cell for cell in snap2.cells}
+    citizen = by_id["citizen-1"]
+    market = by_id["market-1"]
+    assert any(item.get("kind") == "review_feedback" for item in citizen.long_memory)
+    assert citizen.action_state.get("cooperation_bias", 0.0) > market.action_state.get("cooperation_bias", 0.0)
+
+
 def test_timeline_lists_points():
     wid = world_store.create(t_max=2, initial_cell_count=1)
     entry = world_store.get(wid)

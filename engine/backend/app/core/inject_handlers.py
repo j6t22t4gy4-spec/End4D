@@ -70,5 +70,44 @@ def apply_inject_to_cells(
             payload=policy_payload,
         )
 
+    if event_type == "review_feedback":
+        text = str(payload.get("text", "analyst review feedback")).strip() or "analyst review feedback"
+        worldview_shift = float(payload.get("worldview_shift", 0.04))
+        cooperation_delta = float(payload.get("cooperation_delta", 0.05))
+        target_roles = {str(item) for item in list(payload.get("target_roles") or []) if str(item).strip()}
+        target_zones = {str(item) for item in list(payload.get("target_zones") or []) if str(item).strip()}
+        out: List[Cell] = []
+        for c in cells:
+            role_match = not target_roles or (c.role_label in target_roles or c.role_key in target_roles)
+            zone_match = not target_zones or c.zone_id in target_zones or c.zone_label in target_zones
+            if not (role_match and zone_match):
+                out.append(c.copy())
+                continue
+            entry = memory_entry(
+                t=float(c.t),
+                kind="review_feedback",
+                summary=text,
+                importance=0.82,
+                source="review.feedback",
+                payload=dict(payload),
+                tags=["review", "feedback", "analyst"],
+            )
+            behavior = behavior_event(
+                t=float(c.t),
+                event_type="review_feedback",
+                source="review.feedback",
+                summary=text,
+                quality_score=0.8,
+                payload=dict(payload),
+            )
+            updated = append_memory(c, entry, behavior=behavior, promote=True)
+            action_state = dict(updated.action_state)
+            action_state["cooperation_bias"] = float(np.clip(float(action_state.get("cooperation_bias", 0.5)) + cooperation_delta, 0.0, 1.0))
+            action_state["strategy_summary"] = str(action_state.get("strategy_summary") or "")[:220]
+            worldview_vec = updated.worldview_vec.copy().astype(np.float32)
+            worldview_vec = worldview_vec + np.full_like(worldview_vec, worldview_shift, dtype=np.float32)
+            out.append(updated.copy(action_state=action_state, worldview_vec=worldview_vec))
+        return out
+
     # 알 수 없는 타입: 보수적으로 복사만
     return [c.copy() for c in cells]

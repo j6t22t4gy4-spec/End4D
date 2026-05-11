@@ -30,6 +30,12 @@ const EVENT_OPTIONS: { value: string; label: string; defaultPayload: string }[] 
       defaultPayload:
         '{"name":"housing subsidy reform","summary":"정부가 주거 보조금 구조를 개편한다","intensity":0.7,"target_roles":["규제자","시민","시장참여자"]}',
     },
+    {
+      value: "review_feedback",
+      label: "리뷰 피드백 루프 (review_feedback)",
+      defaultPayload:
+        '{"text":"analyst follow-up: stabilize contested housing sentiment","target_roles":["시민"],"worldview_shift":0.04,"cooperation_delta":0.05}',
+    },
     { value: "noop", label: "변경 없음 (noop)", defaultPayload: "{}" },
   ];
 

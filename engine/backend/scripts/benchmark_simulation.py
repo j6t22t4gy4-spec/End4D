@@ -33,6 +33,7 @@ PRESETS: dict[str, list[int]] = {
     "smoke": [100, 1000],
     "scale": [1000, 5000, 10000],
     "stress": [10000, 25000, 50000],
+    "mega": [10000, 25000, 50000, 100000],
 }
 
 
@@ -60,6 +61,8 @@ class BenchmarkSample:
     review_payload_kb: float = 0.0
     review_annotation_count: int = 0
     review_graph_edges: int = 0
+    review_chain_count: int = 0
+    review_curve_points: int = 0
 
 
 def run_sample(case: BenchmarkCase, repeat_index: int, *, include_review_payload: bool = False) -> BenchmarkSample:
@@ -83,6 +86,8 @@ def run_sample(case: BenchmarkCase, repeat_index: int, *, include_review_payload
     review_payload_kb = 0.0
     review_annotation_count = 0
     review_graph_edges = 0
+    review_chain_count = 0
+    review_curve_points = 0
     if include_review_payload:
         review_start = time.perf_counter()
         payload = build_world_review_payload(
@@ -103,6 +108,8 @@ def run_sample(case: BenchmarkCase, repeat_index: int, *, include_review_payload
         review_payload_kb = round(len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) / 1024.0, 3)
         review_annotation_count = len(list(payload.get("annotation_candidates") or []))
         review_graph_edges = len(list((payload.get("belief_graph") or {}).get("edges") or []))
+        review_chain_count = len(list(payload.get("causal_chains") or []))
+        review_curve_points = len(list((payload.get("emergent_dynamics") or {}).get("worldview_curve") or []))
     return BenchmarkSample(
         label=case.label,
         cells=case.cells,
@@ -118,6 +125,8 @@ def run_sample(case: BenchmarkCase, repeat_index: int, *, include_review_payload
         review_payload_kb=review_payload_kb,
         review_annotation_count=review_annotation_count,
         review_graph_edges=review_graph_edges,
+        review_chain_count=review_chain_count,
+        review_curve_points=review_curve_points,
     )
 
 
@@ -143,6 +152,8 @@ def summarize_case(case: BenchmarkCase, samples: list[BenchmarkSample]) -> dict[
     payload_kb = [sample.review_payload_kb for sample in samples]
     annotation_counts = [sample.review_annotation_count for sample in samples]
     graph_edges = [sample.review_graph_edges for sample in samples]
+    chain_counts = [sample.review_chain_count for sample in samples]
+    curve_points = [sample.review_curve_points for sample in samples]
     return {
         "label": case.label,
         "cells": case.cells,
@@ -162,6 +173,8 @@ def summarize_case(case: BenchmarkCase, samples: list[BenchmarkSample]) -> dict[
         "review_payload_kb_avg": round(statistics.fmean(payload_kb), 3) if payload_kb else 0.0,
         "review_annotation_count_max": max(annotation_counts) if annotation_counts else 0,
         "review_graph_edges_max": max(graph_edges) if graph_edges else 0,
+        "review_chain_count_max": max(chain_counts) if chain_counts else 0,
+        "review_curve_points_max": max(curve_points) if curve_points else 0,
     }
 
 
@@ -203,6 +216,8 @@ def _render_text_report(report: dict[str, Any]) -> str:
                     f"peak_mem_max={summary['peak_memory_mb_max']}MB",
                     f"review_payload_avg={summary['review_payload_sec_avg']}s",
                     f"review_payload_kb_avg={summary['review_payload_kb_avg']}",
+                    f"review_chains_max={summary['review_chain_count_max']}",
+                    f"review_curve_points_max={summary['review_curve_points_max']}",
                 ]
             )
         )

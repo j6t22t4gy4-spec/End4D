@@ -16,6 +16,11 @@ def test_build_cases_uses_preset_when_requested():
     assert all(case.repeat == 2 for case in cases)
 
 
+def test_build_cases_supports_mega_preset():
+    cases = build_cases(cells=[10], steps=8, repeat=1, preset="mega")
+    assert [case.cells for case in cases] == [10000, 25000, 50000, 100000]
+
+
 def test_summarize_case_aggregates_repeat_samples():
     case = BenchmarkCase(label="100c-10s", cells=100, steps=10, repeat=2)
     samples = [
@@ -34,6 +39,8 @@ def test_summarize_case_aggregates_repeat_samples():
             review_payload_kb=12.0,
             review_annotation_count=4,
             review_graph_edges=6,
+            review_chain_count=2,
+            review_curve_points=10,
         ),
         BenchmarkSample(
             label=case.label,
@@ -50,6 +57,8 @@ def test_summarize_case_aggregates_repeat_samples():
             review_payload_kb=14.0,
             review_annotation_count=5,
             review_graph_edges=8,
+            review_chain_count=3,
+            review_curve_points=12,
         ),
     ]
     summary = summarize_case(case, samples)
@@ -57,3 +66,5 @@ def test_summarize_case_aggregates_repeat_samples():
     assert summary["cell_steps_per_sec_max"] == 1000.0
     assert summary["peak_memory_mb_max"] == 15.5
     assert summary["review_payload_kb_avg"] == 13.0
+    assert summary["review_chain_count_max"] == 3
+    assert summary["review_curve_points_max"] == 12

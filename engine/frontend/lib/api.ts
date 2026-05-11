@@ -317,6 +317,7 @@ export type ReviewSummaryResponse = {
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
   belief_graph: Record<string, Array<Record<string, unknown>>>;
+  causal_chains: Array<Record<string, unknown>>;
   next_actions: Array<Record<string, unknown>>;
   inject_presets: Array<Record<string, unknown>>;
   grounding: Record<string, ReviewGroundingItem[]>;
@@ -334,6 +335,7 @@ export type ReviewDiffResponse = {
   causal_comparison: string[];
   decision_implications: string[];
   compared_metrics: Record<string, unknown>;
+  causal_chains: Array<Record<string, unknown>>;
   citations: Record<string, ReviewGroundingItem[]>;
   review_meta: Record<string, unknown>;
 };

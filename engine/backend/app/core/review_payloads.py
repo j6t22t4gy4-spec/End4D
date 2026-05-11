@@ -147,6 +147,13 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             notable_agents=notable_agents,
             world_id=str(world.world_id),
         ),
+        "causal_chains": _build_causal_chains(
+            world_id=str(world.world_id),
+            key_events=key_events,
+            groups=list(belief_drift.get("groups") or []),
+            zone_z_drift=zone_z_drift,
+            notable_agents=notable_agents,
+        ),
         "coalition_shift": {
             "active": dict(entry.get("coalition_state") or {}),
             "history_tail": [dict(item) for item in list(entry.get("coalition_history") or [])[-8:]],
@@ -242,6 +249,7 @@ def build_session_review_payload(
         "grounding": {
             "worlds": [
                 {
+                    "anchor_id": f"world:{str(payload.get('world_id') or '')}",
                     "kind": "world",
                     "label": str(payload.get("world_id") or ""),
                     "reason": str((payload.get("summary_stats") or {}).get("outcome") or "stable"),
@@ -250,6 +258,16 @@ def build_session_review_payload(
                 for payload in ranked[:5]
             ]
         },
+        "causal_chains": [
+            {
+                "anchor_id": f"world:{str(item.get('world_id') or '')}",
+                "world_id": str(item.get("world_id") or ""),
+                "label": f"{str(item.get('world_id') or '')} ranked for {objective}",
+                "reason": str(item.get("overall_signal") or "diffuse"),
+                "score": float(item.get("score") or 0.0),
+            }
+            for item in ranked_worlds[:5]
+        ],
     }
 
 
@@ -1003,6 +1021,53 @@ def _build_grounding(
             for item in notable_agents[: min(5, MAX_REVIEW_AGENTS)]
         ],
     }
+
+
+def _build_causal_chains(
+    *,
+    world_id: str,
+    key_events: list[dict[str, Any]],
+    groups: list[dict[str, Any]],
+    zone_z_drift: list[dict[str, Any]],
+    notable_agents: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    chains: list[dict[str, Any]] = []
+    for idx, event in enumerate(key_events[:3]):
+        group = groups[idx] if idx < len(groups) else (groups[0] if groups else {})
+        zone = zone_z_drift[idx] if idx < len(zone_z_drift) else (zone_z_drift[0] if zone_z_drift else {})
+        agent = notable_agents[idx] if idx < len(notable_agents) else (notable_agents[0] if notable_agents else {})
+        chains.append(
+            {
+                "anchor_id": f"chain:{world_id}:{idx + 1}",
+                "world_id": world_id,
+                "label": str(event.get("name") or event.get("event_type") or f"chain-{idx + 1}"),
+                "t": float(event.get("t", 0.0)),
+                "event": {
+                    "anchor_id": f"event:{world_id}:{int(float(event.get('t', 0.0)))}:{idx + 1}",
+                    "label": str(event.get("name") or event.get("event_type") or "event"),
+                    "summary": str(event.get("summary") or ""),
+                },
+                "group": {
+                    "anchor_id": f"group:{world_id}:{str(group.get('group_id') or '')}",
+                    "group_id": str(group.get("group_id") or ""),
+                    "label": str(group.get("role_label") or "group"),
+                    "stance_after": str(group.get("stance_after") or ""),
+                },
+                "zone": {
+                    "anchor_id": f"zone:{world_id}:{str(zone.get('zone_id') or '')}",
+                    "zone_id": str(zone.get("zone_id") or ""),
+                    "label": str(zone.get("zone_label") or "zone"),
+                    "avg_z_delta": float(zone.get("avg_z_delta", 0.0)),
+                },
+                "agent": {
+                    "anchor_id": f"agent:{world_id}:{str(agent.get('cell_id') or '')}",
+                    "cell_id": str(agent.get("cell_id") or ""),
+                    "label": str(agent.get("role_label") or "agent"),
+                    "belief_shift_score": float(agent.get("belief_shift_score", 0.0)),
+                },
+            }
+        )
+    return chains
 
 
 def _build_belief_graph(belief_drift: dict[str, Any]) -> dict[str, Any]:

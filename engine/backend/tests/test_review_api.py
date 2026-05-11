@@ -34,6 +34,7 @@ def test_review_summary_returns_summary_and_annotations():
     assert "emergent_dynamics" in payload
     assert "next_actions" in payload
     assert "inject_presets" in payload
+    assert "causal_chains" in payload
 
 
 def test_review_diff_returns_comparison():
@@ -64,6 +65,9 @@ def test_review_diff_returns_comparison():
     assert "timeline_turning_point_delta" in payload["compared_metrics"]
     assert "group_drift_deltas" in payload["compared_metrics"]
     assert "policy_impact_delta" in payload["compared_metrics"]
+    assert "base_worldview_curve" in payload["compared_metrics"]
+    assert "target_worldview_curve" in payload["compared_metrics"]
+    assert "causal_chains" in payload
     assert "citations" in payload
 
 

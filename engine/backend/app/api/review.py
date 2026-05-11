@@ -57,6 +57,7 @@ class ReviewSummaryResponse(BaseModel):
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
     belief_graph: Dict[str, List[Dict[str, Any]]] = Field(default_factory=dict)
+    causal_chains: List[Dict[str, Any]] = Field(default_factory=list)
     next_actions: List[Dict[str, Any]] = Field(default_factory=list)
     inject_presets: List[Dict[str, Any]] = Field(default_factory=list)
     grounding: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
@@ -74,6 +75,7 @@ class ReviewDiffResponse(BaseModel):
     causal_comparison: List[str] = Field(default_factory=list)
     decision_implications: List[str] = Field(default_factory=list)
     compared_metrics: Dict[str, Any] = Field(default_factory=dict)
+    causal_chains: List[Dict[str, Any]] = Field(default_factory=list)
     citations: Dict[str, List[ReviewGroundingItem]] = Field(default_factory=dict)
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
@@ -152,6 +154,7 @@ def get_review_summary(world_id: str):
             "nodes": [dict(item) for item in list((payload.get("belief_graph") or {}).get("nodes") or [])],
             "edges": [dict(item) for item in list((payload.get("belief_graph") or {}).get("edges") or [])],
         },
+        causal_chains=[dict(item) for item in list(payload.get("causal_chains") or [])],
         next_actions=_build_next_actions(world_id, payload),
         inject_presets=_build_inject_presets(world_id, payload),
         grounding={
@@ -222,6 +225,8 @@ def get_review_diff(world_id: str, base_world_id: str):
         "policy_impact_delta": dict(diff_payload.get("policy_impact_delta") or {}),
         "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),
         "coalition_shift_delta": dict(diff_payload.get("coalition_shift_delta") or {}),
+        "base_worldview_curve": list((base_payload.get("emergent_dynamics") or {}).get("worldview_curve") or []),
+        "target_worldview_curve": list((target_payload.get("emergent_dynamics") or {}).get("worldview_curve") or []),
     }
     return ReviewDiffResponse(
         base_world_id=base_world_id,
@@ -233,6 +238,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         causal_comparison=[str(item) for item in list(diff["diff"].get("causal_comparison") or [])],
         decision_implications=[str(item) for item in list(diff["diff"].get("decision_implications") or [])],
         compared_metrics=compared_metrics,
+        causal_chains=[dict(item) for item in list(target_payload.get("causal_chains") or [])],
         citations=_build_diff_citations(diff_payload, diff["diff"].get("citations")),
         review_meta={
             "diff": {
@@ -606,4 +612,24 @@ def _build_inject_presets(world_id: str, payload: Dict[str, Any]) -> List[Dict[s
                 "world_id": world_id,
             }
         )
-    return presets[:2]
+    if top_group:
+        presets.append(
+            {
+                "kind": "review_feedback",
+                "label": f"Feed analyst insight into {str(top_group.get('role_label') or 'group')}",
+                "description": "Push review insight back into long-term memory and cooperative behavior for the most unstable group.",
+                "t": suggested_t,
+                "event_type": "review_feedback",
+                "payload": {
+                    "text": (
+                        f"analyst follow-up: {str(top_group.get('role_label') or 'group')} shows contested belief drift; "
+                        "re-center on cooperative, lower-tension interpretation."
+                    ),
+                    "target_roles": [str(top_group.get("role_label") or "")],
+                    "worldview_shift": 0.03,
+                    "cooperation_delta": 0.05,
+                },
+                "world_id": world_id,
+            }
+        )
+    return presets[:3]
