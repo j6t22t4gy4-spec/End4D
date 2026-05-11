@@ -84,6 +84,10 @@ export function ReviewLabWorkspace({
   const [branchLoading, setBranchLoading] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
   const [branchStatus, setBranchStatus] = useState<string | null>(null);
+  const summaryRepairMeta = ((data?.review_meta?.summary as Record<string, unknown> | undefined) ?? {});
+  const summaryRepairUsed = Boolean(summaryRepairMeta.repair_used);
+  const summaryRepairCount = Number(summaryRepairMeta.repair_count ?? 0);
+  const summaryRepairReason = String(summaryRepairMeta.repair_reason ?? "none");
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -1063,8 +1067,22 @@ export function ReviewLabWorkspace({
               <div key={`${index}-${String(item.label ?? "action")}`} className="session-thread-card">
                 <div className="session-thread-card__header">
                   <p className="session-thread-card__title">{String(item.label ?? "Action")}</p>
+                  <span className="session-thread-card__meta">
+                    {summaryRepairUsed
+                      ? isKo
+                        ? `주의 · repair ${summaryRepairCount}`
+                        : `Caution · repair ${summaryRepairCount}`
+                      : isKo
+                        ? "신뢰도 양호"
+                        : "Grounding OK"}
+                  </span>
                 </div>
                 <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
+                {summaryRepairUsed ? (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    {isKo ? "리뷰 grounding 보정:" : "Review grounding repair:"} {summaryRepairReason}
+                  </p>
+                ) : null}
                 <div className="session-thread-card__actions">
                   <button
                     type="button"
@@ -1102,9 +1120,20 @@ export function ReviewLabWorkspace({
               <div key={`${index}-${String(preset.label ?? "preset")}`} className="session-thread-card">
                 <div className="session-thread-card__header">
                   <p className="session-thread-card__title">{String(preset.label ?? (isKo ? "주입 프리셋" : "Inject preset"))}</p>
-                  <span className="session-thread-card__meta">t={Number(preset.t ?? 0).toFixed(0)}</span>
+                  <span className="session-thread-card__meta">
+                    t={Number(preset.t ?? 0).toFixed(0)} · {summaryRepairUsed ? (isKo ? `repair ${summaryRepairCount}` : `repair ${summaryRepairCount}`) : (isKo ? "ok" : "ok")}
+                  </span>
                 </div>
                 <p className="session-thread-card__prompt">{String(preset.description ?? "")}</p>
+                {summaryRepairUsed ? (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    {isKo ? "이 추천은 citation repair 이후 생성되었습니다." : "This recommendation was generated after citation repair."}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] text-emerald-700">
+                    {isKo ? "리뷰 grounding이 안정적으로 유지되었습니다." : "Review grounding remained stable for this recommendation."}
+                  </p>
+                )}
                 <div className="session-thread-card__actions">
                   <button
                     type="button"
