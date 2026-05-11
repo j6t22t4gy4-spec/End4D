@@ -1,0 +1,281 @@
+{
+  "schema_version": "benchmark-report/v3",
+  "environment": {
+    "embed_backend": "stub",
+    "llm_chat_enabled": "0",
+    "llm_effective_enabled": true,
+    "snapshot_interval": "",
+    "include_review_payload": true,
+    "include_review_suite": true,
+    "llm_mode": "mock-openai",
+    "llm_strict_mode": "llm-preferred",
+    "profiles": [
+      "balanced",
+      "llm-first"
+    ]
+  },
+  "summaries": [
+    {
+      "label": "balanced:2500c-6s",
+      "cells": 2500,
+      "steps": 6,
+      "repeat": 1,
+      "llm_profile": "balanced",
+      "final_cells_last": 2500,
+      "snapshots_last": 7,
+      "elapsed_sec_avg": 2.655336,
+      "elapsed_sec_min": 2.655336,
+      "elapsed_sec_max": 2.655336,
+      "cell_steps_per_sec_avg": 5649.0028,
+      "cell_steps_per_sec_min": 5649.0028,
+      "cell_steps_per_sec_max": 5649.0028,
+      "peak_memory_mb_avg": 90.6588,
+      "peak_memory_mb_max": 90.6588,
+      "review_payload_sec_avg": 0.076602,
+      "review_payload_kb_avg": 13.771,
+      "review_annotation_count_max": 6,
+      "review_graph_edges_max": 0,
+      "review_chain_count_max": 0,
+      "review_curve_points_max": 7,
+      "llm_live_call_rate_avg": 0.9231,
+      "llm_fallback_rate_avg": 0.0769,
+      "llm_stability_score_avg": 0.9423,
+      "llm_total_repairs_avg": 6.0,
+      "llm_provider_error_pressure_max": 0,
+      "llm_top_reasons": [
+        {
+          "reason": "missing_citation_list",
+          "count": 3
+        },
+        {
+          "reason": "invalid_required_anchor:headline",
+          "count": 1
+        },
+        {
+          "reason": "invalid_required_anchor:key_deltas.0",
+          "count": 1
+        },
+        {
+          "reason": "invalid_required_anchor:key_findings.0",
+          "count": 1
+        }
+      ],
+      "llm_task_repairs": [
+        {
+          "task": "review_diff",
+          "count": 1
+        },
+        {
+          "task": "review_diff_query",
+          "count": 1
+        },
+        {
+          "task": "review_query",
+          "count": 1
+        },
+        {
+          "task": "review_summary",
+          "count": 1
+        },
+        {
+          "task": "session_review",
+          "count": 1
+        },
+        {
+          "task": "session_review_query",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "label": "llm-first:2500c-6s",
+      "cells": 2500,
+      "steps": 6,
+      "repeat": 1,
+      "llm_profile": "llm-first",
+      "final_cells_last": 2500,
+      "snapshots_last": 7,
+      "elapsed_sec_avg": 2.809409,
+      "elapsed_sec_min": 2.809409,
+      "elapsed_sec_max": 2.809409,
+      "cell_steps_per_sec_avg": 5339.2004,
+      "cell_steps_per_sec_min": 5339.2004,
+      "cell_steps_per_sec_max": 5339.2004,
+      "peak_memory_mb_avg": 92.1199,
+      "peak_memory_mb_max": 92.1199,
+      "review_payload_sec_avg": 0.074097,
+      "review_payload_kb_avg": 13.843,
+      "review_annotation_count_max": 6,
+      "review_graph_edges_max": 0,
+      "review_chain_count_max": 0,
+      "review_curve_points_max": 7,
+      "llm_live_call_rate_avg": 0.75,
+      "llm_fallback_rate_avg": 0.25,
+      "llm_stability_score_avg": 0.8125,
+      "llm_total_repairs_avg": 6.0,
+      "llm_provider_error_pressure_max": 0,
+      "llm_top_reasons": [
+        {
+          "reason": "missing_citation_list",
+          "count": 3
+        },
+        {
+          "reason": "invalid_required_anchor:headline",
+          "count": 1
+        },
+        {
+          "reason": "invalid_required_anchor:key_deltas.0",
+          "count": 1
+        },
+        {
+          "reason": "invalid_required_anchor:key_findings.0",
+          "count": 1
+        }
+      ],
+      "llm_task_repairs": [
+        {
+          "task": "review_diff",
+          "count": 1
+        },
+        {
+          "task": "review_diff_query",
+          "count": 1
+        },
+        {
+          "task": "review_query",
+          "count": 1
+        },
+        {
+          "task": "review_summary",
+          "count": 1
+        },
+        {
+          "task": "session_review",
+          "count": 1
+        },
+        {
+          "task": "session_review_query",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "label": "balanced:2500c-6s",
+      "cells": 2500,
+      "steps": 6,
+      "repeat_index": 1,
+      "llm_profile": "balanced",
+      "llm_mode": "mock-openai",
+      "final_cells": 2500,
+      "snapshots": 7,
+      "elapsed_sec": 2.655336,
+      "steps_per_sec": 2.2596,
+      "cell_steps_per_sec": 5649.0028,
+      "peak_memory_mb": 90.6588,
+      "review_payload_sec": 0.076602,
+      "review_payload_kb": 13.771,
+      "review_annotation_count": 6,
+      "review_graph_edges": 0,
+      "review_chain_count": 0,
+      "review_curve_points": 7,
+      "llm_live_call_rate": 0.9231,
+      "llm_fallback_rate": 0.0769,
+      "llm_stability_score": 0.9423,
+      "llm_provider_error_pressure": 0,
+      "llm_total_repairs": 6,
+      "llm_top_reasons": {
+        "missing_citation_list": 3,
+        "invalid_required_anchor:headline": 1,
+        "invalid_required_anchor:key_deltas.0": 1,
+        "invalid_required_anchor:key_findings.0": 1
+      },
+      "llm_task_repairs": {
+        "review_diff": 1,
+        "review_diff_query": 1,
+        "review_query": 1,
+        "review_summary": 1,
+        "session_review": 1,
+        "session_review_query": 1
+      }
+    },
+    {
+      "label": "llm-first:2500c-6s",
+      "cells": 2500,
+      "steps": 6,
+      "repeat_index": 1,
+      "llm_profile": "llm-first",
+      "llm_mode": "mock-openai",
+      "final_cells": 2500,
+      "snapshots": 7,
+      "elapsed_sec": 2.809409,
+      "steps_per_sec": 2.1357,
+      "cell_steps_per_sec": 5339.2004,
+      "peak_memory_mb": 92.1199,
+      "review_payload_sec": 0.074097,
+      "review_payload_kb": 13.843,
+      "review_annotation_count": 6,
+      "review_graph_edges": 0,
+      "review_chain_count": 0,
+      "review_curve_points": 7,
+      "llm_live_call_rate": 0.75,
+      "llm_fallback_rate": 0.25,
+      "llm_stability_score": 0.8125,
+      "llm_provider_error_pressure": 0,
+      "llm_total_repairs": 6,
+      "llm_top_reasons": {
+        "missing_citation_list": 3,
+        "invalid_required_anchor:headline": 1,
+        "invalid_required_anchor:key_deltas.0": 1,
+        "invalid_required_anchor:key_findings.0": 1
+      },
+      "llm_task_repairs": {
+        "review_diff": 1,
+        "review_diff_query": 1,
+        "review_query": 1,
+        "review_summary": 1,
+        "session_review": 1,
+        "session_review_query": 1
+      }
+    }
+  ],
+  "profile_comparison": [
+    {
+      "cells": 2500,
+      "steps": 6,
+      "balanced_live_call_rate": 0.9231,
+      "llm_first_live_call_rate": 0.75,
+      "balanced_repairs": 6.0,
+      "llm_first_repairs": 6.0,
+      "balanced_stability": 0.9423,
+      "llm_first_stability": 0.8125,
+      "repair_reason_deltas": [
+        {
+          "reason": "invalid_required_anchor:headline",
+          "balanced": 1,
+          "llm_first": 1,
+          "delta": 0
+        },
+        {
+          "reason": "invalid_required_anchor:key_deltas.0",
+          "balanced": 1,
+          "llm_first": 1,
+          "delta": 0
+        },
+        {
+          "reason": "invalid_required_anchor:key_findings.0",
+          "balanced": 1,
+          "llm_first": 1,
+          "delta": 0
+        },
+        {
+          "reason": "missing_citation_list",
+          "balanced": 3,
+          "llm_first": 3,
+          "delta": 0
+        }
+      ]
+    }
+  ]
+}

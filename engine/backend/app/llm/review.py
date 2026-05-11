@@ -1065,7 +1065,15 @@ def _compact_list(items: list[Any], *, limit: int) -> str:
 def _compact_anchor_candidates(grounding: Mapping[str, Any]) -> str:
     candidates: list[str] = []
     for section, rows in dict(grounding or {}).items():
-        for row in list(rows or [])[:3]:
+        if isinstance(rows, Mapping):
+            entries = [rows]
+        elif isinstance(rows, (list, tuple)):
+            entries = list(rows or [])[:3]
+        else:
+            continue
+        for row in entries:
+            if not isinstance(row, Mapping):
+                continue
             anchor_id = str(row.get("anchor_id") or "").strip()
             if not anchor_id:
                 continue
@@ -1149,8 +1157,18 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
 
 def _citation_ids(payload: Mapping[str, Any], section: str, *, limit: int) -> list[str]:
     grounding = dict(payload.get("grounding") or payload or {})
-    rows = list(grounding.get(section) or [])
-    out = [str(item.get("anchor_id") or "") for item in rows if str(item.get("anchor_id") or "").strip()]
+    rows = grounding.get(section) or []
+    if isinstance(rows, Mapping):
+        entries = [rows]
+    elif isinstance(rows, (list, tuple)):
+        entries = list(rows or [])
+    else:
+        entries = []
+    out = [
+        str(item.get("anchor_id") or "")
+        for item in entries
+        if isinstance(item, Mapping) and str(item.get("anchor_id") or "").strip()
+    ]
     return out[:limit]
 
 
@@ -1170,7 +1188,15 @@ def _allowed_anchor_ids(payload: Mapping[str, Any]) -> set[str]:
     grounding = dict(payload.get("grounding") or payload or {})
     out: set[str] = set()
     for rows in grounding.values():
-        for row in list(rows or []):
+        if isinstance(rows, Mapping):
+            candidates = [rows]
+        elif isinstance(rows, (list, tuple)):
+            candidates = list(rows or [])
+        else:
+            continue
+        for row in candidates:
+            if not isinstance(row, Mapping):
+                continue
             anchor_id = str(row.get("anchor_id") or "").strip()
             if anchor_id:
                 out.add(anchor_id)
