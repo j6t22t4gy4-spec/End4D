@@ -485,6 +485,47 @@ textarea {
   gap: 16px;
 }
 
+.godview-staged {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+}
+
+.godview-setup {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+}
+
+.godview-stage-switch {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.75);
+}
+
+.godview-stage-switch__button {
+  border: 0;
+  background: transparent;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 999px;
+}
+
+.godview-stage-switch__button.is-active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+
+.godview-stage-switch__button:disabled {
+  opacity: 0.45;
+}
+
 .godview-layout--balanced {
   grid-template-columns: 320px minmax(0, 1fr);
 }
@@ -710,7 +751,8 @@ textarea {
   .godview-layout--balanced,
   .godview-layout--focus,
   .godview-layout--wide-left,
-  .godview-main {
+  .godview-main,
+  .godview-setup {
     grid-template-columns: minmax(0, 1fr);
   }
 }

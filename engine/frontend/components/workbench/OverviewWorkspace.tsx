@@ -81,12 +81,17 @@ export function OverviewWorkspace({
       <AppPanel
         title="Workbench Modules"
         subtitle="Toolbar-driven navigation"
-        bodyClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-4"
+        bodyClassName="grid gap-3 md:grid-cols-2 xl:grid-cols-5"
       >
         <ActionCard
           title="Simulation"
-          body="세계 생성, 실행, 3D 필드 탐색"
+          body="Setup과 Run을 나눠 세계 생성과 실행을 분리"
           onClick={() => onOpenView("simulation")}
+        />
+        <ActionCard
+          title="Review"
+          body="추후 LLM 기반 결과 해석과 비교 채팅 워크스페이스"
+          onClick={() => onOpenView("review-lab")}
         />
         <ActionCard
           title="Data Packs"

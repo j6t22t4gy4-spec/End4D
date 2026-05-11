@@ -123,7 +123,18 @@ export default function HomeWithCanvas() {
             ) : null}
 
             {activeView === "simulation" ? (
-              <GodView initialWorldId={selectedWorldId} />
+              <GodView initialWorldId={selectedWorldId} onOpenWorkbenchView={setActiveView} />
+            ) : null}
+
+            {activeView === "review-lab" ? (
+              <FocusedWorkspace
+                title="Simulation Review"
+                subtitle="LLM-assisted interpretation and analyst chat"
+                body="이 영역은 추후 시뮬 결과를 해석하는 Review/Chat 워크스페이스로 확장할 예정입니다. 현재는 Setup과 Run을 분리해 시뮬레이션 자체를 정리했고, 다음 단계에서 stance diff, policy drift, coalition drift를 LLM과 함께 검토하는 페이지로 자연스럽게 이어질 수 있도록 자리를 확보했습니다."
+                ctaLabel="Open Simulation Setup"
+                onOpenView={setActiveView}
+                targetView="simulation"
+              />
             ) : null}
 
             {activeView === "data-packs" ? (
