@@ -86,6 +86,7 @@ def test_session_review_returns_multi_world_summary():
     assert isinstance(payload["recommended_pairs"], list)
     assert "group_tables" in payload
     assert "lineage_summary" in payload
+    assert "policy_lineage_bridge" in payload
     assert "citations" in payload
 
 

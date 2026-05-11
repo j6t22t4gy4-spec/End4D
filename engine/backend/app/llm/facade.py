@@ -442,6 +442,7 @@ class LLMFacade:
                 degraded_tasks=degraded_tasks,
                 stability_score=stability_score,
             )
+            optimizer = self._recent_runtime_signal()
             return {
                 "provider": provider,
                 "model": get_llm_model(),
@@ -467,6 +468,12 @@ class LLMFacade:
                 "degraded_tasks": degraded_tasks,
                 "fallback_reason_counts": fallback_reason_counts,
                 "recommended_actions": recommended_actions,
+                "optimizer": {
+                    "stability_score": round(float(optimizer.get("stability_score", stability_score)), 4),
+                    "fallback_streak": int(optimizer.get("fallback_streak", fallback_streak)),
+                    "provider_error_pressure": int(optimizer.get("provider_error_pressure", 0)),
+                    "mode": "protect-core-live-floors" if get_llm_runtime_profile() == "llm-first" else "balanced-throttle",
+                },
                 "health": {
                     "status": health_status,
                     "reason": health_reason,
@@ -590,7 +597,17 @@ class LLMFacade:
         ratio = remaining / total
         profile = get_llm_runtime_profile()
         live_floor = min(requested, get_llm_task_live_floor(task))
+        runtime_signal = self._recent_runtime_signal()
+        stability_score = float(runtime_signal.get("stability_score", 1.0))
+        fallback_streak = int(runtime_signal.get("fallback_streak", 0))
+        provider_error_pressure = int(runtime_signal.get("provider_error_pressure", 0))
         if profile == "llm-first":
+            if provider_error_pressure or fallback_streak >= 3 or stability_score < 0.45:
+                if priority >= 4:
+                    return max(live_floor, min(requested, max(1, requested // 2)))
+                if priority >= 2:
+                    return max(0, min(requested, max(1, requested // 3)))
+                return live_floor
             if ratio <= 0.04 and priority >= 4:
                 return min(requested, live_floor)
             if ratio <= 0.10 and priority >= 3:
@@ -598,6 +615,8 @@ class LLMFacade:
             if ratio <= 0.20 and priority >= 4:
                 return max(max(1, min(requested, requested // 2)), live_floor)
             return max(requested, live_floor)
+        if stability_score < 0.4 and priority >= 2:
+            return max(0, min(requested, 1))
         if profile == "rules-first":
             if ratio <= 0.12 and priority >= 2:
                 return 0
@@ -617,6 +636,33 @@ class LLMFacade:
         if ratio <= 0.50 and priority >= 4:
             return max(0, min(requested, requested // 2))
         return requested
+
+    def _recent_runtime_signal(self) -> dict[str, Any]:
+        recent_runs = [dict(item) for item in list(self._recent_runs)[-12:]]
+        if not recent_runs:
+            return {
+                "stability_score": 1.0,
+                "fallback_streak": 0,
+                "provider_error_pressure": 0,
+            }
+        fallback_runs = [item for item in recent_runs if bool(item.get("used_fallback"))]
+        fallback_rate = len(fallback_runs) / len(recent_runs)
+        live_runs = [item for item in recent_runs if not bool(item.get("used_fallback"))]
+        provider_error_pressure = sum(
+            1
+            for item in fallback_runs
+            if "provider_error:" in str(item.get("fallback_reason") or "")
+        )
+        return {
+            "stability_score": self._stability_score(
+                live_call_rate=(len(live_runs) / len(recent_runs)) if recent_runs else 0.0,
+                fallback_rate=fallback_rate,
+                live_streak=self._tail_streak(recent_runs, target_live=True),
+                provider_error_count=provider_error_pressure,
+            ),
+            "fallback_streak": self._tail_streak(recent_runs, target_live=False),
+            "provider_error_pressure": provider_error_pressure,
+        }
 
     def _aggregate_reason_counts(self, runs: Sequence[Mapping[str, Any]]) -> dict[str, int]:
         counts: dict[str, int] = {}

@@ -356,6 +356,17 @@ export function ReviewLabWorkspace({
         : [],
     [sessionLineage]
   );
+  const sessionPolicyLineage = useMemo(
+    () => (sessionReview?.policy_lineage_bridge ?? {}) as Record<string, unknown>,
+    [sessionReview]
+  );
+  const sessionPolicyBridgeRows = useMemo(
+    () =>
+      Array.isArray(sessionPolicyLineage.bridge_rows)
+        ? (sessionPolicyLineage.bridge_rows as Array<Record<string, unknown>>)
+        : [],
+    [sessionPolicyLineage]
+  );
   const diffGroupTableDelta = useMemo(
     () => (diffMetrics.group_table_delta ?? {}) as Record<string, unknown>,
     [diffMetrics]
@@ -373,6 +384,10 @@ export function ReviewLabWorkspace({
   );
   const diffLineageDelta = useMemo(
     () => (diffMetrics.lineage_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
+  const diffPolicyLineageDelta = useMemo(
+    () => (diffMetrics.policy_lineage_delta ?? {}) as Record<string, unknown>,
     [diffMetrics]
   );
   const diffPolicyChannelRows = useMemo(
@@ -396,12 +411,30 @@ export function ReviewLabWorkspace({
         : [],
     [lineageSummary]
   );
+  const policyLineageBridge = useMemo(
+    () => (data?.policy_lineage_bridge ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const policyLineageBridgeRows = useMemo(
+    () =>
+      Array.isArray(policyLineageBridge.bridges)
+        ? (policyLineageBridge.bridges as Array<Record<string, unknown>>)
+        : [],
+    [policyLineageBridge]
+  );
   const diffLineageRows = useMemo(
     () =>
       Array.isArray(diffLineageDelta.tracked_role_gaps)
         ? (diffLineageDelta.tracked_role_gaps as Array<Record<string, unknown>>)
         : [],
     [diffLineageDelta]
+  );
+  const diffPolicyLineageRows = useMemo(
+    () =>
+      Array.isArray(diffPolicyLineageDelta.bridge_gaps)
+        ? (diffPolicyLineageDelta.bridge_gaps as Array<Record<string, unknown>>)
+        : [],
+    [diffPolicyLineageDelta]
   );
   const diffZoneTableRows = useMemo(
     () =>
@@ -906,6 +939,25 @@ export function ReviewLabWorkspace({
             )}
           </div>
         </div>
+      </AppPanel>
+
+      <AppPanel
+        title={isKo ? "정책-전이 브리지" : "Policy-to-Lineage Bridge"}
+        subtitle={isKo ? "정책 채널이 어떤 집단 전이로 이어졌는지" : "Which policy channels mapped into collective stance transitions"}
+        bodyClassName="space-y-3"
+      >
+        <CompactGroupTable
+          title={isKo ? "브리지 경로" : "Bridge Paths"}
+          emptyLabel={isKo ? "정책-전이 브리지가 아직 없습니다." : "No policy-to-lineage bridge yet."}
+          rows={policyLineageBridgeRows}
+          columns={[
+            { key: "event_name", label: isKo ? "이벤트" : "Event" },
+            { key: "dominant_channel", label: isKo ? "채널" : "Channel" },
+            { key: "role_label", label: isKo ? "역할" : "Role" },
+            { key: "to_stance", label: isKo ? "도착 입장" : "To" },
+            { key: "bridge_strength", label: isKo ? "강도" : "Strength", numeric: true },
+          ]}
+        />
       </AppPanel>
 
       <AppPanel
@@ -1438,6 +1490,18 @@ export function ReviewLabWorkspace({
                 ]}
               />
             </div>
+            <CompactGroupTable
+              title={isKo ? "세션 정책-전이 브리지" : "Session Policy-Lineage Bridge"}
+              emptyLabel={isKo ? "세션 정책-전이 브리지 데이터가 아직 없습니다." : "No session policy-lineage bridge data yet."}
+              rows={sessionPolicyBridgeRows}
+              columns={[
+                { key: "event_name", label: isKo ? "이벤트" : "Event" },
+                { key: "role_label", label: isKo ? "역할" : "Role" },
+                { key: "dominant_channel", label: isKo ? "채널" : "Channel" },
+                { key: "transition_count", label: isKo ? "전이 수" : "Transitions", numeric: true },
+                { key: "avg_bridge_strength", label: isKo ? "평균 강도" : "Avg Strength", numeric: true },
+              ]}
+            />
             <textarea
               className="app-input min-h-[84px]"
               value={sessionQuery}
@@ -2067,6 +2131,29 @@ export function ReviewLabWorkspace({
             </>
           ) : (
             <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 lineage 차이를 볼 수 있습니다." : "Generate a diff report to inspect lineage deltas."}</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title={isKo ? "정책-전이 브리지 차이" : "Policy-Lineage Bridge Delta"}
+          subtitle={isKo ? "어떤 정책 채널이 어떤 집단 전이를 더 강하게 만들었는지" : "Which policy channels produced stronger stance transitions"}
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <CompactGroupTable
+              title={isKo ? "브리지 격차" : "Bridge Gaps"}
+              emptyLabel={isKo ? "정책-전이 브리지 차이가 아직 없습니다." : "No policy-lineage bridge gaps yet."}
+              rows={diffPolicyLineageRows}
+              columns={[
+                { key: "event_name", label: isKo ? "이벤트" : "Event" },
+                { key: "dominant_channel", label: isKo ? "채널" : "Channel" },
+                { key: "role_label", label: isKo ? "역할" : "Role" },
+                { key: "transition_gap", label: isKo ? "전이Δ" : "TransitionΔ", numeric: true },
+                { key: "bridge_strength_gap", label: isKo ? "강도Δ" : "StrengthΔ", numeric: true },
+              ]}
+            />
+          ) : (
+            <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 정책-전이 브리지 차이를 볼 수 있습니다." : "Generate a diff report to inspect policy-lineage bridge deltas."}</p>
           )}
         </AppPanel>
 

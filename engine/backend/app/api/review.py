@@ -57,6 +57,7 @@ class ReviewSummaryResponse(BaseModel):
     emergent_dynamics: Dict[str, Any] = Field(default_factory=dict)
     mechanism_summary: Dict[str, Any] = Field(default_factory=dict)
     policy_mechanisms: Dict[str, Any] = Field(default_factory=dict)
+    policy_lineage_bridge: Dict[str, Any] = Field(default_factory=dict)
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
     top_z_movers: List[Dict[str, Any]] = Field(default_factory=list)
     policy_events: List[Dict[str, Any]] = Field(default_factory=list)
@@ -155,6 +156,7 @@ def get_review_summary(world_id: str):
         emergent_dynamics=dict(payload.get("emergent_dynamics") or {}),
         mechanism_summary=dict(payload.get("mechanism_summary") or {}),
         policy_mechanisms=dict(payload.get("policy_mechanisms") or {}),
+        policy_lineage_bridge=dict(payload.get("policy_lineage_bridge") or {}),
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
         top_z_movers=[dict(item) for item in list(payload.get("notable_agents") or [])],
         policy_events=[dict(item) for item in list(payload.get("key_events") or [])],
@@ -234,6 +236,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         "mechanism_delta": dict(diff_payload.get("mechanism_delta") or {}),
         "policy_mechanism_delta": dict(diff_payload.get("policy_mechanism_delta") or {}),
         "lineage_delta": dict(diff_payload.get("lineage_delta") or {}),
+        "policy_lineage_delta": dict(diff_payload.get("policy_lineage_delta") or {}),
         "group_table_delta": dict(diff_payload.get("group_table_delta") or {}),
         "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),
         "coalition_shift_delta": dict(diff_payload.get("coalition_shift_delta") or {}),

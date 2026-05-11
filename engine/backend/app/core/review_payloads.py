@@ -104,6 +104,13 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     group_analysis = _group_analysis_summary(belief_drift, zone_z_drift)
     group_tables = _group_tables_summary(belief_drift, zone_z_drift, notable_agents)
     lineage_summary = _lineage_summary(store=store, available_t=available_t, belief_drift=belief_drift)
+    policy_lineage_bridge = _policy_lineage_bridge(
+        key_events=key_events,
+        policy_mechanisms=policy_mechanisms,
+        lineage_summary=lineage_summary,
+        belief_drift=belief_drift,
+        zone_z_drift=zone_z_drift,
+    )
     emergent_dynamics = _emergent_dynamics_summary(
         timeline_points=timeline_points,
         belief_drift=belief_drift,
@@ -153,6 +160,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "mechanism_summary": mechanism_summary,
         "policy_impact": policy_impact,
         "policy_mechanisms": policy_mechanisms,
+        "policy_lineage_bridge": policy_lineage_bridge,
         "key_events": key_events,
         "notable_agents": notable_agents,
         "zone_z_drift": zone_z_drift,
@@ -265,6 +273,7 @@ def build_session_review_payload(
         "recommended_pairs": recommended_pairs[:5],
         "group_tables": _session_group_tables(world_payloads),
         "lineage_summary": _session_lineage_summary(world_payloads),
+        "policy_lineage_bridge": _session_policy_lineage_summary(world_payloads),
         "grounding": {
             "worlds": [
                 {
@@ -485,6 +494,7 @@ def build_review_diff_payload(
     )
     policy_mechanism_delta = _policy_mechanism_delta(base_payload=base_payload, target_payload=target_payload)
     lineage_delta = _lineage_delta(base_payload=base_payload, target_payload=target_payload)
+    policy_lineage_delta = _policy_lineage_delta(base_payload=base_payload, target_payload=target_payload)
 
     timeline_turning_point_delta = {
         "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
@@ -519,6 +529,7 @@ def build_review_diff_payload(
         "mechanism_delta": mechanism_delta,
         "policy_mechanism_delta": policy_mechanism_delta,
         "lineage_delta": lineage_delta,
+        "policy_lineage_delta": policy_lineage_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
             zone_z_delta=zone_z_delta,
@@ -895,6 +906,72 @@ def _policy_mechanism_summary(
     }
 
 
+def _policy_lineage_bridge(
+    *,
+    key_events: list[dict[str, Any]],
+    policy_mechanisms: dict[str, Any],
+    lineage_summary: dict[str, Any],
+    belief_drift: dict[str, Any],
+    zone_z_drift: list[dict[str, Any]],
+) -> dict[str, Any]:
+    tracked_by_role = {
+        str(item.get("role_label") or "group"): dict(item)
+        for item in list(lineage_summary.get("tracked_roles") or [])
+    }
+    groups_by_role = {
+        str(item.get("role_label") or "group"): dict(item)
+        for item in list(belief_drift.get("groups") or [])
+    }
+    zones_by_id = {
+        str(item.get("zone_id") or ""): dict(item)
+        for item in zone_z_drift
+    }
+    bridges: list[dict[str, Any]] = []
+    for event in key_events[:MAX_REVIEW_EVENTS]:
+        dominant_channel = str(event.get("dominant_channel") or "resource")
+        event_roles = [str(role) for role in list(event.get("target_roles") or []) if str(role).strip()]
+        if not event_roles:
+            event_roles = [str(item.get("group_label") or "") for item in list(policy_mechanisms.get("propagation_paths") or [])[:1] if str(item.get("group_label") or "").strip()]
+        event_zones = [str(zone) for zone in list(event.get("target_zones") or []) if str(zone).strip()]
+        for role_label in event_roles[:2]:
+            tracked = dict(tracked_by_role.get(role_label) or {})
+            group = dict(groups_by_role.get(role_label) or {})
+            zone = dict(zones_by_id.get(event_zones[0], {}) if event_zones else (zone_z_drift[0] if zone_z_drift else {}))
+            if not tracked and not group:
+                continue
+            bridge_strength = _clip01(
+                float((event.get("mechanism_channels") or {}).get(dominant_channel, 0.0)) * 0.35
+                + float(tracked.get("lineage_score", 0.0)) * 0.3
+                + float(group.get("sub_coalition_split_risk", 0.0)) * 0.2
+                + abs(float(zone.get("avg_z_delta", 0.0))) * 0.15
+            )
+            bridges.append(
+                {
+                    "event_name": str(event.get("name") or event.get("event_type") or "policy"),
+                    "dominant_channel": dominant_channel,
+                    "role_label": role_label,
+                    "from_stance": str(tracked.get("first_stance") or group.get("stance_before") or "n/a"),
+                    "to_stance": str(tracked.get("last_stance") or group.get("stance_after") or "n/a"),
+                    "transition_count": int(tracked.get("transition_count", 0)),
+                    "lineage_score": round(float(tracked.get("lineage_score", 0.0)), 3),
+                    "zone_label": str(zone.get("zone_label") or "zone"),
+                    "zone_z_delta": round(float(zone.get("avg_z_delta", 0.0)), 3),
+                    "bridge_strength": round(bridge_strength, 3),
+                }
+            )
+    bridges.sort(
+        key=lambda item: (
+            -float(item.get("bridge_strength", 0.0)),
+            -int(item.get("transition_count", 0)),
+            str(item.get("role_label") or ""),
+        )
+    )
+    return {
+        "bridges": bridges[:6],
+        "dominant_bridge": dict(bridges[0]) if bridges else {},
+    }
+
+
 def _policy_mechanism_delta(*, base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
     def _channel_index(payload: dict[str, Any]) -> dict[str, float]:
         rows = list((payload.get("policy_mechanisms") or {}).get("dominant_channels") or [])
@@ -916,6 +993,43 @@ def _policy_mechanism_delta(*, base_payload: dict[str, Any], target_payload: dic
         "channel_gaps": channel_gaps[:6],
         "base_paths": [dict(item) for item in list((base_payload.get("policy_mechanisms") or {}).get("propagation_paths") or [])[:4]],
         "target_paths": [dict(item) for item in list((target_payload.get("policy_mechanisms") or {}).get("propagation_paths") or [])[:4]],
+    }
+
+
+def _policy_lineage_delta(*, base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+    def _bridge_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        return {
+            f"{str(item.get('event_name') or '')}:{str(item.get('role_label') or '')}": dict(item)
+            for item in list((payload.get("policy_lineage_bridge") or {}).get("bridges") or [])
+        }
+
+    base_idx = _bridge_index(base_payload)
+    target_idx = _bridge_index(target_payload)
+    gaps: list[dict[str, Any]] = []
+    for key in sorted(set(base_idx.keys()) | set(target_idx.keys())):
+        base_row = dict(base_idx.get(key) or {})
+        target_row = dict(target_idx.get(key) or {})
+        gaps.append(
+            {
+                "event_name": str(target_row.get("event_name") or base_row.get("event_name") or "policy"),
+                "role_label": str(target_row.get("role_label") or base_row.get("role_label") or "group"),
+                "channel": str(target_row.get("dominant_channel") or base_row.get("dominant_channel") or "resource"),
+                "bridge_strength_gap": round(float(target_row.get("bridge_strength", 0.0)) - float(base_row.get("bridge_strength", 0.0)), 3),
+                "transition_gap": int(target_row.get("transition_count", 0)) - int(base_row.get("transition_count", 0)),
+                "lineage_score_gap": round(float(target_row.get("lineage_score", 0.0)) - float(base_row.get("lineage_score", 0.0)), 3),
+            }
+        )
+    gaps.sort(
+        key=lambda item: (
+            abs(float(item.get("bridge_strength_gap", 0.0))) + abs(float(item.get("lineage_score_gap", 0.0))),
+            str(item.get("role_label") or ""),
+        ),
+        reverse=True,
+    )
+    return {
+        "bridge_gaps": gaps[:6],
+        "base_dominant_bridge": dict((base_payload.get("policy_lineage_bridge") or {}).get("dominant_bridge") or {}),
+        "target_dominant_bridge": dict((target_payload.get("policy_lineage_bridge") or {}).get("dominant_bridge") or {}),
     }
 
 
@@ -1413,6 +1527,39 @@ def _session_lineage_summary(world_payloads: list[dict[str, Any]]) -> dict[str, 
         "regime_transition_counts": dict(sorted(regime_counts.items())),
         "tracked_roles": tracked_roles[:6],
         "ideology_migrations": migrations[:8],
+    }
+
+
+def _session_policy_lineage_summary(world_payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    bridge_buckets: dict[str, dict[str, float]] = defaultdict(
+        lambda: {"count": 0.0, "strength": 0.0, "transition": 0.0}
+    )
+    for payload in world_payloads:
+        for row in list((payload.get("policy_lineage_bridge") or {}).get("bridges") or []):
+            key = f"{str(row.get('event_name') or 'policy')}::{str(row.get('role_label') or 'group')}"
+            bucket = bridge_buckets[key]
+            bucket["count"] += 1.0
+            bucket["strength"] += float(row.get("bridge_strength", 0.0))
+            bucket["transition"] += float(row.get("transition_count", 0.0))
+    bridge_rows = [
+        {
+            "event_role": key,
+            "avg_bridge_strength": round(values["strength"] / max(values["count"], 1.0), 3),
+            "avg_transition_count": round(values["transition"] / max(values["count"], 1.0), 3),
+            "world_coverage": int(values["count"]),
+        }
+        for key, values in bridge_buckets.items()
+    ]
+    bridge_rows.sort(
+        key=lambda item: (
+            -float(item.get("avg_bridge_strength", 0.0)),
+            -float(item.get("avg_transition_count", 0.0)),
+            str(item.get("event_role") or ""),
+        )
+    )
+    return {
+        "bridge_rows": bridge_rows[:6],
+        "dominant_event_role": str((bridge_rows[0] if bridge_rows else {}).get("event_role") or ""),
     }
 
 

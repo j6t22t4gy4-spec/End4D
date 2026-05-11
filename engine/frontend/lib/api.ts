@@ -211,6 +211,7 @@ export type RuntimeLlmRuntime = {
   degraded_tasks: string[];
   fallback_reason_counts: Record<string, number>;
   recommended_actions: string[];
+  optimizer: Record<string, unknown>;
 };
 
 export type LocalRuntimeStatus = {
@@ -428,6 +429,7 @@ export type ReviewSummaryResponse = {
   lineage_summary: Record<string, unknown>;
   emergent_dynamics: Record<string, unknown>;
   policy_mechanisms: Record<string, unknown>;
+  policy_lineage_bridge: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;
   top_z_movers: Array<Record<string, unknown>>;
   policy_events: Array<Record<string, unknown>>;
@@ -494,6 +496,7 @@ export type SessionReviewResponse = {
   metrics: Record<string, unknown>;
   group_tables: Record<string, unknown>;
   lineage_summary: Record<string, unknown>;
+  policy_lineage_bridge: Record<string, unknown>;
   strongest_worlds: Array<Record<string, unknown>>;
   ranked_worlds: Array<Record<string, unknown>>;
   recommended_pairs: Array<Record<string, unknown>>;

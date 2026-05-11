@@ -135,6 +135,7 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     degraded_tasks: List[str] = Field(default_factory=list)
     fallback_reason_counts: Dict[str, int] = Field(default_factory=dict)
     recommended_actions: List[str] = Field(default_factory=list)
+    optimizer: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DataPackInstallRequest(BaseModel):
@@ -338,6 +339,7 @@ def get_local_runtime_status():
             degraded_tasks=list((status.get("llm_runtime") or {}).get("degraded_tasks") or []),
             fallback_reason_counts=dict((status.get("llm_runtime") or {}).get("fallback_reason_counts") or {}),
             recommended_actions=list((status.get("llm_runtime") or {}).get("recommended_actions") or []),
+            optimizer=dict((status.get("llm_runtime") or {}).get("optimizer") or {}),
         ),
         installed_pack_count=int(status.get("installed_pack_count") or 0),
         available_countries=list(status.get("available_countries") or []),

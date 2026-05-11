@@ -54,6 +54,7 @@ class SessionReviewResponse(BaseModel):
     metrics: Dict[str, Any] = Field(default_factory=dict)
     group_tables: Dict[str, Any] = Field(default_factory=dict)
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
+    policy_lineage_bridge: Dict[str, Any] = Field(default_factory=dict)
     strongest_worlds: List[Dict[str, Any]] = Field(default_factory=list)
     ranked_worlds: List[Dict[str, Any]] = Field(default_factory=list)
     recommended_pairs: List[Dict[str, Any]] = Field(default_factory=list)
@@ -162,6 +163,7 @@ def get_session_review(
         metrics=dict(payload.get("summary_stats") or {}),
         group_tables=dict(payload.get("group_tables") or {}),
         lineage_summary=dict(payload.get("lineage_summary") or {}),
+        policy_lineage_bridge=dict(payload.get("policy_lineage_bridge") or {}),
         strongest_worlds=[dict(item) for item in list(payload.get("strongest_worlds") or [])],
         ranked_worlds=[dict(item) for item in list(payload.get("ranked_worlds") or [])],
         recommended_pairs=[dict(item) for item in list(payload.get("recommended_pairs") or [])],

@@ -20,6 +20,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
             ("mechanism_summary", _compact(payload.get("mechanism_summary") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
+            ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("causal_chains", _compact_list(payload.get("causal_chains") or [], limit=4)),
             ("key_events", _compact_list(payload.get("key_events") or [], limit=5)),
             ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=5)),
@@ -53,6 +54,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
             ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
+            ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("notable_agent_delta", _compact(diff_payload.get("notable_agent_delta") or {})),
             ("coalition_shift_delta", _compact(diff_payload.get("coalition_shift_delta") or {})),
@@ -74,6 +76,7 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
             ("mechanism_summary", _compact(payload.get("mechanism_summary") or {})),
             ("policy_impact", _compact(payload.get("policy_impact") or {})),
+            ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("grounding", _compact(payload.get("grounding") or {})),
             ("annotation_candidates", _compact_list(payload.get("annotation_candidates") or [], limit=5)),
             ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:6])),
@@ -93,6 +96,7 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
             ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
+            ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
@@ -106,6 +110,7 @@ def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
             ("session_title", str(payload.get("title") or "Session")),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
+            ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
@@ -120,6 +125,7 @@ def build_session_review_query_prompt(payload: Mapping[str, Any], question: str)
             ("session_title", str(payload.get("title") or "Session")),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
+            ("policy_lineage_bridge", _compact(payload.get("policy_lineage_bridge") or {})),
             ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=5)),
             ("grounding", _compact(payload.get("grounding") or {})),
         ],
@@ -209,8 +215,10 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     lineage = dict(payload.get("lineage_summary") or {})
     group_analysis = dict(payload.get("group_analysis") or {})
     mechanism = dict(payload.get("mechanism_summary") or {})
+    policy_lineage = dict(payload.get("policy_lineage_bridge") or {})
     primary_chain = dict(mechanism.get("primary_chain") or {})
     causal_hypotheses = list(mechanism.get("causal_hypotheses") or [])
+    dominant_bridge = dict(policy_lineage.get("dominant_bridge") or {})
 
     headline = (
         f"{summary_stats.get('outcome', 'stable')} trajectory with "
@@ -259,6 +267,13 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             f"{top_lineage.get('last_stance', 'n/a')} 경로를 보이며 transition "
             f"{int(top_lineage.get('transition_count', 0))}회, lineage score {float(top_lineage.get('lineage_score', 0.0)):.2f}입니다."
         )
+    if dominant_bridge:
+        causal_analysis.append(
+            f"{dominant_bridge.get('event_name', 'event')}의 {dominant_bridge.get('dominant_channel', 'channel')} 채널이 "
+            f"{dominant_bridge.get('role_label', 'group')}의 {dominant_bridge.get('from_stance', 'n/a')} -> "
+            f"{dominant_bridge.get('to_stance', 'n/a')} 전이와 연결되며 bridge strength "
+            f"{float(dominant_bridge.get('bridge_strength', 0.0)):.2f}를 보였습니다."
+        )
     if causal_hypotheses:
         causal_analysis.append(str(dict(causal_hypotheses[0]).get("summary") or ""))
 
@@ -280,7 +295,7 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         "headline": headline,
         "executive_summary": executive_summary,
         "key_events": key_event_lines,
-        "causal_analysis": causal_analysis[:4],
+        "causal_analysis": causal_analysis[:6],
         "decision_implications": decision_implications[:4],
         "watch_items": watch_items,
         "citations": {
@@ -291,7 +306,7 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
             "causal_analysis.2": _citation_ids(payload, "groups", limit=1),
             "causal_analysis.3": _citation_ids(payload, "agents", limit=1),
             "causal_analysis.4": _citation_ids(payload, "groups", limit=1),
-            "causal_analysis.5": _citation_ids(payload, "groups", limit=1),
+            "causal_analysis.5": _citation_ids(payload, "events", limit=1) + _citation_ids(payload, "groups", limit=1),
             "decision_implications.0": _citation_ids(payload, "events", limit=1),
             "decision_implications.1": _citation_ids(payload, "groups", limit=1),
             "decision_implications.2": _citation_ids(payload, "zones", limit=1),
@@ -326,6 +341,7 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
     top_zone = dict(zone_deltas[0] if zone_deltas else {})
     mechanism_delta = dict(diff_payload.get("mechanism_delta") or {})
     lineage_delta = dict(diff_payload.get("lineage_delta") or {})
+    policy_lineage_delta = dict(diff_payload.get("policy_lineage_delta") or {})
     key_deltas = [
         (
             f"cell delta moved from {int(base_stats.get('cell_delta', 0)):+d} "
@@ -371,6 +387,13 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             f"{int(top_lineage_gap.get('transition_gap', 0)):+d}, lineage score gap "
             f"{float(top_lineage_gap.get('lineage_score_gap', 0.0)):+.2f}를 보였습니다."
         )
+    top_bridge_gap = dict((policy_lineage_delta.get("bridge_gaps") or [{}])[0] or {})
+    if top_bridge_gap:
+        causal.append(
+            f"{top_bridge_gap.get('event_name', 'event')}의 {top_bridge_gap.get('dominant_channel', 'channel')} 채널이 "
+            f"{top_bridge_gap.get('role_label', 'group')} 전이를 baseline보다 더 강하게 밀며 bridge gap "
+            f"{float(top_bridge_gap.get('bridge_strength_gap', 0.0)):+.2f}를 만들었습니다."
+        )
     return {
         "headline": f"{base_signal} baseline vs {target_signal} target",
         "executive_summary": (
@@ -394,6 +417,7 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             "causal_comparison.2": _citation_ids(diff_payload, "zones", limit=1),
             "causal_comparison.3": _citation_ids(diff_payload, "events", limit=1) + _citation_ids(diff_payload, "groups", limit=1),
             "causal_comparison.4": _citation_ids(diff_payload, "groups", limit=1),
+            "causal_comparison.5": _citation_ids(diff_payload, "events", limit=1) + _citation_ids(diff_payload, "groups", limit=1),
             "decision_implications.0": _citation_ids(diff_payload, "zones", limit=1),
             "decision_implications.1": _citation_ids(diff_payload, "groups", limit=1),
             "decision_implications.3": _citation_ids(diff_payload, "events", limit=1),
@@ -405,6 +429,7 @@ def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[st
     prompt = str(question or "").strip().lower()
     belief_drift = dict(payload.get("belief_drift") or {})
     lineage = dict(payload.get("lineage_summary") or {})
+    bridge = dict(payload.get("policy_lineage_bridge") or {})
     groups = list(belief_drift.get("groups") or [])
     zones = list(payload.get("zone_z_drift") or [])
     agents = list(payload.get("notable_agents") or [])
@@ -466,6 +491,7 @@ def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[st
             )
     elif "정책" in prompt or "policy" in prompt or "이벤트" in prompt:
         top_event = dict(events[0] if events else {})
+        dominant_bridge = dict(bridge.get("dominant_bridge") or {})
         if top_event:
             answer = (
                 f"가장 최근 주요 정책/이벤트는 {top_event.get('name', 'event')}이며 "
@@ -478,6 +504,10 @@ def heuristic_review_query(payload: Mapping[str, Any], question: str) -> dict[st
             evidence.append(
                 f"roles={', '.join(list(top_event.get('target_roles') or [])[:4]) or 'n/a'}, zones={', '.join(list(top_event.get('target_zones') or [])[:4]) or 'n/a'}"
             )
+            if dominant_bridge:
+                evidence.append(
+                    f"bridge={dominant_bridge.get('dominant_channel', 'channel')} -> {dominant_bridge.get('role_label', 'group')} {dominant_bridge.get('from_stance', 'n/a')}->{dominant_bridge.get('to_stance', 'n/a')}"
+                )
 
     if not evidence:
         highlights = list(payload.get("highlights") or [])
@@ -501,11 +531,13 @@ def heuristic_review_diff_query(diff_payload: Mapping[str, Any], question: str) 
     zones = list(diff_payload.get("zone_z_delta") or [])
     policy = dict(diff_payload.get("policy_impact_delta") or {})
     lineage_delta = dict(diff_payload.get("lineage_delta") or {})
+    policy_lineage_delta = dict(diff_payload.get("policy_lineage_delta") or {})
     top_group = dict(groups[0] if groups else {})
     top_zone = dict(zones[0] if zones else {})
     answer = "현재 diff evidence로는 질문에 대한 결정적 결론이 제한적입니다."
     evidence: list[str] = []
     if "정책" in prompt or "policy" in prompt:
+        top_bridge_gap = dict((policy_lineage_delta.get("bridge_gaps") or [{}])[0] or {})
         answer = (
             f"target 쪽 정책 영향은 role {', '.join(list(policy.get('target_only_roles') or [])[:3]) or 'n/a'}와 "
             f"zone {', '.join(list(policy.get('target_only_zones') or [])[:3]) or 'n/a'}에서 baseline과 가장 크게 갈렸습니다."
@@ -516,6 +548,10 @@ def heuristic_review_diff_query(diff_payload: Mapping[str, Any], question: str) 
         evidence.append(
             f"target_only_zones={', '.join(list(policy.get('target_only_zones') or [])[:4]) or 'n/a'}"
         )
+        if top_bridge_gap:
+            evidence.append(
+                f"bridge_gap={top_bridge_gap.get('dominant_channel', 'channel')}->{top_bridge_gap.get('role_label', 'group')} strength={float(top_bridge_gap.get('bridge_strength_gap', 0.0)):+.2f}"
+            )
     elif "집단" in prompt or "group" in prompt or "분열" in prompt or "fracture" in prompt:
         top_lineage_gap = dict((lineage_delta.get("tracked_role_gaps") or [{}])[0] or {})
         answer = (
@@ -570,7 +606,9 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
     top = dict(strongest[0] if strongest else {})
     stats = dict(payload.get("summary_stats") or {})
     lineage = dict(payload.get("lineage_summary") or {})
+    policy_lineage = dict(payload.get("policy_lineage_bridge") or {})
     objective_explanation = str(payload.get("objective_explanation") or "")
+    dominant_bridge = dict(policy_lineage.get("dominant_event_role") or {})
     return {
         "headline": f"Session with {int(stats.get('world_count', 0))} worlds and avg split risk {float(stats.get('avg_split_risk', 0.0)):.2f}",
         "executive_summary": (
@@ -584,6 +622,7 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
             f"가장 극적인 world는 {top.get('world_id', 'n/a')}이며 signal={top.get('overall_signal', 'diffuse')}입니다.",
             "세션 단위에서는 split risk와 cross-zone fracture가 높은 world를 우선 비교하는 것이 좋습니다.",
             f"lineage 관점에서는 {str(((lineage.get('tracked_roles') or [{}])[0] or {}).get('role_label') or '핵심 집단')}이 가장 자주 재편됩니다.",
+            f"정책-전이 관점에서는 {dominant_bridge.get('event_name', 'event')} / {dominant_bridge.get('role_label', 'group')} 조합이 가장 자주 반복됩니다.",
         ],
         "decision_implications": [
             "같은 세션 내 strongest world와 baseline world를 붙여보면 정책 민감도 차이가 더 잘 드러납니다.",
@@ -595,6 +634,7 @@ def heuristic_session_review(payload: Mapping[str, Any]) -> dict[str, Any]:
             "key_findings.0": _citation_ids(payload, "worlds", limit=1),
             "key_findings.1": _citation_ids(payload, "worlds", limit=1),
             "key_findings.2": _citation_ids(payload, "worlds", limit=1),
+            "key_findings.3": _citation_ids(payload, "worlds", limit=1),
             "decision_implications.0": _citation_ids(payload, "worlds", limit=1),
             "decision_implications.1": _citation_ids(payload, "worlds", limit=1),
             "decision_implications.2": _citation_ids(payload, "worlds", limit=1),

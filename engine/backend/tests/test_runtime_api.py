@@ -74,6 +74,7 @@ def test_runtime_local_status_lists_installed_packs(tmp_path, monkeypatch):
     assert int(data["llm_runtime"]["cycle_prompt_budget"]) >= 640
     assert "health" in data["llm_runtime"]
     assert "stability_score" in data["llm_runtime"]["health"]
+    assert "optimizer" in data["llm_runtime"]
     assert data["installed_pack_count"] == 1
     assert data["available_countries"] == ["KR"]
     assert data["packs"][0]["pack_id"] == "nemotron-kr-core"

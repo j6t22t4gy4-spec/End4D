@@ -108,6 +108,14 @@ export function RuntimeDock({
             label="Fallback Streak"
             value={String(runtime?.llm_runtime?.health?.fallback_streak ?? 0)}
           />
+          <InfoRow
+            label="Optimizer"
+            value={String(runtime?.llm_runtime?.optimizer?.mode ?? "balanced-throttle")}
+          />
+          <InfoRow
+            label="Provider Pressure"
+            value={String(runtime?.llm_runtime?.optimizer?.provider_error_pressure ?? 0)}
+          />
         </div>
         {runtime?.llm_runtime?.degraded_tasks?.length ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
