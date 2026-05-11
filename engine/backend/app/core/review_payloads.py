@@ -103,10 +103,12 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     policy_mechanisms = _policy_mechanism_summary(key_events, belief_drift["groups"], zone_z_drift)
     group_analysis = _group_analysis_summary(belief_drift, zone_z_drift)
     group_tables = _group_tables_summary(belief_drift, zone_z_drift, notable_agents)
+    lineage_summary = _lineage_summary(store=store, available_t=available_t, belief_drift=belief_drift)
     emergent_dynamics = _emergent_dynamics_summary(
         timeline_points=timeline_points,
         belief_drift=belief_drift,
         key_events=key_events,
+        lineage_summary=lineage_summary,
     )
     mechanism_summary = _mechanism_summary(
         summary_stats=summary_stats,
@@ -146,6 +148,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "belief_drift": belief_drift,
         "group_analysis": group_analysis,
         "group_tables": group_tables,
+        "lineage_summary": lineage_summary,
         "emergent_dynamics": emergent_dynamics,
         "mechanism_summary": mechanism_summary,
         "policy_impact": policy_impact,
@@ -480,6 +483,7 @@ def build_review_diff_payload(
         zone_z_delta=zone_z_delta,
     )
     policy_mechanism_delta = _policy_mechanism_delta(base_payload=base_payload, target_payload=target_payload)
+    lineage_delta = _lineage_delta(base_payload=base_payload, target_payload=target_payload)
 
     timeline_turning_point_delta = {
         "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
@@ -513,6 +517,7 @@ def build_review_diff_payload(
         "policy_impact_delta": policy_impact_delta,
         "mechanism_delta": mechanism_delta,
         "policy_mechanism_delta": policy_mechanism_delta,
+        "lineage_delta": lineage_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
             zone_z_delta=zone_z_delta,
@@ -1155,6 +1160,105 @@ def _group_tables_summary(
     }
 
 
+def _lineage_summary(
+    *,
+    store: Any,
+    available_t: list[float],
+    belief_drift: dict[str, Any],
+) -> dict[str, Any]:
+    sampled_t = [float(t) for t in _sample_numeric_points(available_t, limit=8)]
+    role_tracks: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for t in sampled_t:
+        snapshot = store.get(t)
+        if snapshot is None:
+            continue
+        group_snapshot = _group_snapshot(snapshot)
+        for group in group_snapshot.values():
+            role_label = str(group.get("role_label") or "group")
+            role_tracks[role_label].append(
+                {
+                    "t": float(t),
+                    "stance": str(group.get("stance") or "diffuse"),
+                    "cohesion": float(group.get("cohesion_score", 0.0)),
+                    "tension": float(group.get("tension_score", 0.0)),
+                    "polarization": float(group.get("polarization_score", 0.0)),
+                    "avg_z": float(group.get("avg_z", 0.0)),
+                }
+            )
+
+    drift_groups = {
+        str(item.get("role_label") or "group"): dict(item)
+        for item in list(belief_drift.get("groups") or [])
+    }
+    tracked_roles: list[dict[str, Any]] = []
+    ideology_migrations: list[dict[str, Any]] = []
+    for role_label, points in role_tracks.items():
+        if len(points) < 2:
+            continue
+        stances = [str(point.get("stance") or "diffuse") for point in points]
+        transition_count = sum(1 for idx in range(1, len(stances)) if stances[idx] != stances[idx - 1])
+        first_point = dict(points[0])
+        last_point = dict(points[-1])
+        drift = dict(drift_groups.get(role_label) or {})
+        lineage_score = _clip01(
+            min(1.0, transition_count / max(len(points) - 1, 1)) * 0.35
+            + abs(float(last_point.get("polarization", 0.0)) - float(first_point.get("polarization", 0.0))) * 0.25
+            + abs(float(last_point.get("avg_z", 0.0)) - float(first_point.get("avg_z", 0.0))) * 0.15
+            + float(drift.get("sub_coalition_split_risk", 0.0)) * 0.15
+            + float(drift.get("cross_zone_group_fracture", 0.0)) * 0.10
+        )
+        tracked_roles.append(
+            {
+                "role_label": role_label,
+                "first_stance": stances[0],
+                "last_stance": stances[-1],
+                "transition_count": transition_count,
+                "lineage_score": round(lineage_score, 3),
+                "polarization_delta": round(float(last_point.get("polarization", 0.0)) - float(first_point.get("polarization", 0.0)), 3),
+                "avg_z_delta": round(float(last_point.get("avg_z", 0.0)) - float(first_point.get("avg_z", 0.0)), 3),
+                "stance_path": stances,
+                "t_path": [float(point.get("t", 0.0)) for point in points],
+            }
+        )
+        if transition_count > 0 or stances[0] != stances[-1]:
+            ideology_migrations.append(
+                {
+                    "role_label": role_label,
+                    "from_stance": stances[0],
+                    "to_stance": stances[-1],
+                    "transition_count": transition_count,
+                    "lineage_score": round(lineage_score, 3),
+                }
+            )
+    tracked_roles.sort(
+        key=lambda item: (
+            -float(item.get("lineage_score", 0.0)),
+            -int(item.get("transition_count", 0)),
+            str(item.get("role_label") or ""),
+        )
+    )
+    ideology_migrations.sort(
+        key=lambda item: (
+            -int(item.get("transition_count", 0)),
+            -float(item.get("lineage_score", 0.0)),
+            str(item.get("role_label") or ""),
+        )
+    )
+    unstable_roles = sum(1 for item in tracked_roles if float(item.get("lineage_score", 0.0)) >= 0.55)
+    if unstable_roles >= 3:
+        regime_transition_signal = "volatile"
+    elif ideology_migrations:
+        regime_transition_signal = "realigning"
+    else:
+        regime_transition_signal = "stable"
+    return {
+        "sampled_t": sampled_t,
+        "tracked_roles": tracked_roles[:6],
+        "ideology_migrations": ideology_migrations[:6],
+        "regime_transition_signal": regime_transition_signal,
+    }
+
+
 def _group_table_delta(
     *,
     group_drift_deltas: list[dict[str, Any]],
@@ -1264,6 +1368,7 @@ def _emergent_dynamics_summary(
     timeline_points: list[dict[str, Any]],
     belief_drift: dict[str, Any],
     key_events: list[dict[str, Any]],
+    lineage_summary: dict[str, Any],
 ) -> dict[str, Any]:
     groups = list(belief_drift.get("groups") or [])
     avg_split = float(belief_drift.get("overall_split_risk", 0.0))
@@ -1301,7 +1406,9 @@ def _emergent_dynamics_summary(
         "split_risk": round(avg_split, 3),
         "block_divergence": round(avg_divergence, 3),
         "cross_zone_fracture": round(avg_fracture, 3),
+        "regime_transition_signal": str(lineage_summary.get("regime_transition_signal") or "stable"),
         "ideology_blocks": ideology_blocks,
+        "ideology_migrations": [dict(item) for item in list(lineage_summary.get("ideology_migrations") or [])[:5]],
         "worldview_curve": worldview_curve,
         "recent_events": [str(item.get("name") or item.get("event_type") or "event") for item in key_events[:4]],
         "transition_pressure": round(_clip01(avg_split * 0.4 + avg_divergence * 0.35 + avg_fracture * 0.25), 3),
@@ -1346,6 +1453,38 @@ def _mechanism_delta(
     }
 
 
+def _lineage_delta(*, base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+    def _tracked_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        return {
+            str(item.get("role_label") or "group"): dict(item)
+            for item in list((payload.get("lineage_summary") or {}).get("tracked_roles") or [])
+        }
+
+    base_idx = _tracked_index(base_payload)
+    target_idx = _tracked_index(target_payload)
+    role_rows: list[dict[str, Any]] = []
+    for role_label in sorted(set(base_idx.keys()) | set(target_idx.keys())):
+        base_row = dict(base_idx.get(role_label) or {})
+        target_row = dict(target_idx.get(role_label) or {})
+        role_rows.append(
+            {
+                "role_label": role_label,
+                "base_transition_count": int(base_row.get("transition_count", 0)),
+                "target_transition_count": int(target_row.get("transition_count", 0)),
+                "transition_gap": int(target_row.get("transition_count", 0)) - int(base_row.get("transition_count", 0)),
+                "lineage_score_gap": round(float(target_row.get("lineage_score", 0.0)) - float(base_row.get("lineage_score", 0.0)), 3),
+                "polarization_delta_gap": round(float(target_row.get("polarization_delta", 0.0)) - float(base_row.get("polarization_delta", 0.0)), 3),
+                "target_path": list(target_row.get("stance_path") or []),
+            }
+        )
+    role_rows.sort(key=lambda item: (abs(float(item["lineage_score_gap"])) + abs(float(item["transition_gap"])), str(item["role_label"])), reverse=True)
+    return {
+        "base_regime_transition": str((base_payload.get("lineage_summary") or {}).get("regime_transition_signal") or "stable"),
+        "target_regime_transition": str((target_payload.get("lineage_summary") or {}).get("regime_transition_signal") or "stable"),
+        "tracked_role_gaps": role_rows[:6],
+    }
+
+
 def _sample_timeline_points(
     timeline_points: list[dict[str, Any]],
     *,
@@ -1357,6 +1496,16 @@ def _sample_timeline_points(
     sampled = timeline_points[::step]
     if sampled[-1] is not timeline_points[-1]:
         sampled.append(timeline_points[-1])
+    return sampled[:limit]
+
+
+def _sample_numeric_points(points: list[float], *, limit: int) -> list[float]:
+    if len(points) <= limit:
+        return list(points)
+    step = max(1, len(points) // max(1, limit - 1))
+    sampled = points[::step]
+    if sampled[-1] != points[-1]:
+        sampled.append(points[-1])
     return sampled[:limit]
 
 

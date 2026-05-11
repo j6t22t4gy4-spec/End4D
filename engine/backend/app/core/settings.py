@@ -258,6 +258,32 @@ def get_llm_task_budgets() -> dict[str, int]:
     return {task: get_llm_task_budget(task) for task in LLM_TASK_NAMES}
 
 
+def get_llm_task_live_floor(task: str) -> int:
+    env_key = f"ORGANIC4D_LLM_MIN_LIVE_{str(task).upper()}"
+    raw = _get_runtime_llm_value(env_key, "")
+    if raw:
+        try:
+            return max(0, min(256, int(raw)))
+        except ValueError:
+            return 0
+    profile = get_llm_runtime_profile()
+    if profile != "llm-first":
+        return 0
+    defaults = {
+        "action": 24,
+        "thought": 16,
+        "worldview": 8,
+        "dialogue": 12,
+        "group_deliberation": 6,
+        "policy": 8,
+        "review_summary": 1,
+        "review_diff": 1,
+        "review_query": 1,
+        "review_diff_query": 1,
+    }
+    return int(defaults.get(str(task), 0))
+
+
 def get_llm_cycle_prompt_budget() -> int:
     """Total prompts the engine may send in one simulation cycle."""
     raw = _get_runtime_llm_value("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "160")

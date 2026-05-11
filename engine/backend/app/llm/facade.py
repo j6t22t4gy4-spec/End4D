@@ -16,6 +16,7 @@ from app.core.settings import (
     get_llm_provider,
     get_llm_runtime_profile,
     get_llm_strict_mode,
+    get_llm_task_live_floor,
     get_llm_task_budget,
     get_llm_task_budgets,
     get_llm_task_priorities,
@@ -440,6 +441,10 @@ class LLMFacade:
                 "group_deliberation_max_groups": get_group_deliberation_max_groups(),
                 "density_profile": get_llm_runtime_profile(),
                 "task_budgets": get_llm_task_budgets(),
+                "task_live_floors": {
+                    task: get_llm_task_live_floor(task)
+                    for task in get_llm_task_budgets().keys()
+                },
                 "task_priorities": get_llm_task_priorities(),
                 "scheduler": dict(self._scheduler),
                 "recent_runs": recent_runs,
@@ -539,6 +544,7 @@ class LLMFacade:
             priority = int(get_llm_task_priority(task))
             capped_by_task = min(requested, task_budget)
             adaptive_cap = self._adaptive_cap(
+                task=task,
                 priority=priority,
                 remaining=remaining_before,
                 total=total,
@@ -564,19 +570,20 @@ class LLMFacade:
                 "skipped_after_task": skipped_after_task,
             }
 
-    def _adaptive_cap(self, *, priority: int, remaining: int, total: int, requested: int) -> int:
+    def _adaptive_cap(self, *, task: str, priority: int, remaining: int, total: int, requested: int) -> int:
         if total <= 0:
             return 0
         ratio = remaining / total
         profile = get_llm_runtime_profile()
+        live_floor = min(requested, get_llm_task_live_floor(task))
         if profile == "llm-first":
             if ratio <= 0.04 and priority >= 4:
-                return 0
+                return min(requested, live_floor)
             if ratio <= 0.10 and priority >= 3:
-                return max(0, min(requested, 1))
+                return max(min(requested, 1), live_floor)
             if ratio <= 0.20 and priority >= 4:
-                return max(1, min(requested, requested // 2))
-            return requested
+                return max(max(1, min(requested, requested // 2)), live_floor)
+            return max(requested, live_floor)
         if profile == "rules-first":
             if ratio <= 0.12 and priority >= 2:
                 return 0

@@ -4,6 +4,7 @@ from app.core.settings import (
     get_group_deliberation_interval,
     get_llm_agent_sample_size,
     get_llm_cycle_prompt_budget,
+    get_llm_task_live_floor,
     get_thought_refresh_interval,
     get_worldview_memory_threshold,
     get_worldview_refresh_interval,
@@ -30,6 +31,8 @@ def test_llm_first_profile_uses_denser_cadence(monkeypatch):
     assert get_group_deliberation_interval() <= 12
     assert get_llm_agent_sample_size() >= 1024
     assert get_llm_cycle_prompt_budget() >= 1200
+    assert get_llm_task_live_floor("action") >= 1
+    assert get_llm_task_live_floor("thought") >= 1
 
 
 def test_rules_first_profile_uses_more_conservative_cadence(monkeypatch):
@@ -45,3 +48,4 @@ def test_rules_first_profile_uses_more_conservative_cadence(monkeypatch):
     assert get_worldview_refresh_interval() >= 48
     assert get_dialogue_interval() >= 30
     assert get_group_deliberation_interval() >= 60
+    assert get_llm_task_live_floor("action") == 0

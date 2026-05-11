@@ -265,6 +265,10 @@ export function ReviewLabWorkspace({
     () => (data?.group_analysis ?? {}) as Record<string, unknown>,
     [data]
   );
+  const lineageSummary = useMemo(
+    () => (data?.lineage_summary ?? {}) as Record<string, unknown>,
+    [data]
+  );
   const policyMechanisms = useMemo(
     () => (data?.policy_mechanisms ?? {}) as Record<string, unknown>,
     [data]
@@ -349,12 +353,37 @@ export function ReviewLabWorkspace({
     () => (diffMetrics.policy_mechanism_delta ?? {}) as Record<string, unknown>,
     [diffMetrics]
   );
+  const diffLineageDelta = useMemo(
+    () => (diffMetrics.lineage_delta ?? {}) as Record<string, unknown>,
+    [diffMetrics]
+  );
   const diffPolicyChannelRows = useMemo(
     () =>
       Array.isArray(diffPolicyMechanismDelta.channel_gaps)
         ? (diffPolicyMechanismDelta.channel_gaps as Array<Record<string, unknown>>)
         : [],
     [diffPolicyMechanismDelta]
+  );
+  const lineageTrackedRows = useMemo(
+    () =>
+      Array.isArray(lineageSummary.tracked_roles)
+        ? (lineageSummary.tracked_roles as Array<Record<string, unknown>>)
+        : [],
+    [lineageSummary]
+  );
+  const ideologyMigrationRows = useMemo(
+    () =>
+      Array.isArray(lineageSummary.ideology_migrations)
+        ? (lineageSummary.ideology_migrations as Array<Record<string, unknown>>)
+        : [],
+    [lineageSummary]
+  );
+  const diffLineageRows = useMemo(
+    () =>
+      Array.isArray(diffLineageDelta.tracked_role_gaps)
+        ? (diffLineageDelta.tracked_role_gaps as Array<Record<string, unknown>>)
+        : [],
+    [diffLineageDelta]
   );
   const diffZoneTableRows = useMemo(
     () =>
@@ -738,6 +767,20 @@ export function ReviewLabWorkspace({
           <MetricCard label={isKo ? "블록 분기" : "Block Divergence"} value={String(emergentDynamics.block_divergence ?? "0")} />
           <MetricCard label={isKo ? "혁명 위험" : "Revolution Risk"} value={String(emergentDynamics.revolution_risk ?? "low")} />
         </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <MetricCard
+            label={isKo ? "체제 전이" : "Regime Transition"}
+            value={String(lineageSummary.regime_transition_signal ?? emergentDynamics.regime_transition_signal ?? "stable")}
+          />
+          <MetricCard
+            label={isKo ? "이념 이동 수" : "Ideology Migrations"}
+            value={String(ideologyMigrationRows.length)}
+          />
+          <MetricCard
+            label={isKo ? "추적 역할 수" : "Tracked Roles"}
+            value={String(lineageTrackedRows.length)}
+          />
+        </div>
         <div className="grid gap-3 xl:grid-cols-3">
           <div className="session-thread-card">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Contested Groups</p>
@@ -769,6 +812,39 @@ export function ReviewLabWorkspace({
               ))}
             </div>
           </div>
+        </div>
+      </AppPanel>
+
+      <AppPanel
+        title={isKo ? "Lineage / Ideology Transition" : "Lineage / Ideology Transition"}
+        subtitle={isKo ? "역할 집단이 시간에 따라 어떻게 재편되고 이동했는지" : "How role groups realigned and migrated over time"}
+        bodyClassName="space-y-3"
+      >
+        <div className="grid gap-4 xl:grid-cols-2">
+          <CompactGroupTable
+            title={isKo ? "추적 역할" : "Tracked Roles"}
+            emptyLabel={isKo ? "아직 lineage 추적 데이터가 없습니다." : "No lineage tracking data yet."}
+            rows={lineageTrackedRows}
+            columns={[
+              { key: "role_label", label: isKo ? "역할" : "Role" },
+              { key: "first_stance", label: isKo ? "시작" : "Start" },
+              { key: "last_stance", label: isKo ? "현재" : "Current" },
+              { key: "transition_count", label: isKo ? "전이 수" : "Transitions", numeric: true },
+              { key: "lineage_score", label: isKo ? "점수" : "Score", numeric: true },
+            ]}
+          />
+          <CompactGroupTable
+            title={isKo ? "이념 이동" : "Ideology Migrations"}
+            emptyLabel={isKo ? "뚜렷한 이념 이동이 아직 없습니다." : "No strong ideology migrations yet."}
+            rows={ideologyMigrationRows}
+            columns={[
+              { key: "role_label", label: isKo ? "역할" : "Role" },
+              { key: "from_stance", label: isKo ? "이전" : "From" },
+              { key: "to_stance", label: isKo ? "이후" : "To" },
+              { key: "transition_count", label: isKo ? "전이 수" : "Transitions", numeric: true },
+              { key: "lineage_score", label: isKo ? "점수" : "Score", numeric: true },
+            ]}
+          />
         </div>
       </AppPanel>
 
@@ -1901,6 +1977,40 @@ export function ReviewLabWorkspace({
             </div>
           ) : (
             <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 그룹 테이블 차이를 볼 수 있습니다." : "Generate a diff report to inspect group-table deltas."}</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title={isKo ? "Lineage Delta" : "Lineage Delta"}
+          subtitle={isKo ? "baseline과 target 사이 이념 전이 차이" : "Ideology transition differences between baseline and target"}
+          bodyClassName="space-y-3"
+        >
+          {diff ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-2">
+                <MetricCard
+                  label={isKo ? "기준 체제 전이" : "Base Regime"}
+                  value={String(diffLineageDelta.base_regime_transition ?? "stable")}
+                />
+                <MetricCard
+                  label={isKo ? "대상 체제 전이" : "Target Regime"}
+                  value={String(diffLineageDelta.target_regime_transition ?? "stable")}
+                />
+              </div>
+              <CompactGroupTable
+                title={isKo ? "전이 격차" : "Transition Gaps"}
+                emptyLabel={isKo ? "lineage diff가 아직 없습니다." : "No lineage diff yet."}
+                rows={diffLineageRows}
+                columns={[
+                  { key: "role_label", label: isKo ? "역할" : "Role" },
+                  { key: "transition_gap", label: isKo ? "전이Δ" : "TransitionΔ", numeric: true },
+                  { key: "lineage_score_gap", label: isKo ? "점수Δ" : "ScoreΔ", numeric: true },
+                  { key: "polarization_delta_gap", label: isKo ? "분극Δ" : "PolarizationΔ", numeric: true },
+                ]}
+              />
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">{isKo ? "diff report 생성 후 lineage 차이를 볼 수 있습니다." : "Generate a diff report to inspect lineage deltas."}</p>
           )}
         </AppPanel>
 

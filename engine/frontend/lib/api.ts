@@ -198,6 +198,7 @@ export type RuntimeLlmRuntime = {
   dialogue_max_pairs: number;
   group_deliberation_max_groups: number;
   task_budgets: Record<string, number>;
+  task_live_floors: Record<string, number>;
   task_priorities: Record<string, number>;
   scheduler: Record<string, unknown>;
   health: RuntimeLlmHealth;
@@ -421,6 +422,7 @@ export type ReviewSummaryResponse = {
   stance_groups: Array<Record<string, unknown>>;
   group_analysis: Record<string, unknown>;
   group_tables: Record<string, unknown>;
+  lineage_summary: Record<string, unknown>;
   emergent_dynamics: Record<string, unknown>;
   policy_mechanisms: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;
