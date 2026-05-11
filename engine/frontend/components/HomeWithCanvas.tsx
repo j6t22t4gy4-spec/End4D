@@ -9,6 +9,7 @@ import {
   listSessions,
   renameSession,
   syncDataPacks,
+  type ReviewSummaryResponse,
   type LocalRuntimeStatus,
   type SessionSummary,
 } from "@/lib/api";
@@ -37,6 +38,7 @@ export default function HomeWithCanvas() {
   const [activeView, setActiveView] = useState<WorkbenchView>("overview");
   const [selectedWorldId, setSelectedWorldId] = useState<string | null>(null);
   const [selectedSnapshotT, setSelectedSnapshotT] = useState<number | null>(null);
+  const [pendingInjectPreset, setPendingInjectPreset] = useState<ReviewSummaryResponse["inject_presets"][number] | null>(null);
   const [dataPackSyncing, setDataPackSyncing] = useState(false);
   const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
   const [dockWidth, setDockWidth] = useState(380);
@@ -194,6 +196,8 @@ export default function HomeWithCanvas() {
                   setSelectedWorldId(worldId);
                   setSelectedSnapshotT(null);
                 }}
+                initialInjectPreset={pendingInjectPreset}
+                onConsumeInitialInjectPreset={() => setPendingInjectPreset(null)}
               />
             ) : null}
 
@@ -206,6 +210,12 @@ export default function HomeWithCanvas() {
                 onOpenWorldAt={(worldId, t) => {
                   setSelectedWorldId(worldId);
                   setSelectedSnapshotT(typeof t === "number" ? t : null);
+                  setActiveView("simulation");
+                }}
+                onQueueInjectPreset={(worldId, preset) => {
+                  setSelectedWorldId(worldId);
+                  setSelectedSnapshotT(typeof preset.t === "number" ? Number(preset.t) : null);
+                  setPendingInjectPreset(preset);
                   setActiveView("simulation");
                 }}
               />

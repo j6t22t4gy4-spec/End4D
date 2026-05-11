@@ -90,14 +90,18 @@ export default function GodView({
   locale = "ko",
   initialWorldId = null,
   initialT = null,
+  initialInjectPreset = null,
   onOpenWorkbenchView,
   onWorldSelected,
+  onConsumeInitialInjectPreset,
 }: {
   locale?: UiLocale;
   initialWorldId?: string | null;
   initialT?: number | null;
+  initialInjectPreset?: ReviewSummaryResponse["inject_presets"][number] | null;
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
   onWorldSelected?: (worldId: string) => void;
+  onConsumeInitialInjectPreset?: () => void;
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
@@ -575,6 +579,22 @@ export default function GodView({
       })),
     [reviewSummary]
   );
+
+
+  useEffect(() => {
+    if (!initialInjectPreset) return;
+    setReviewInjectPreset({
+      label: String(initialInjectPreset.label ?? (isKo ? "리뷰 프리셋" : "Review preset")),
+      t: Number(initialInjectPreset.t ?? 0),
+      eventType: String(initialInjectPreset.event_type ?? "policy_shift"),
+      payload: (initialInjectPreset.payload ?? {}) as Record<string, unknown>,
+    });
+    if (typeof initialInjectPreset.t === "number") {
+      setCurrentT(Number(initialInjectPreset.t));
+      setStage("run");
+    }
+    onConsumeInitialInjectPreset?.();
+  }, [initialInjectPreset, isKo, onConsumeInitialInjectPreset]);
 
   useEffect(() => {
     if (!initialWorldId) return;

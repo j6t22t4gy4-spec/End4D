@@ -506,6 +506,18 @@ export type SessionReviewQueryResponse = {
   review_meta: Record<string, unknown>;
 };
 
+export type RestoreWorldResponse = {
+  source_world_id: string;
+  world_id: string;
+  restored_t: number;
+  resumed: boolean;
+  final_t: number;
+  cell_count: number;
+  snapshots_cleared: number;
+  config_version: string;
+  comparison_meta: Record<string, unknown>;
+};
+
 export async function createWorld(body: {
   prompt: string;
   session_id?: string | null;
@@ -522,6 +534,29 @@ export async function createWorld(body: {
   });
   if (!res.ok) throw new Error(`createWorld: ${res.status}`);
   return res.json();
+}
+
+export async function restoreWorldState(
+  worldId: string,
+  body: {
+    t: number;
+    target?: "current" | "fork";
+    resume?: boolean;
+  }
+): Promise<RestoreWorldResponse> {
+  const res = await fetch(`${API_BASE}/worlds/${worldId}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      t: body.t,
+      target: body.target ?? "fork",
+      resume: body.resume ?? true,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return (await res.json()) as RestoreWorldResponse;
 }
 
 export async function getWorld(worldId: string): Promise<WorldMeta> {

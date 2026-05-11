@@ -11,6 +11,7 @@ import {
   postSessionReviewQuery,
   postReviewDiffQuery,
   postReviewQuery,
+  restoreWorldState,
   type AgentInterviewResponse,
   type ReviewDiffResponse,
   type ReviewDiffQueryResponse,
@@ -30,6 +31,10 @@ type ReviewLabWorkspaceProps = {
   sessions: SessionSummary[];
   onOpenView: (view: WorkbenchView) => void;
   onOpenWorldAt: (worldId: string, t?: number | null) => void;
+  onQueueInjectPreset: (
+    worldId: string,
+    preset: ReviewSummaryResponse["inject_presets"][number]
+  ) => void;
 };
 
 export function ReviewLabWorkspace({
@@ -38,6 +43,7 @@ export function ReviewLabWorkspace({
   sessions,
   onOpenView,
   onOpenWorldAt,
+  onQueueInjectPreset,
 }: ReviewLabWorkspaceProps) {
   const isKo = locale === "ko";
   const [data, setData] = useState<ReviewSummaryResponse | null>(null);
@@ -75,6 +81,9 @@ export function ReviewLabWorkspace({
   const [zoneFilter, setZoneFilter] = useState("all");
   const [countryFilter, setCountryFilter] = useState("all");
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
+  const [branchLoading, setBranchLoading] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [branchStatus, setBranchStatus] = useState<string | null>(null);
 
   const currentSession = sessions.find((session) =>
     session.worlds.some((item) => item.world_id === worldId)
@@ -263,6 +272,34 @@ export function ReviewLabWorkspace({
         : [],
     [data]
   );
+
+  const createBranchAt = async (targetWorldId: string, t: number | null | undefined, sourceLabel: string) => {
+    if (!targetWorldId || typeof t !== "number") return null;
+    setBranchLoading(true);
+    setBranchError(null);
+    setBranchStatus(null);
+    try {
+      const restored = await restoreWorldState(targetWorldId, {
+        t,
+        target: "fork",
+        resume: true,
+      });
+      const nextWorldId = restored.world_id ?? targetWorldId;
+      const nextT = typeof restored.restored_t === "number" ? restored.restored_t : t;
+      setBranchStatus(
+        isKo
+          ? `${sourceLabel} 기준 브랜치를 생성했습니다. (${nextWorldId.slice(0, 8)})`
+          : `Created a branch from ${sourceLabel}. (${nextWorldId.slice(0, 8)})`
+      );
+      onOpenWorldAt(nextWorldId, nextT);
+      return { worldId: nextWorldId, t: nextT };
+    } catch (reason) {
+      setBranchError(reason instanceof Error ? reason.message : isKo ? "브랜치 생성 실패" : "Failed to create branch");
+      return null;
+    } finally {
+      setBranchLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!worldId) {
@@ -515,6 +552,18 @@ export function ReviewLabWorkspace({
         </div>
       </AppPanel>
 
+      {branchLoading || branchError || branchStatus ? (
+        <AppPanel
+          title={isKo ? "리뷰 액션 상태" : "Review Action Status"}
+          subtitle={isKo ? "리뷰에서 시뮬레이션 액션으로 이어지는 상태" : "Status while moving from review into simulation"}
+          bodyClassName="space-y-2"
+        >
+          {branchLoading ? <p className="text-sm text-slate-500">{isKo ? "브랜치를 생성하는 중…" : "Creating branch…"}</p> : null}
+          {branchStatus ? <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{branchStatus}</p> : null}
+          {branchError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{branchError}</p> : null}
+        </AppPanel>
+      ) : null}
+
       <AppPanel
         title={isKo ? "리뷰 질의" : "Review Query"}
         subtitle={isKo ? "시뮬레이션 분석가에게 묻기" : "Ask the simulation analyst"}
@@ -662,7 +711,14 @@ export function ReviewLabWorkspace({
                       className="app-button app-button--ghost"
                       onClick={() => onOpenWorldAt(String(chain.world_id ?? worldId), Number(chain.t ?? 0) || null)}
                     >
-                      Open Causal Chain
+                      {isKo ? "원인 사슬 열기" : "Open Causal Chain"}
+                    </button>
+                    <button
+                      type="button"
+                      className="app-button app-button--secondary"
+                      onClick={() => createBranchAt(String(chain.world_id ?? worldId), Number(chain.t ?? 0), String(chain.label ?? "causal chain"))}
+                    >
+                      {isKo ? "여기서 브랜치 만들기" : "Branch from Here"}
                     </button>
                   </div>
                 </div>
@@ -693,14 +749,70 @@ export function ReviewLabWorkspace({
                     className="app-button app-button--ghost"
                     onClick={() => onOpenWorldAt(String(item.world_id ?? worldId), Number(item.t ?? 0) || null)}
                   >
-                    Open in Simulation
+                    {isKo ? "시뮬레이션에서 열기" : "Open in Simulation"}
                   </button>
+                  {typeof item.t === "number" ? (
+                    <button
+                      type="button"
+                      className="app-button app-button--secondary"
+                      onClick={() => createBranchAt(String(item.world_id ?? worldId), Number(item.t ?? 0), String(item.label ?? "next action"))}
+                    >
+                      {isKo ? "액션 브랜치 만들기" : "Create Branch"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="text-sm text-slate-500">리뷰 기반 후속 액션이 아직 생성되지 않았습니다.</p>
+        )}
+      </AppPanel>
+
+      <AppPanel
+        title={isKo ? "리뷰 기반 주입 프리셋" : "Review Injection Presets"}
+        subtitle={isKo ? "리뷰 인사이트를 바로 다음 실험 주입으로 넘깁니다" : "Send review insights directly into the next simulation injection"}
+        bodyClassName="space-y-3"
+      >
+        {Array.isArray(data?.inject_presets) && data.inject_presets.length ? (
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {data.inject_presets.map((preset, index) => (
+              <div key={`${index}-${String(preset.label ?? "preset")}`} className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">{String(preset.label ?? (isKo ? "주입 프리셋" : "Inject preset"))}</p>
+                  <span className="session-thread-card__meta">t={Number(preset.t ?? 0).toFixed(0)}</span>
+                </div>
+                <p className="session-thread-card__prompt">{String(preset.description ?? "")}</p>
+                <div className="session-thread-card__actions">
+                  <button
+                    type="button"
+                    className="app-button app-button--ghost"
+                    onClick={() => onQueueInjectPreset(String(preset.world_id ?? worldId), preset)}
+                  >
+                    {isKo ? "주입 패널로 보내기" : "Send to Injection Panel"}
+                  </button>
+                  <button
+                    type="button"
+                    className="app-button app-button--secondary"
+                    onClick={async () => {
+                      const sourceWorldId = String(preset.world_id ?? worldId);
+                      const t = Number(preset.t ?? 0);
+                      const branch = await createBranchAt(sourceWorldId, t, String(preset.label ?? "inject preset"));
+                      onQueueInjectPreset(branch?.worldId ?? sourceWorldId, {
+                        ...preset,
+                        t: branch?.t ?? preset.t,
+                        world_id: branch?.worldId ?? sourceWorldId,
+                      });
+                    }}
+                  >
+                    {isKo ? "브랜치 후 주입 준비" : "Branch + Queue Injection"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">{isKo ? "리뷰에서 생성된 주입 프리셋이 아직 없습니다." : "No review-driven injection presets are available yet."}</p>
         )}
       </AppPanel>
 
