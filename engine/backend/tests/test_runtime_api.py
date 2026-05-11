@@ -173,6 +173,67 @@ def test_runtime_data_pack_install_validate_and_pin(tmp_path, monkeypatch):
     assert pack["validation"]["row_count_estimate"] >= 1
 
 
+def test_runtime_data_pack_verify_reports_schema_health(tmp_path, monkeypatch):
+    llm_facade.reset_stats()
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    src = source_dir / "kr_persona.jsonl"
+    src.write_text(
+        json.dumps(
+            {
+                "uuid": "p1",
+                "country": "KR",
+                "professional_persona": "부산의 항만 물류 관리자",
+                "occupation": "물류 관리자",
+                "province": "Busan",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = {
+        "schema_version": "data-packs/v2",
+        "packs": [
+            {
+                "pack_id": "nemotron-kr-core",
+                "kind": "persona",
+                "country": "KR",
+                "version": "draft",
+                "relative_path": "kr/pack.jsonl",
+                "license": "CC BY 4.0",
+                "dataset_id": "nvidia/Nemotron-Personas-Korea",
+            }
+        ],
+    }
+    manifest_path = packs_dir / "packs.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("ORGANIC4D_DATA_CACHE_DIR", str(packs_dir))
+    monkeypatch.setenv("ORGANIC4D_DATA_PACK_MANIFEST", str(manifest_path))
+
+    install = client.post(
+        "/runtime/data-packs/install",
+        json={
+            "pack_id": "nemotron-kr-core",
+            "source_path": str(src),
+            "version": "2026.05",
+            "dataset_id": "nvidia/Nemotron-Personas-Korea",
+        },
+    )
+    assert install.status_code == 200
+
+    verify = client.post("/runtime/data-packs/verify", json={"pack_id": "nemotron-kr-core"})
+    assert verify.status_code == 200
+    payload = verify.json()
+    assert payload["pack_id"] == "nemotron-kr-core"
+    assert payload["exists"] is True
+    assert payload["schema_health"] in {"healthy", "partial"}
+    assert "persona_text" in payload["field_coverage"]
+    assert payload["ready_for_genesis"] is True
+
+
 def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     llm_facade.reset_stats()
 

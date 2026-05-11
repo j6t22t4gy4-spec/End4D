@@ -282,6 +282,22 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "citations",
         ),
     ),
+    "agent_interview_diff": PromptSpec(
+        task="agent_interview_diff",
+        version="agent-interview-diff-v1",
+        output_mode="json",
+        description="Compare the same persona agent across two states and answer in first person about what changed.",
+        system_prompt=(
+            "You are comparing two states of the same simulation agent and answering in first person about what changed. "
+            "Use only the provided persona, memory, and state evidence. Return compact JSON only."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "confidence_notes",
+            "citations",
+        ),
+    ),
 }
 
 

@@ -154,6 +154,36 @@ def build_agent_interview_prompt(
     )
 
 
+def build_agent_interview_diff_prompt(
+    *,
+    current_cell: Cell,
+    base_cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> str:
+    return build_prompt_contract(
+        "agent_interview_diff",
+        [
+            ("question", question),
+            ("identity", f"role={current_cell.role_label or current_cell.role_key or 'agent'}; country={current_cell.persona_country or 'unknown'}"),
+            ("persona", str(current_cell.persona_text or "")[:420]),
+            ("base_state", _compact({
+                "energy": f"{base_cell.energy:.2f}",
+                "z": f"{base_cell.z:.2f}",
+                "strategy_summary": dict(base_cell.action_state).get("strategy_summary", ""),
+                "memory": " | ".join(str(item.get('summary') or '') for item in list(base_cell.short_memory or [])[-2:] + list(base_cell.long_memory or [])[-2:] if str(item.get('summary') or '').strip())[:320],
+            })),
+            ("current_state", _compact({
+                "energy": f"{current_cell.energy:.2f}",
+                "z": f"{current_cell.z:.2f}",
+                "strategy_summary": dict(current_cell.action_state).get("strategy_summary", ""),
+                "memory": " | ".join(str(item.get('summary') or '') for item in list(current_cell.short_memory or [])[-2:] + list(current_cell.long_memory or [])[-2:] if str(item.get('summary') or '').strip())[:320],
+            })),
+            ("grounding", _compact(grounding)),
+        ],
+    )
+
+
 def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
     summary_stats = dict(payload.get("summary_stats") or {})
     belief_drift = dict(payload.get("belief_drift") or {})
@@ -210,8 +240,12 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         "watch_items": watch_items,
         "citations": {
             "headline": _citation_ids(payload, "groups", limit=1),
-            "causal_analysis": _citation_ids(payload, "events", limit=2),
-            "decision_implications": _citation_ids(payload, "zones", limit=1),
+            "key_events.0": _citation_ids(payload, "events", limit=1),
+            "causal_analysis.0": _citation_ids(payload, "events", limit=1),
+            "causal_analysis.1": _citation_ids(payload, "groups", limit=1),
+            "causal_analysis.2": _citation_ids(payload, "agents", limit=1),
+            "decision_implications.0": _citation_ids(payload, "events", limit=1),
+            "decision_implications.1": _citation_ids(payload, "groups", limit=1),
         },
     }
 
@@ -285,9 +319,14 @@ def heuristic_review_diff(diff_payload: Mapping[str, Any]) -> dict[str, Any]:
             "가장 큰 zone z gap이 난 지역은 정책 커뮤니케이션 방식도 별도로 점검해야 합니다.",
         ],
         "citations": {
-            "key_deltas": _citation_ids(diff_payload, "groups", limit=1),
-            "causal_comparison": _citation_ids(diff_payload, "events", limit=2),
-            "decision_implications": _citation_ids(diff_payload, "zones", limit=1),
+            "key_deltas.0": _citation_ids(diff_payload, "groups", limit=1),
+            "key_deltas.1": _citation_ids(diff_payload, "groups", limit=1),
+            "key_deltas.2": _citation_ids(diff_payload, "zones", limit=1),
+            "causal_comparison.0": _citation_ids(diff_payload, "events", limit=1),
+            "causal_comparison.1": _citation_ids(diff_payload, "groups", limit=1),
+            "causal_comparison.2": _citation_ids(diff_payload, "zones", limit=1),
+            "decision_implications.0": _citation_ids(diff_payload, "zones", limit=1),
+            "decision_implications.1": _citation_ids(diff_payload, "groups", limit=1),
         },
     }
 
@@ -524,6 +563,33 @@ def heuristic_agent_interview(
     }
 
 
+def heuristic_agent_interview_diff(
+    *,
+    current_cell: Cell,
+    base_cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> dict[str, Any]:
+    role = str(current_cell.role_label or current_cell.role_key or "agent")
+    energy_delta = float(current_cell.energy) - float(base_cell.energy)
+    z_delta = float(current_cell.z) - float(base_cell.z)
+    current_strategy = str(dict(current_cell.action_state).get("strategy_summary") or "current_state")
+    base_strategy = str(dict(base_cell.action_state).get("strategy_summary") or "prior_state")
+    answer = (
+        f"저는 {role}로서 이전보다 에너지가 {energy_delta:+.2f}, social elevation이 {z_delta:+.2f} 변했습니다. "
+        f"예전에는 {base_strategy} 쪽에 가까웠다면 지금은 {current_strategy} 쪽으로 이동했습니다."
+    )
+    return {
+        "answer": answer,
+        "evidence": [
+            f"energy_delta={energy_delta:+.2f}, z_delta={z_delta:+.2f}",
+            f"strategy {base_strategy} -> {current_strategy}",
+        ],
+        "confidence_notes": ["heuristic agent diff used"],
+        "citations": _citation_ids(grounding, "base_state", limit=1) + _citation_ids(grounding, "current_state", limit=1),
+    }
+
+
 def parse_review_summary(raw_text: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     text = str(raw_text or "").strip()
     if not text:
@@ -679,6 +745,45 @@ def parse_agent_interview(
     except json.JSONDecodeError:
         return heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
     fallback = heuristic_agent_interview(cell=cell, question=question, grounding=grounding)
+    return {
+        "answer": str(parsed.get("answer") or fallback["answer"]),
+        "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),
+        "confidence_notes": _string_list(parsed.get("confidence_notes"), fallback["confidence_notes"]),
+        "citations": _string_list(parsed.get("citations"), fallback["citations"]),
+    }
+
+
+def parse_agent_interview_diff(
+    raw_text: str,
+    *,
+    current_cell: Cell,
+    base_cell: Cell,
+    question: str,
+    grounding: Mapping[str, Any],
+) -> dict[str, Any]:
+    text = str(raw_text or "").strip()
+    if not text:
+        return heuristic_agent_interview_diff(
+            current_cell=current_cell,
+            base_cell=base_cell,
+            question=question,
+            grounding=grounding,
+        )
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return heuristic_agent_interview_diff(
+            current_cell=current_cell,
+            base_cell=base_cell,
+            question=question,
+            grounding=grounding,
+        )
+    fallback = heuristic_agent_interview_diff(
+        current_cell=current_cell,
+        base_cell=base_cell,
+        question=question,
+        grounding=grounding,
+    )
     return {
         "answer": str(parsed.get("answer") or fallback["answer"]),
         "evidence": _string_list(parsed.get("evidence"), fallback["evidence"]),

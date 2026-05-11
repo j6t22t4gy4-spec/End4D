@@ -26,6 +26,7 @@ from app.llm.prompt_engineering import (
 from app.llm.prompt_registry import get_prompt_meta, get_prompt_version
 from app.llm.review import (
     build_agent_interview_prompt,
+    build_agent_interview_diff_prompt,
     build_review_diff_prompt,
     build_review_diff_query_prompt,
     build_review_query_prompt,
@@ -38,12 +39,14 @@ from app.llm.review import (
     heuristic_review_query,
     heuristic_review_summary,
     heuristic_agent_interview,
+    heuristic_agent_interview_diff,
     heuristic_session_review,
     heuristic_session_review_query,
     parse_review_diff,
     parse_review_diff_query,
     parse_review_query,
     parse_agent_interview,
+    parse_agent_interview_diff,
     parse_review_summary,
     parse_session_review,
     parse_session_review_query,
@@ -297,6 +300,49 @@ class LLMFacade:
             "mode": "heuristic" if used_heuristic else "llm",
             "prompt_version": get_prompt_version("agent_interview"),
             "prompt_meta": get_prompt_meta("agent_interview"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
+        }
+
+    def interview_agent_diff(
+        self,
+        *,
+        current_cell: Cell,
+        base_cell: Cell,
+        question: str,
+        grounding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        prompt = build_agent_interview_diff_prompt(
+            current_cell=current_cell,
+            base_cell=base_cell,
+            question=question,
+            grounding=grounding,
+        )
+        texts, meta = self._run_task_with_meta([prompt], task="agent_interview_diff")
+        text = str(texts[0] if texts else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        answer = (
+            heuristic_agent_interview_diff(
+                current_cell=current_cell,
+                base_cell=base_cell,
+                question=question,
+                grounding=grounding,
+            )
+            if used_heuristic
+            else parse_agent_interview_diff(
+                text,
+                current_cell=current_cell,
+                base_cell=base_cell,
+                question=question,
+                grounding=grounding,
+            )
+        )
+        return {
+            "query": answer,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("agent_interview_diff"),
+            "prompt_meta": get_prompt_meta("agent_interview_diff"),
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),

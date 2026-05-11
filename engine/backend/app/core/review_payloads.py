@@ -99,7 +99,12 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_session_review_payload(session: dict[str, Any], world_entries: list[dict[str, Any]]) -> dict[str, Any]:
+def build_session_review_payload(
+    session: dict[str, Any],
+    world_entries: list[dict[str, Any]],
+    *,
+    objective: str = "balanced",
+) -> dict[str, Any]:
     world_payloads = [build_world_review_payload(entry) for entry in world_entries if entry]
     if not world_payloads:
         raise ValueError("No completed worlds available for session review")
@@ -108,15 +113,7 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
     split_risks = [float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0) for payload in world_payloads]
     block_divergences = [float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0) for payload in world_payloads]
     fracture_scores = [float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0) for payload in world_payloads]
-    ranked = sorted(
-        world_payloads,
-        key=lambda payload: (
-            float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0)
-            + float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0)
-            + float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0)
-        ),
-        reverse=True,
-    )
+    ranked = sorted(world_payloads, key=lambda payload: _session_objective_score(payload, objective), reverse=True)
     ranked_worlds = [
         {
             "world_id": str(payload.get("world_id") or ""),
@@ -126,9 +123,7 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
             "block_divergence": float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0),
             "cross_zone_fracture": float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
             "score": round(
-                float((payload.get("belief_drift") or {}).get("overall_split_risk") or 0.0)
-                + float((payload.get("belief_drift") or {}).get("overall_block_divergence") or 0.0)
-                + float((payload.get("belief_drift") or {}).get("overall_cross_zone_fracture") or 0.0),
+                _session_objective_score(payload, objective),
                 3,
             ),
         }
@@ -155,6 +150,7 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
         "world_ids": [str(payload.get("world_id") or "") for payload in world_payloads],
         "summary_stats": {
             "world_count": len(world_payloads),
+            "objective": objective,
             "dominant_outcomes": outcomes[:6],
             "dominant_signals": signals[:6],
             "avg_split_risk": round(float(np.mean(split_risks)) if split_risks else 0.0, 3),
@@ -176,6 +172,24 @@ def build_session_review_payload(session: dict[str, Any], world_entries: list[di
             ]
         },
     }
+
+
+def _session_objective_score(payload: dict[str, Any], objective: str) -> float:
+    belief = dict(payload.get("belief_drift") or {})
+    split_risk = float(belief.get("overall_split_risk") or 0.0)
+    block_divergence = float(belief.get("overall_block_divergence") or 0.0)
+    cross_zone_fracture = float(belief.get("overall_cross_zone_fracture") or 0.0)
+    cohesion = float(belief.get("overall_cohesion") or 0.0)
+    polarization = float(belief.get("overall_polarization") or 0.0)
+    if objective == "stability":
+        return (1.0 - split_risk) * 0.45 + (1.0 - cross_zone_fracture) * 0.35 + cohesion * 0.2
+    if objective == "cohesion":
+        return cohesion * 0.55 + (1.0 - polarization) * 0.2 + (1.0 - split_risk) * 0.25
+    if objective == "polarization":
+        return polarization * 0.6 + block_divergence * 0.25 + split_risk * 0.15
+    if objective == "fracture":
+        return cross_zone_fracture * 0.5 + split_risk * 0.3 + block_divergence * 0.2
+    return split_risk + block_divergence + cross_zone_fracture
 
 
 def build_review_diff_payload(

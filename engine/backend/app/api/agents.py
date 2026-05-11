@@ -67,6 +67,12 @@ class AgentInterviewRequest(BaseModel):
     t: Optional[float] = None
 
 
+class AgentInterviewDiffRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    t: Optional[float] = None
+    base_t: Optional[float] = None
+
+
 class AgentInterviewGroundingItem(BaseModel):
     anchor_id: str
     kind: str
@@ -117,6 +123,39 @@ def _find_cell(snapshot, cell_id: str) -> Cell:
         if cell.cell_id == cell_id:
             return cell
     raise HTTPException(status_code=404, detail="Agent not found")
+
+
+def _find_diff_base_cell(snapshot, current_cell: Cell) -> Cell:
+    for cell in snapshot.cells:
+        if cell.cell_id == current_cell.cell_id:
+            return cell
+
+    current_persona = str(current_cell.persona_id or "").strip()
+    if current_persona:
+        for cell in snapshot.cells:
+            if str(cell.persona_id or "").strip() == current_persona:
+                return cell
+
+    current_role = str(current_cell.role_key or "").strip()
+    current_country = str(current_cell.persona_country or "").strip()
+    zone_id = str(current_cell.zone_id or "").strip()
+    scored: list[tuple[float, Cell]] = []
+    for cell in snapshot.cells:
+        score = 0.0
+        if str(cell.role_key or "").strip() == current_role:
+            score += 3.0
+        if str(cell.persona_country or "").strip() == current_country and current_country:
+            score += 2.0
+        if str(cell.zone_id or "").strip() == zone_id and zone_id:
+            score += 1.0
+        if str(cell.role_label or "").strip() == str(current_cell.role_label or "").strip():
+            score += 0.5
+        if score > 0:
+            scored.append((score, cell))
+    if scored:
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return scored[0][1]
+    raise HTTPException(status_code=404, detail="Comparable baseline agent not found")
 
 
 def _build_agent_grounding(*, world_id: str, cell: Cell) -> dict[str, list[dict[str, Any]]]:
@@ -178,6 +217,46 @@ def _build_agent_grounding(*, world_id: str, cell: Cell) -> dict[str, list[dict[
                 "world_id": world_id,
             }
         ] if persona_attrs else [],
+    }
+
+
+def _build_agent_diff_grounding(*, world_id: str, current_cell: Cell, base_cell: Cell) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "base_state": [
+            {
+                "anchor_id": f"base-state:{world_id}:{base_cell.cell_id}",
+                "kind": "base_state",
+                "label": str(base_cell.role_label or base_cell.role_key or "agent"),
+                "reason": f"energy={base_cell.energy:.2f}; z={base_cell.z:.2f}",
+                "t": float(base_cell.t),
+                "cell_id": base_cell.cell_id,
+                "world_id": world_id,
+            }
+        ],
+        "current_state": [
+            {
+                "anchor_id": f"current-state:{world_id}:{current_cell.cell_id}",
+                "kind": "current_state",
+                "label": str(current_cell.role_label or current_cell.role_key or "agent"),
+                "reason": f"energy={current_cell.energy:.2f}; z={current_cell.z:.2f}",
+                "t": float(current_cell.t),
+                "cell_id": current_cell.cell_id,
+                "world_id": world_id,
+            }
+        ],
+        "memories": [
+            {
+                "anchor_id": f"memory-diff:{world_id}:{current_cell.cell_id}:{idx}",
+                "kind": "memory",
+                "label": str(item.get("summary") or "memory"),
+                "reason": str(item.get("summary") or ""),
+                "t": float(item.get("t")) if item.get("t") is not None else None,
+                "cell_id": current_cell.cell_id,
+                "world_id": world_id,
+            }
+            for idx, item in enumerate((list(base_cell.long_memory or [])[-2:] + list(current_cell.long_memory or [])[-2:]), start=1)
+            if str(item.get("summary") or "").strip()
+        ],
     }
 
 
@@ -403,6 +482,50 @@ def post_agent_interview(world_id: str, cell_id: str, body: AgentInterviewReques
                 "provider": str(interview.get("provider") or ""),
                 "model": str(interview.get("model") or ""),
                 "fallback_reason": str(interview.get("fallback_reason") or ""),
+            }
+        },
+    )
+
+
+@router.post("/{world_id}/agents/{cell_id}/diff-query", response_model=AgentInterviewResponse)
+def post_agent_interview_diff(world_id: str, cell_id: str, body: AgentInterviewDiffRequest):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    current_snap = _resolve_snapshot(entry, body.t)
+    base_snap = _resolve_snapshot(entry, body.base_t)
+    current_cell = _find_cell(current_snap, cell_id)
+    base_cell = _find_diff_base_cell(base_snap, current_cell)
+    grounding = _build_agent_diff_grounding(world_id=world_id, current_cell=current_cell, base_cell=base_cell)
+    interview = llm_facade.interview_agent_diff(
+        current_cell=current_cell,
+        base_cell=base_cell,
+        question=body.question,
+        grounding=grounding,
+    )
+    answer = dict(interview.get("query") or {})
+    return AgentInterviewResponse(
+        world_id=world_id,
+        cell_id=cell_id,
+        question=body.question,
+        answer=str(answer.get("answer") or ""),
+        evidence=[str(item) for item in list(answer.get("evidence") or [])],
+        confidence_notes=[str(item) for item in list(answer.get("confidence_notes") or [])],
+        mode=str(interview.get("mode") or "heuristic"),
+        grounding={
+            key: [AgentInterviewGroundingItem(**dict(item)) for item in list(values or [])]
+            for key, values in grounding.items()
+        },
+        citations=_citation_items(grounding, [str(item) for item in list(answer.get("citations") or [])]),
+        interview_meta={
+            "query": {
+                "prompt_version": str(interview.get("prompt_version") or ""),
+                "prompt_meta": dict(interview.get("prompt_meta") or {}),
+                "provider": str(interview.get("provider") or ""),
+                "model": str(interview.get("model") or ""),
+                "fallback_reason": str(interview.get("fallback_reason") or ""),
+                "base_t": float(base_cell.t),
+                "current_t": float(current_cell.t),
             }
         },
     )

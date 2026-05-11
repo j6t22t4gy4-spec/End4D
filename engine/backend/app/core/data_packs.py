@@ -23,6 +23,18 @@ from app.llm.facade import llm_facade
 
 DATA_PACK_MANIFEST = "packs.json"
 DATA_PACK_SCHEMA_VERSION = "data-packs/v2"
+PERSONA_TEXT_FIELDS = (
+    "professional_persona",
+    "persona",
+    "concise_persona",
+    "summary_persona",
+    "sports_persona",
+    "arts_persona",
+    "travel_persona",
+    "culinary_persona",
+    "family_persona",
+)
+ROLE_FIELDS = ("occupation", "role", "job", "profession")
 
 KNOWN_DATA_PACKS = [
     {
@@ -174,6 +186,80 @@ def validate_data_pack(pack_id: str) -> Dict[str, Any]:
     }
 
 
+def verify_data_pack(pack_id: str) -> Dict[str, Any]:
+    manifest = load_data_pack_manifest()
+    pack = _find_pack(manifest, pack_id)
+    if pack is None:
+        raise ValueError(f"Unknown pack_id: {pack_id}")
+    rel = str(pack.get("relative_path") or "").strip()
+    path = ((_manifest_path().parent / rel).resolve() if rel else None)
+    exists = bool(path and path.exists() and path.is_file())
+    report = {
+        "pack_id": pack_id,
+        "exists": exists,
+        "dataset_id": str(pack.get("dataset_id") or ""),
+        "version": str(pack.get("version") or ""),
+        "verified_at": _now_iso(),
+        "schema_health": "missing",
+        "field_coverage": {},
+        "sample_roles": [],
+        "sample_regions": [],
+        "country_consistency": 0.0,
+        "ready_for_genesis": False,
+    }
+    if not exists or path is None:
+        pack["verification"] = report
+        _write_manifest(manifest)
+        return report
+
+    rows = []
+    for idx, row in enumerate(_iter_json_like_rows(path)):
+        rows.append(row)
+        if idx >= 299:
+            break
+    if not rows:
+        report["schema_health"] = "empty"
+    else:
+        required = {
+            "persona_text": PERSONA_TEXT_FIELDS,
+            "role": ROLE_FIELDS,
+            "country": ("country",),
+        }
+        coverage = {}
+        for label, fields in required.items():
+            hits = 0
+            for row in rows:
+                if any(str(row.get(field) or "").strip() for field in fields):
+                    hits += 1
+            coverage[label] = round(hits / max(1, len(rows)), 3)
+        countries = [str(row.get("country") or "").strip().upper() for row in rows if str(row.get("country") or "").strip()]
+        pack_country = str(pack.get("country") or "").strip().upper()
+        if countries:
+            same = sum(1 for country in countries if country == pack_country)
+            report["country_consistency"] = round(same / len(countries), 3)
+        roles = [
+            str(next((row.get(field) for field in ROLE_FIELDS if str(row.get(field) or "").strip()), "")).strip()
+            for row in rows
+        ]
+        regions = [
+            str(row.get("province") or row.get("district") or "").strip()
+            for row in rows
+            if str(row.get("province") or row.get("district") or "").strip()
+        ]
+        report["schema_health"] = "healthy" if min(coverage.values()) >= 0.6 else "partial"
+        report["field_coverage"] = coverage
+        report["sample_roles"] = _top_terms(roles, limit=5)
+        report["sample_regions"] = _top_terms(regions, limit=5)
+        report["ready_for_genesis"] = (
+            report["schema_health"] == "healthy"
+            and report["country_consistency"] >= 0.5
+            and coverage.get("persona_text", 0.0) >= 0.6
+        )
+    pack["verification"] = report
+    _write_manifest(manifest)
+    return report
+
+
 def pin_data_pack(pack_id: str, *, pinned_version: str) -> Dict[str, Any]:
     manifest = load_data_pack_manifest()
     pack = _find_pack(manifest, pack_id)
@@ -254,6 +340,7 @@ def list_installed_data_packs() -> List[Dict[str, Any]]:
                 "pinned_version": str(raw.get("pinned_version") or ""),
                 "validated_at": str(raw.get("validated_at") or ""),
                 "validation": dict(raw.get("validation") or {}),
+                "verification": dict(raw.get("verification") or {}),
                 "description": str(raw.get("description") or ""),
             }
         )
@@ -326,6 +413,48 @@ def _sample_row_count(path: Path, limit: int = 5000) -> int:
                 if count >= limit:
                     break
     return count
+
+
+def _iter_json_like_rows(path: Path):
+    suffix = path.suffix.lower()
+    if suffix == ".jsonl":
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line:
+                    try:
+                        row = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(row, dict):
+                        yield row
+        return
+    if suffix == ".json":
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+        if isinstance(data, list):
+            for row in data:
+                if isinstance(row, dict):
+                    yield row
+        return
+    with path.open("r", encoding="utf-8") as handle:
+        header = handle.readline().strip().split(",")
+        for line in handle:
+            cols = line.rstrip("\n").split(",")
+            if cols and header:
+                yield {header[idx]: cols[idx] if idx < len(cols) else "" for idx in range(len(header))}
+
+
+def _top_terms(values: list[str], *, limit: int) -> list[str]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value).strip()
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return [item[0] for item in ranked[:limit]]
 
 
 def _now_iso() -> str:

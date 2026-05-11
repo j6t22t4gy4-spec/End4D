@@ -148,3 +148,39 @@ def test_agent_interview_returns_persona_grounded_answer():
     assert payload["answer"]
     assert isinstance(payload["grounding"], dict)
     assert isinstance(payload["citations"], list)
+
+
+def test_agent_interview_diff_returns_change_grounded_answer():
+    created = client.post(
+        "/worlds",
+        json={"prompt": "정책 주입 전후 개별 에이전트 입장 변화를 비교한다"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+    assert client.post(f"/worlds/{world_id}/run", json={"stream": False}).status_code == 200
+
+    snapshot = client.get(f"/worlds/{world_id}/snapshots")
+    assert snapshot.status_code == 200
+    times = snapshot.json()["available_t"]
+    assert len(times) >= 2
+    latest_t = times[-1]
+    latest = client.get(f"/worlds/{world_id}/snapshots", params={"t": latest_t})
+    assert latest.status_code == 200
+    cell_id = latest.json()["cells"][0]["cell_id"]
+
+    response = client.post(
+        f"/worlds/{world_id}/agents/{cell_id}/diff-query",
+        json={
+            "question": "초기와 비교해서 지금 왜 달라졌어?",
+            "base_t": times[0],
+            "t": latest_t,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["world_id"] == world_id
+    assert payload["cell_id"] == cell_id
+    assert payload["answer"]
+    assert isinstance(payload["grounding"], dict)
+    assert isinstance(payload["citations"], list)
+    assert payload["interview_meta"]["query"]["base_t"] == times[0]

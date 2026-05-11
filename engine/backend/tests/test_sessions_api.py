@@ -112,3 +112,24 @@ def test_session_review_query_returns_answer_and_grounding():
     assert isinstance(payload["evidence"], list)
     assert "grounding" in payload
     assert isinstance(payload["citations"], list)
+
+
+def test_session_review_accepts_objective_query():
+    created = client.post("/sessions", json={"title": "Objective ranking thread"})
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    for prompt in [
+        "응집도가 높은 정책 실험을 본다",
+        "분열과 지역 fracture가 큰 정책 실험을 본다",
+    ]:
+        world_res = client.post("/worlds", json={"prompt": prompt, "session_id": session_id})
+        assert world_res.status_code == 200
+        world_id = world_res.json()["world_id"]
+        assert client.post(f"/worlds/{world_id}/run", json={"stream": False}).status_code == 200
+
+    review = client.get(f"/sessions/{session_id}/review", params={"objective": "cohesion"})
+    assert review.status_code == 200
+    payload = review.json()
+    assert payload["metrics"]["objective"] == "cohesion"
+    assert isinstance(payload["ranked_worlds"], list)

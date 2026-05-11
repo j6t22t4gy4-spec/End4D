@@ -12,6 +12,7 @@ from app.core.data_packs import (
     pin_data_pack,
     sync_data_pack_manifest,
     validate_data_pack,
+    verify_data_pack,
 )
 
 router = APIRouter(prefix="/runtime", tags=["runtime"])
@@ -34,6 +35,7 @@ class RuntimePackResponse(BaseModel):
     pinned_version: str = ""
     validated_at: str = ""
     validation: Dict[str, Any] = Field(default_factory=dict)
+    verification: Dict[str, Any] = Field(default_factory=dict)
     description: str = ""
 
 
@@ -114,6 +116,24 @@ class DataPackPinResponse(BaseModel):
     pinned: bool = False
     pinned_version: str = ""
     pinned_at: str = ""
+
+
+class DataPackVerifyRequest(BaseModel):
+    pack_id: str
+
+
+class DataPackVerifyResponse(BaseModel):
+    pack_id: str
+    exists: bool = False
+    dataset_id: str = ""
+    version: str = ""
+    verified_at: str = ""
+    schema_health: str = ""
+    field_coverage: Dict[str, Any] = Field(default_factory=dict)
+    sample_roles: List[str] = Field(default_factory=list)
+    sample_regions: List[str] = Field(default_factory=list)
+    country_consistency: float = 0.0
+    ready_for_genesis: bool = False
 
 
 class LocalRuntimeStatusResponse(BaseModel):
@@ -197,3 +217,8 @@ def validate_runtime_data_pack(req: DataPackValidateRequest):
 @router.post("/data-packs/pin", response_model=DataPackPinResponse)
 def pin_runtime_data_pack(req: DataPackPinRequest):
     return DataPackPinResponse(**pin_data_pack(req.pack_id, pinned_version=req.pinned_version))
+
+
+@router.post("/data-packs/verify", response_model=DataPackVerifyResponse)
+def verify_runtime_data_pack(req: DataPackVerifyRequest):
+    return DataPackVerifyResponse(**verify_data_pack(req.pack_id))

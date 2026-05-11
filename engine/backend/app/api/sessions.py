@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.review_payloads import build_session_review_payload
@@ -126,13 +126,16 @@ def get_session(session_id: str):
 
 
 @router.get("/{session_id}/review", response_model=SessionReviewResponse)
-def get_session_review(session_id: str):
+def get_session_review(
+    session_id: str,
+    objective: str = Query("balanced", description="balanced | stability | cohesion | polarization | fracture"),
+):
     session = session_store.get(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     world_entries = [world_store.get(wid) for wid in list(session.get("world_ids") or [])]
     try:
-        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None])
+        payload = build_session_review_payload(session, [entry for entry in world_entries if entry is not None], objective=objective)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     summary = llm_facade.summarize_session_review(payload)

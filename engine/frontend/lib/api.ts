@@ -116,6 +116,12 @@ export type RuntimePack = {
   source_url: string;
   dataset_id: string;
   updated_at: string;
+  installed_at?: string;
+  pinned?: boolean;
+  pinned_version?: string;
+  validated_at?: string;
+  validation?: Record<string, unknown>;
+  verification?: Record<string, unknown>;
   description: string;
 };
 
@@ -136,6 +142,20 @@ export type LocalRuntimeStatus = {
   installed_pack_count: number;
   available_countries: string[];
   packs: RuntimePack[];
+};
+
+export type DataPackVerifyResponse = {
+  pack_id: string;
+  exists: boolean;
+  dataset_id: string;
+  version: string;
+  verified_at: string;
+  schema_health: string;
+  field_coverage: Record<string, unknown>;
+  sample_roles: string[];
+  sample_regions: string[];
+  country_consistency: number;
+  ready_for_genesis: boolean;
 };
 
 export type AgentGroupSummary = {
@@ -403,6 +423,23 @@ export async function postAgentInterview(
   return res.json();
 }
 
+export async function postAgentInterviewDiff(
+  worldId: string,
+  cellId: string,
+  body: { question: string; t?: number | null; base_t?: number | null }
+): Promise<AgentInterviewResponse> {
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/${encodeURIComponent(cellId)}/diff-query`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) throw new Error(`postAgentInterviewDiff: ${res.status}`);
+  return res.json();
+}
+
 export async function getLocalRuntimeStatus(): Promise<LocalRuntimeStatus> {
   const res = await fetch(`${API_BASE}/runtime/local-status`);
   if (!res.ok) throw new Error(`getLocalRuntimeStatus: ${res.status}`);
@@ -422,6 +459,18 @@ export async function syncDataPacks(remoteUrl = ""): Promise<{
     body: JSON.stringify({ remote_url: remoteUrl }),
   });
   if (!res.ok) throw new Error(`syncDataPacks: ${res.status}`);
+  return res.json();
+}
+
+export async function verifyRuntimeDataPack(
+  packId: string
+): Promise<DataPackVerifyResponse> {
+  const res = await fetch(`${API_BASE}/runtime/data-packs/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pack_id: packId }),
+  });
+  if (!res.ok) throw new Error(`verifyRuntimeDataPack: ${res.status}`);
   return res.json();
 }
 
@@ -455,9 +504,11 @@ export async function deleteSession(
 }
 
 export async function getSessionReview(
-  sessionId: string
+  sessionId: string,
+  objective = "balanced"
 ): Promise<SessionReviewResponse> {
-  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/review`);
+  const q = new URLSearchParams({ objective });
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/review?${q}`);
   if (!res.ok) throw new Error(`getSessionReview: ${res.status}`);
   return res.json();
 }

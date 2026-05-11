@@ -52,6 +52,7 @@ export function ReviewLabWorkspace({
   const [sessionReview, setSessionReview] = useState<SessionReviewResponse | null>(null);
   const [sessionReviewLoading, setSessionReviewLoading] = useState(false);
   const [sessionReviewError, setSessionReviewError] = useState<string | null>(null);
+  const [sessionObjective, setSessionObjective] = useState("balanced");
   const [sessionQuery, setSessionQuery] = useState("이 세션에서 가장 불안정했던 정책 실험은 무엇이고 왜 그런가?");
   const [sessionQueryData, setSessionQueryData] = useState<SessionReviewQueryResponse | null>(null);
   const [sessionQueryLoading, setSessionQueryLoading] = useState(false);
@@ -209,7 +210,7 @@ export function ReviewLabWorkspace({
     let cancelled = false;
     setSessionReviewLoading(true);
     setSessionReviewError(null);
-    getSessionReview(sessionId)
+    getSessionReview(sessionId, sessionObjective)
       .then((payload) => {
         if (!cancelled) setSessionReview(payload);
       })
@@ -222,7 +223,7 @@ export function ReviewLabWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [currentSession?.session_id]);
+  }, [currentSession?.session_id, sessionObjective]);
 
   useEffect(() => {
     setSessionQueryData(null);
@@ -453,6 +454,22 @@ export function ReviewLabWorkspace({
               <MetricCard label="Worlds" value={String(sessionReview.metrics.world_count ?? 0)} />
               <MetricCard label="Avg Split Risk" value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
               <MetricCard label="Avg Fracture" value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
+            </div>
+            <div className="grid gap-2 md:grid-cols-[200px_minmax(0,1fr)]">
+              <select
+                className="app-input"
+                value={sessionObjective}
+                onChange={(event) => setSessionObjective(event.target.value)}
+              >
+                <option value="balanced">Balanced</option>
+                <option value="stability">Stability</option>
+                <option value="cohesion">Cohesion</option>
+                <option value="polarization">Polarization</option>
+                <option value="fracture">Fracture</option>
+              </select>
+              <p className="text-sm text-slate-500">
+                현재 세션 랭킹 기준: <span className="font-medium text-slate-700">{String(sessionReview.metrics.objective ?? sessionObjective)}</span>
+              </p>
             </div>
             {sessionReview.ranked_worlds?.length ? (
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -713,7 +730,7 @@ export function ReviewLabWorkspace({
               {diff.key_deltas.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
-                  {targetTurningPoints[index] || diff?.citations?.key_deltas?.[0]?.group_id ? (
+                  {targetTurningPoints[index] || getSectionCitation(diff?.citations, "key_deltas", index)?.group_id ? (
                     <div className="session-thread-card__actions">
                       {targetTurningPoints[index] ? (
                         <button
@@ -729,11 +746,16 @@ export function ReviewLabWorkspace({
                           Open Target Shift
                         </button>
                       ) : null}
-                      {diff?.citations?.key_deltas?.[0]?.t != null ? (
+                      {getSectionCitation(diff?.citations, "key_deltas", index)?.t != null ? (
                         <button
                           type="button"
                           className="app-button app-button--ghost"
-                          onClick={() => onOpenWorldAt(diff.target_world_id, diff.citations.key_deltas[0].t ?? null)}
+                          onClick={() =>
+                            onOpenWorldAt(
+                              getSectionCitation(diff?.citations, "key_deltas", index)?.world_id ?? diff.target_world_id,
+                              getSectionCitation(diff?.citations, "key_deltas", index)?.t ?? null
+                            )
+                          }
                         >
                           Citation
                         </button>
@@ -1179,6 +1201,17 @@ export function ReviewLabWorkspace({
             data.key_events.map((item, index) => (
               <div key={`${index}-${item}`} className="session-thread-card">
                 <p className="inspector-body">{item}</p>
+                {getSectionCitation(data.citations, "key_events", index)?.t != null ? (
+                  <div className="session-thread-card__actions">
+                    <button
+                      type="button"
+                      className="app-button app-button--ghost"
+                      onClick={() => onOpenWorldAt(worldId, getSectionCitation(data.citations, "key_events", index)?.t ?? null)}
+                    >
+                      Citation
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (
@@ -1191,6 +1224,17 @@ export function ReviewLabWorkspace({
             data.causal_analysis.map((item, index) => (
               <div key={`${index}-${item}`} className="session-thread-card">
                 <p className="inspector-body">{item}</p>
+                {getSectionCitation(data.citations, "causal_analysis", index)?.t != null ? (
+                  <div className="session-thread-card__actions">
+                    <button
+                      type="button"
+                      className="app-button app-button--ghost"
+                      onClick={() => onOpenWorldAt(worldId, getSectionCitation(data.citations, "causal_analysis", index)?.t ?? null)}
+                    >
+                      Citation
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (
@@ -1204,7 +1248,7 @@ export function ReviewLabWorkspace({
               {diff.causal_comparison.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
-                  {targetTurningPoints[index] || diff?.citations?.causal_comparison?.[index]?.t != null ? (
+                  {targetTurningPoints[index] || getSectionCitation(diff?.citations, "causal_comparison", index)?.t != null ? (
                     <div className="session-thread-card__actions">
                       {targetTurningPoints[index] ? (
                         <button
@@ -1220,14 +1264,15 @@ export function ReviewLabWorkspace({
                           Inspect Target Cause
                         </button>
                       ) : null}
-                      {diff?.citations?.causal_comparison?.[index]?.t != null ? (
+                      {getSectionCitation(diff?.citations, "causal_comparison", index)?.t != null ? (
                         <button
                           type="button"
                           className="app-button app-button--ghost"
                           onClick={() =>
                             onOpenWorldAt(
-                              index === 1 ? diff.base_world_id : diff.target_world_id,
-                              diff.citations.causal_comparison[index].t ?? null
+                              getSectionCitation(diff?.citations, "causal_comparison", index)?.world_id ??
+                                (index === 1 ? diff.base_world_id : diff.target_world_id),
+                              getSectionCitation(diff?.citations, "causal_comparison", index)?.t ?? null
                             )
                           }
                         >
@@ -1249,6 +1294,17 @@ export function ReviewLabWorkspace({
             data.decision_implications.map((item, index) => (
               <div key={`${index}-${item}`} className="session-thread-card">
                 <p className="inspector-body">{item}</p>
+                {getSectionCitation(data.citations, "decision_implications", index)?.t != null ? (
+                  <div className="session-thread-card__actions">
+                    <button
+                      type="button"
+                      className="app-button app-button--ghost"
+                      onClick={() => onOpenWorldAt(worldId, getSectionCitation(data.citations, "decision_implications", index)?.t ?? null)}
+                    >
+                      Citation
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))
           ) : (
@@ -1262,12 +1318,17 @@ export function ReviewLabWorkspace({
               {diff.decision_implications.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
-                  {diff?.citations?.decision_implications?.[0]?.zone_id ? (
+                  {getSectionCitation(diff?.citations, "decision_implications", index)?.zone_id ? (
                     <div className="session-thread-card__actions">
                       <button
                         type="button"
                         className="app-button app-button--ghost"
-                        onClick={() => onOpenWorldAt(diff.target_world_id)}
+                        onClick={() =>
+                          onOpenWorldAt(
+                            getSectionCitation(diff?.citations, "decision_implications", index)?.world_id ?? diff.target_world_id,
+                            getSectionCitation(diff?.citations, "decision_implications", index)?.t ?? null
+                          )
+                        }
                       >
                         Citation
                       </button>
@@ -1468,4 +1529,18 @@ function flattenGrounding(
   return Object.values(grounding)
     .flat()
     .filter(Boolean);
+}
+
+function getSectionCitation(
+  citations: Record<string, ReviewGroundingItem[]> | undefined,
+  section: string,
+  index: number
+): ReviewGroundingItem | null {
+  if (!citations) return null;
+  const indexed = citations[`${section}.${index}`];
+  if (Array.isArray(indexed) && indexed.length > 0) return indexed[0] ?? null;
+  const plain = citations[section];
+  if (Array.isArray(plain) && plain.length > index) return plain[index] ?? plain[0] ?? null;
+  if (Array.isArray(plain) && plain.length > 0) return plain[0] ?? null;
+  return null;
 }
