@@ -60,6 +60,32 @@ const IMPORTANT_LLM_TASKS = [
   "agent_interview_diff",
 ] as const;
 
+const LLM_PROVIDER_PRESETS = [
+  {
+    id: "openai",
+    label: "OpenAI",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+  },
+  {
+    id: "ollama",
+    label: "Ollama Local",
+    provider: "ollama",
+    baseUrl: "http://127.0.0.1:11434",
+    models: ["llama3.1", "qwen2.5", "deepseek-r1:8b"],
+  },
+  {
+    id: "compatible",
+    label: "OpenAI-Compatible",
+    provider: "openai-compatible",
+    baseUrl: "http://127.0.0.1:8000/v1",
+    models: ["custom-model", "local-compatible-model"],
+  },
+] as const;
+
+type LlmProviderPreset = (typeof LLM_PROVIDER_PRESETS)[number];
+
 export default function GodView({
   locale = "ko",
   initialWorldId = null,
@@ -134,7 +160,9 @@ export default function GodView({
     payload: Record<string, unknown>;
   } | null>(null);
   const [llmEnabled, setLlmEnabled] = useState(false);
+  const [llmProviderPreset, setLlmProviderPreset] = useState("openai");
   const [llmProvider, setLlmProvider] = useState("openai");
+  const [llmModelPreset, setLlmModelPreset] = useState("gpt-4.1-mini");
   const [llmModel, setLlmModel] = useState("gpt-4.1-mini");
   const [llmBaseUrl, setLlmBaseUrl] = useState("");
   const [llmApiKey, setLlmApiKey] = useState("");
@@ -209,6 +237,14 @@ export default function GodView({
       })),
     [llmRuntime, taskBudgetDraft, taskPriorityDraft]
   );
+  const activeProviderPreset = useMemo(
+    () => (LLM_PROVIDER_PRESETS.find((item) => item.provider === llmProvider) as LlmProviderPreset | undefined) ?? null,
+    [llmProvider]
+  );
+  const availableModelPresets = useMemo(
+    () => (activeProviderPreset?.models ? [...activeProviderPreset.models] : []),
+    [activeProviderPreset]
+  );
 
   useEffect(() => {
     if (!autoFitLayout) return;
@@ -224,6 +260,26 @@ export default function GodView({
   }, [autoFitLayout]);
 
   useEffect(() => {
+    if (llmProviderPreset === "custom") return;
+    const preset = LLM_PROVIDER_PRESETS.find((item) => item.id === llmProviderPreset);
+    if (!preset) return;
+    setLlmProvider(preset.provider);
+    if (!llmBaseUrl.trim() || llmBaseUrl === activeProviderPreset?.baseUrl) {
+      setLlmBaseUrl(preset.baseUrl);
+    }
+    const presetModels: string[] = [...preset.models];
+    if (!presetModels.includes(llmModel)) {
+      setLlmModel(presetModels[0] ?? llmModel);
+      setLlmModelPreset(presetModels[0] ?? "custom");
+    }
+  }, [activeProviderPreset?.baseUrl, llmBaseUrl, llmModel, llmProviderPreset]);
+
+  useEffect(() => {
+    if (llmModelPreset === "custom") return;
+    setLlmModel(llmModelPreset);
+  }, [llmModelPreset]);
+
+  useEffect(() => {
     let cancelled = false;
     setRuntimeLoading(true);
     setRuntimeError(null);
@@ -235,6 +291,15 @@ export default function GodView({
           setLlmProvider(String(payload.llm?.provider || "openai"));
           setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
           setLlmBaseUrl(String(payload.llm?.base_url || ""));
+          const matchedPreset =
+            LLM_PROVIDER_PRESETS.find((item) => item.provider === String(payload.llm?.provider || "openai")) ?? null;
+          const matchedPresetModels: string[] = matchedPreset ? [...matchedPreset.models] : [];
+          setLlmProviderPreset(matchedPreset?.id ?? "custom");
+          setLlmModelPreset(
+            matchedPresetModels.includes(String(payload.llm?.model || "gpt-4.1-mini"))
+              ? String(payload.llm?.model || "gpt-4.1-mini")
+              : "custom"
+          );
           setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
           setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
           setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
@@ -761,8 +826,30 @@ export default function GodView({
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  {isKo ? "연결 프리셋" : "connection preset"}
+                  <select
+                    className="app-input"
+                    value={llmProviderPreset}
+                    onChange={(event) => setLlmProviderPreset(event.target.value)}
+                  >
+                    {LLM_PROVIDER_PRESETS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
                   {isKo ? "프로바이더" : "provider"}
-                  <select className="app-input" value={llmProvider} onChange={(event) => setLlmProvider(event.target.value)}>
+                  <select
+                    className="app-input"
+                    value={llmProvider}
+                    onChange={(event) => {
+                      setLlmProviderPreset("custom");
+                      setLlmProvider(event.target.value);
+                    }}
+                  >
                     <option value="openai">OpenAI</option>
                     <option value="openai-compatible">OpenAI-compatible</option>
                     <option value="ollama">Ollama</option>
@@ -770,15 +857,60 @@ export default function GodView({
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "모델" : "model"}
-                  <input className="app-input" value={llmModel} onChange={(event) => setLlmModel(event.target.value)} />
+                  {isKo ? "추천 모델" : "model preset"}
+                  <select
+                    className="app-input"
+                    value={llmModelPreset}
+                    onChange={(event) => setLlmModelPreset(event.target.value)}
+                  >
+                    {availableModelPresets.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
+                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+                  </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "베이스 URL" : "base url"}
+                  {isKo ? "직접 모델 입력" : "custom model"}
+                  <input
+                    className="app-input"
+                    value={llmModel}
+                    onChange={(event) => {
+                      setLlmModelPreset("custom");
+                      setLlmModel(event.target.value);
+                    }}
+                    placeholder={isKo ? "예: gpt-4.1-mini / llama3.1 / custom-model" : "e.g. gpt-4.1-mini / llama3.1 / custom-model"}
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  {isKo ? "추천 URL" : "url preset"}
+                  <select
+                    className="app-input"
+                    value={llmProviderPreset === "custom" ? "custom" : llmBaseUrl || activeProviderPreset?.baseUrl || ""}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (next === "custom") return;
+                      setLlmBaseUrl(next);
+                    }}
+                  >
+                    {LLM_PROVIDER_PRESETS.map((item) => (
+                      <option key={`${item.id}-url`} value={item.baseUrl}>
+                        {item.label} · {item.baseUrl}
+                      </option>
+                    ))}
+                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-slate-500">
+                  {isKo ? "직접 URL 입력" : "custom base url"}
                   <input
                     className="app-input"
                     value={llmBaseUrl}
-                    onChange={(event) => setLlmBaseUrl(event.target.value)}
+                    onChange={(event) => {
+                      setLlmProviderPreset("custom");
+                      setLlmBaseUrl(event.target.value);
+                    }}
                     placeholder={isKo ? "https://api.openai.com/v1 또는 http://127.0.0.1:11434" : "https://api.openai.com/v1 or http://127.0.0.1:11434"}
                   />
                 </label>

@@ -199,6 +199,7 @@ export default function HomeWithCanvas() {
 
             {activeView === "review-lab" ? (
               <ReviewLabWorkspace
+                locale={locale}
                 worldId={selectedWorldId ?? sessions[0]?.latest_world_id ?? null}
                 sessions={sessions}
                 onOpenView={setActiveView}

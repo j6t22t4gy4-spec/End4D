@@ -22,8 +22,10 @@ import {
   type SessionSummary,
 } from "@/lib/api";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
+import type { UiLocale } from "@/lib/ui-language";
 
 type ReviewLabWorkspaceProps = {
+  locale?: UiLocale;
   worldId: string | null;
   sessions: SessionSummary[];
   onOpenView: (view: WorkbenchView) => void;
@@ -31,11 +33,13 @@ type ReviewLabWorkspaceProps = {
 };
 
 export function ReviewLabWorkspace({
+  locale = "ko",
   worldId,
   sessions,
   onOpenView,
   onOpenWorldAt,
 }: ReviewLabWorkspaceProps) {
+  const isKo = locale === "ko";
   const [data, setData] = useState<ReviewSummaryResponse | null>(null);
   const [diff, setDiff] = useState<ReviewDiffResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -398,8 +402,8 @@ export function ReviewLabWorkspace({
     return (
       <div className="workspace-grid">
         <AppPanel
-          title="Review Lab"
-          subtitle="LLM-assisted post-simulation analysis"
+          title={isKo ? "리뷰 랩" : "Review Lab"}
+          subtitle={isKo ? "LLM 보조 시뮬레이션 후 분석" : "LLM-assisted post-simulation analysis"}
           bodyClassName="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]"
         >
           <div className="space-y-4">
@@ -412,13 +416,13 @@ export function ReviewLabWorkspace({
               className="app-button app-button--primary"
               onClick={() => onOpenView("simulation")}
             >
-              Open Simulation
+              {isKo ? "시뮬레이션 열기" : "Open Simulation"}
             </button>
           </div>
           <div className="grid gap-3">
-            <StageCard index="01" label="Run a world" />
-            <StageCard index="02" label="Persist snapshots" />
-            <StageCard index="03" label="Review summary + annotations" />
+            <StageCard index="01" label={isKo ? "월드 실행" : "Run a world"} />
+            <StageCard index="02" label={isKo ? "스냅샷 저장" : "Persist snapshots"} />
+            <StageCard index="03" label={isKo ? "리뷰 요약과 어노테이션" : "Review summary + annotations"} />
           </div>
         </AppPanel>
       </div>
@@ -428,12 +432,12 @@ export function ReviewLabWorkspace({
   return (
     <div className="workspace-grid">
       <AppPanel
-        title="Review Summary"
+        title={isKo ? "리뷰 요약" : "Review Summary"}
         subtitle={`World ${worldId}`}
         bodyClassName="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(280px,360px)]"
       >
         <div className="space-y-4">
-          {loading ? <p className="text-sm text-slate-500">Review summary loading…</p> : null}
+          {loading ? <p className="text-sm text-slate-500">{isKo ? "리뷰 요약 불러오는 중…" : "Review summary loading…"}</p> : null}
           {error ? (
             <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               리뷰 요약을 불러오지 못했습니다: {error}
@@ -443,16 +447,16 @@ export function ReviewLabWorkspace({
             <>
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Headline
+                  {isKo ? "헤드라인" : "Headline"}
                 </p>
                 <p className="text-base font-semibold text-slate-900">{data.headline}</p>
               </div>
               <p className="text-sm leading-7 text-slate-700">{data.summary}</p>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <MetricCard label="Outcome" value={String(data.outcome)} />
-                <MetricCard label="Signal" value={String(data.overall_signal)} />
-                <MetricCard label="Summary Mode" value={String(data.summary_mode)} />
-                <MetricCard label="Annotation Mode" value={String(data.annotation_mode)} />
+                <MetricCard label={isKo ? "결과" : "Outcome"} value={String(data.outcome)} />
+                <MetricCard label={isKo ? "신호" : "Signal"} value={String(data.overall_signal)} />
+                <MetricCard label={isKo ? "요약 모드" : "Summary Mode"} value={String(data.summary_mode)} />
+                <MetricCard label={isKo ? "어노테이션 모드" : "Annotation Mode"} value={String(data.annotation_mode)} />
               </div>
             </>
           ) : null}
@@ -465,7 +469,7 @@ export function ReviewLabWorkspace({
                 value={baseWorldId}
                 onChange={(event) => setBaseWorldId(event.target.value)}
               >
-                <option value="">Select baseline world</option>
+                <option value="">{isKo ? "기준 world 선택" : "Select baseline world"}</option>
                 {comparisonCandidates.map((item) => (
                   <option key={item.world_id} value={item.world_id}>
                     {item.world_id.slice(0, 8)} · {item.status}
@@ -474,7 +478,7 @@ export function ReviewLabWorkspace({
               </select>
               {recommendedBaselineId ? (
                 <p className="text-xs text-slate-500">
-                  Recommended baseline: <span className="font-semibold text-slate-700">{recommendedBaselineId.slice(0, 8)}</span>
+                  {isKo ? "추천 기준 world" : "Recommended baseline"}: <span className="font-semibold text-slate-700">{recommendedBaselineId.slice(0, 8)}</span>
                 </p>
               ) : null}
             </div>
@@ -484,14 +488,14 @@ export function ReviewLabWorkspace({
             className="app-button app-button--secondary"
             onClick={() => onOpenView("simulation")}
           >
-            Back to Simulation
+            {isKo ? "시뮬레이션으로 돌아가기" : "Back to Simulation"}
           </button>
           <button
             type="button"
             className="app-button app-button--ghost"
             onClick={() => onOpenView("snapshots")}
           >
-            Open Snapshots
+            {isKo ? "스냅샷 열기" : "Open Snapshots"}
           </button>
           <button
             type="button"
@@ -506,14 +510,14 @@ export function ReviewLabWorkspace({
                 .finally(() => setQueryLoading(false));
             }}
           >
-            Ask Review
+            {isKo ? "리뷰 질의" : "Ask Review"}
           </button>
         </div>
       </AppPanel>
 
       <AppPanel
-        title="Review Query"
-        subtitle="Ask the simulation analyst"
+        title={isKo ? "리뷰 질의" : "Review Query"}
+        subtitle={isKo ? "시뮬레이션 분석가에게 묻기" : "Ask the simulation analyst"}
         bodyClassName="space-y-3"
       >
         <textarea
@@ -522,7 +526,7 @@ export function ReviewLabWorkspace({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="예: 어떤 지역의 social elevation이 가장 크게 흔들렸고, 그 원인은 무엇인가?"
         />
-        {queryLoading ? <p className="text-sm text-slate-500">Review query loading…</p> : null}
+        {queryLoading ? <p className="text-sm text-slate-500">{isKo ? "리뷰 질의 처리 중…" : "Review query loading…"}</p> : null}
         {queryError ? (
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             리뷰 질의를 처리하지 못했습니다: {queryError}
@@ -533,13 +537,13 @@ export function ReviewLabWorkspace({
             <div className="space-y-3">
               <div className="session-thread-card">
                 <div className="session-thread-card__header">
-                  <p className="session-thread-card__title">Answer</p>
+                  <p className="session-thread-card__title">{isKo ? "답변" : "Answer"}</p>
                   <span className="session-thread-card__meta">{queryData.mode}</span>
                 </div>
                 <p className="session-thread-card__prompt">{queryData.answer}</p>
               </div>
               <div className="session-thread-card">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "근거" : "Evidence"}</p>
                 <div className="mt-2 grid gap-2">
                   {queryData.evidence.map((item, index) => (
                     <p key={`${index}-${item}`} className="inspector-body">
@@ -549,7 +553,7 @@ export function ReviewLabWorkspace({
                 </div>
               </div>
               <div className="session-thread-card">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Follow-up</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "후속 질문" : "Follow-up"}</p>
                 <div className="mt-2 grid gap-2">
                   {queryData.follow_up.map((item, index) => (
                     <p key={`${index}-${item}`} className="inspector-body">
@@ -561,13 +565,13 @@ export function ReviewLabWorkspace({
             </div>
             <div className="space-y-3">
               <GroundingPanel
-                title="Grounding"
+                title={isKo ? "그라운딩" : "Grounding"}
                 items={flattenGrounding(queryData.grounding)}
                 onOpenWorldAt={onOpenWorldAt}
                 worldId={worldId}
               />
               <div className="session-thread-card">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Query Provenance</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "질의 출처 정보" : "Query Provenance"}</p>
                 <p className="mt-2 text-sm text-slate-700">
                   prompt {String((queryData.review_meta.query as Record<string, unknown>)?.prompt_version ?? "n/a")}
                 </p>
@@ -579,20 +583,20 @@ export function ReviewLabWorkspace({
           </div>
         ) : (
           <p className="text-sm text-slate-500">
-            질문을 입력하면 review payload를 기반으로 LLM 또는 heuristic analyst가 답변합니다.
+            {isKo ? "질문을 입력하면 review payload를 기반으로 LLM 또는 heuristic analyst가 답변합니다." : "Ask a question and the LLM or heuristic analyst will answer from the review payload."}
           </p>
         )}
       </AppPanel>
 
       <AppPanel
-        title="Group Analysis"
-        subtitle="Role, fracture, and emergent dynamics at the collective level"
+        title={isKo ? "집단 분석" : "Group Analysis"}
+        subtitle={isKo ? "집단 수준의 역할, 분열, emergent dynamics" : "Role, fracture, and emergent dynamics at the collective level"}
         bodyClassName="space-y-3"
       >
         <div className="grid gap-3 md:grid-cols-3">
-          <MetricCard label="Split Risk" value={String(emergentDynamics.split_risk ?? "0")} />
-          <MetricCard label="Block Divergence" value={String(emergentDynamics.block_divergence ?? "0")} />
-          <MetricCard label="Revolution Risk" value={String(emergentDynamics.revolution_risk ?? "low")} />
+          <MetricCard label={isKo ? "분열 위험" : "Split Risk"} value={String(emergentDynamics.split_risk ?? "0")} />
+          <MetricCard label={isKo ? "블록 분기" : "Block Divergence"} value={String(emergentDynamics.block_divergence ?? "0")} />
+          <MetricCard label={isKo ? "혁명 위험" : "Revolution Risk"} value={String(emergentDynamics.revolution_risk ?? "low")} />
         </div>
         <div className="grid gap-3 xl:grid-cols-3">
           <div className="session-thread-card">
@@ -895,11 +899,11 @@ export function ReviewLabWorkspace({
       </AppPanel>
 
       <AppPanel
-        title="Session Review"
-        subtitle="Multi-world analyst summary"
+        title={isKo ? "세션 리뷰" : "Session Review"}
+        subtitle={isKo ? "여러 world를 묶은 분석가 요약" : "Multi-world analyst summary"}
         bodyClassName="space-y-3"
       >
-        {sessionReviewLoading ? <p className="text-sm text-slate-500">Session review loading…</p> : null}
+        {sessionReviewLoading ? <p className="text-sm text-slate-500">{isKo ? "세션 리뷰 불러오는 중…" : "Session review loading…"}</p> : null}
         {sessionReviewError ? (
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             세션 리뷰를 불러오지 못했습니다: {sessionReviewError}
@@ -915,9 +919,9 @@ export function ReviewLabWorkspace({
               <p className="session-thread-card__prompt">{sessionReview.summary}</p>
             </div>
             <div className="grid gap-3 md:grid-cols-3">
-              <MetricCard label="Worlds" value={String(sessionReview.metrics.world_count ?? 0)} />
-              <MetricCard label="Avg Split Risk" value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
-              <MetricCard label="Avg Fracture" value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
+              <MetricCard label={isKo ? "월드 수" : "Worlds"} value={String(sessionReview.metrics.world_count ?? 0)} />
+              <MetricCard label={isKo ? "평균 분열 위험" : "Avg Split Risk"} value={String(sessionReview.metrics.avg_split_risk ?? "0")} />
+              <MetricCard label={isKo ? "평균 fracture" : "Avg Fracture"} value={String(sessionReview.metrics.avg_cross_zone_fracture ?? "0")} />
             </div>
             <div className="grid gap-2 md:grid-cols-[200px_minmax(0,1fr)]">
               <select
@@ -925,11 +929,11 @@ export function ReviewLabWorkspace({
                 value={sessionObjective}
                 onChange={(event) => setSessionObjective(event.target.value)}
               >
-                <option value="balanced">Balanced</option>
-                <option value="stability">Stability</option>
-                <option value="cohesion">Cohesion</option>
-                <option value="polarization">Polarization</option>
-                <option value="fracture">Fracture</option>
+                <option value="balanced">{isKo ? "균형" : "Balanced"}</option>
+                <option value="stability">{isKo ? "안정성" : "Stability"}</option>
+                <option value="cohesion">{isKo ? "응집" : "Cohesion"}</option>
+                <option value="polarization">{isKo ? "양극화" : "Polarization"}</option>
+                <option value="fracture">{isKo ? "fracture" : "Fracture"}</option>
               </select>
               <p className="text-sm text-slate-500">
                 현재 세션 랭킹 기준: <span className="font-medium text-slate-700">{String(sessionReview.metrics.objective ?? sessionObjective)}</span>
@@ -937,14 +941,14 @@ export function ReviewLabWorkspace({
             </div>
             {sessionReview.objective_explanation ? (
               <div className="session-thread-card">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Objective Explanation</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "목표 기준 설명" : "Objective Explanation"}</p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">{sessionReview.objective_explanation}</p>
               </div>
             ) : null}
             {sessionReview.ranked_worlds?.length ? (
               <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ranked Worlds</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "랭크된 월드" : "Ranked Worlds"}</p>
                   {sessionReview.ranked_worlds.slice(0, 5).map((item, index) => (
                     <div key={`${index}-${String(item.world_id ?? "world")}`} className="session-thread-card">
                       <div className="session-thread-card__header">
@@ -960,14 +964,14 @@ export function ReviewLabWorkspace({
                           className="app-button app-button--ghost"
                           onClick={() => onOpenWorldAt(String(item.world_id ?? worldId))}
                         >
-                          Open World
+                          {isKo ? "월드 열기" : "Open World"}
                         </button>
                       </div>
                     </div>
                   ))}
                 </div>
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recommended Comparisons</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "추천 비교" : "Recommended Comparisons"}</p>
                   {sessionReview.recommended_pairs?.slice(0, 4).map((item, index) => (
                     <div key={`${index}-${String(item.target_world_id ?? "target")}-${String(item.base_world_id ?? "base")}`} className="session-thread-card">
                       <div className="session-thread-card__header">
@@ -985,14 +989,14 @@ export function ReviewLabWorkspace({
                           className="app-button app-button--ghost"
                           onClick={() => onOpenWorldAt(String(item.target_world_id ?? worldId))}
                         >
-                          Open Target
+                          {isKo ? "타깃 열기" : "Open Target"}
                         </button>
                         <button
                           type="button"
                           className="app-button app-button--ghost"
                           onClick={() => onOpenWorldAt(String(item.base_world_id ?? worldId))}
                         >
-                          Open Base
+                          {isKo ? "기준 열기" : "Open Base"}
                         </button>
                       </div>
                     </div>
@@ -1034,10 +1038,10 @@ export function ReviewLabWorkspace({
                     .finally(() => setSessionQueryLoading(false));
                 }}
               >
-                Ask Session
+                {isKo ? "세션 질의" : "Ask Session"}
               </button>
             </div>
-            {sessionQueryLoading ? <p className="text-sm text-slate-500">Session query loading…</p> : null}
+            {sessionQueryLoading ? <p className="text-sm text-slate-500">{isKo ? "세션 질의 처리 중…" : "Session query loading…"}</p> : null}
             {sessionQueryError ? (
               <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                 세션 질의를 처리하지 못했습니다: {sessionQueryError}
@@ -1048,13 +1052,13 @@ export function ReviewLabWorkspace({
                 <div className="space-y-3">
                   <div className="session-thread-card">
                     <div className="session-thread-card__header">
-                      <p className="session-thread-card__title">Session Answer</p>
+                      <p className="session-thread-card__title">{isKo ? "세션 답변" : "Session Answer"}</p>
                       <span className="session-thread-card__meta">{sessionQueryData.mode}</span>
                     </div>
                     <p className="session-thread-card__prompt">{sessionQueryData.answer}</p>
                   </div>
                   <div className="session-thread-card">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "근거" : "Evidence"}</p>
                     <div className="mt-2 grid gap-2">
                       {sessionQueryData.evidence.map((item, index) => (
                         <p key={`${index}-${item}`} className="inspector-body">
@@ -1066,13 +1070,13 @@ export function ReviewLabWorkspace({
                 </div>
                 <div className="space-y-3">
                   <GroundingPanel
-                    title="Session Grounding"
+                    title={isKo ? "세션 그라운딩" : "Session Grounding"}
                     items={flattenGrounding(sessionQueryData.grounding)}
                     onOpenWorldAt={onOpenWorldAt}
                     worldId={worldId}
                   />
                   <div className="session-thread-card">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Session Query Provenance</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "세션 질의 출처 정보" : "Session Query Provenance"}</p>
                     <p className="mt-2 text-sm text-slate-700">
                       prompt {String((sessionQueryData.review_meta.query as Record<string, unknown>)?.prompt_version ?? "n/a")}
                     </p>
@@ -1085,13 +1089,13 @@ export function ReviewLabWorkspace({
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-slate-500">같은 세션에 world가 쌓이면 세션 단위 리뷰를 제공합니다.</p>
+          <p className="text-sm text-slate-500">{isKo ? "같은 세션에 world가 쌓이면 세션 단위 리뷰를 제공합니다." : "Session review appears when multiple worlds accumulate in the same session."}</p>
         )}
       </AppPanel>
 
       <AppPanel
-        title="Diff Query"
-        subtitle="Ask about baseline vs target"
+        title={isKo ? "차이 질의" : "Diff Query"}
+        subtitle={isKo ? "baseline과 target 차이를 묻기" : "Ask about baseline vs target"}
         bodyClassName="space-y-3"
       >
         <textarea
@@ -1114,10 +1118,10 @@ export function ReviewLabWorkspace({
                 .finally(() => setDiffQueryLoading(false));
             }}
           >
-            Ask Diff
+            {isKo ? "차이 질의" : "Ask Diff"}
           </button>
         </div>
-        {diffQueryLoading ? <p className="text-sm text-slate-500">Diff query loading…</p> : null}
+        {diffQueryLoading ? <p className="text-sm text-slate-500">{isKo ? "차이 질의 처리 중…" : "Diff query loading…"}</p> : null}
         {diffQueryError ? (
           <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
             diff 질의를 처리하지 못했습니다: {diffQueryError}
@@ -1128,13 +1132,13 @@ export function ReviewLabWorkspace({
             <div className="space-y-3">
               <div className="session-thread-card">
                 <div className="session-thread-card__header">
-                  <p className="session-thread-card__title">Diff Answer</p>
+                  <p className="session-thread-card__title">{isKo ? "차이 답변" : "Diff Answer"}</p>
                   <span className="session-thread-card__meta">{diffQueryData.mode}</span>
                 </div>
                 <p className="session-thread-card__prompt">{diffQueryData.answer}</p>
               </div>
               <div className="session-thread-card">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Evidence</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{isKo ? "근거" : "Evidence"}</p>
                 <div className="mt-2 grid gap-2">
                   {diffQueryData.evidence.map((item, index) => (
                     <p key={`${index}-${item}`} className="inspector-body">
@@ -1145,20 +1149,20 @@ export function ReviewLabWorkspace({
               </div>
             </div>
             <GroundingPanel
-              title="Diff Grounding"
+              title={isKo ? "차이 그라운딩" : "Diff Grounding"}
               items={flattenGrounding(diffQueryData.grounding)}
               onOpenWorldAt={(wid, t) => onOpenWorldAt(wid || worldId, t)}
               worldId={worldId}
             />
           </div>
         ) : (
-          <p className="text-sm text-slate-500">baseline과 target 차이에 대해 자연어로 질문할 수 있습니다.</p>
+          <p className="text-sm text-slate-500">{isKo ? "baseline과 target 차이에 대해 자연어로 질문할 수 있습니다." : "Ask natural-language questions about baseline versus target."}</p>
         )}
       </AppPanel>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <AppPanel title="Diff Report" subtitle="Baseline vs current world" bodyClassName="space-y-3">
-          {diffLoading ? <p className="text-sm text-slate-500">Diff report loading…</p> : null}
+        <AppPanel title={isKo ? "차이 리포트" : "Diff Report"} subtitle={isKo ? "기준 world와 현재 world 비교" : "Baseline vs current world"} bodyClassName="space-y-3">
+          {diffLoading ? <p className="text-sm text-slate-500">{isKo ? "차이 리포트 불러오는 중…" : "Diff report loading…"}</p> : null}
           {diffError ? (
             <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               비교 리포트를 불러오지 못했습니다: {diffError}
