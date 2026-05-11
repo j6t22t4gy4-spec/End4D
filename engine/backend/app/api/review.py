@@ -136,6 +136,8 @@ def get_review_diff(world_id: str, base_world_id: str):
         "group_drift_deltas": [dict(item) for item in list(diff_payload.get("group_drift_deltas") or [])],
         "zone_z_delta": [dict(item) for item in list(diff_payload.get("zone_z_delta") or [])],
         "policy_impact_delta": dict(diff_payload.get("policy_impact_delta") or {}),
+        "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),
+        "coalition_shift_delta": dict(diff_payload.get("coalition_shift_delta") or {}),
     }
     return ReviewDiffResponse(
         base_world_id=base_world_id,

@@ -39,6 +39,23 @@ export function ReviewLabWorkspace({
   const comparisonCandidates = (currentSession?.worlds ?? []).filter(
     (item) => item.world_id !== worldId
   );
+  const recommendedBaselineId = currentSession
+    ? recommendBaselineWorldId(currentSession, worldId)
+    : "";
+  const diffMetrics = (diff?.compared_metrics ?? {}) as Record<string, unknown>;
+  const groupDriftRows = Array.isArray(diffMetrics.group_drift_deltas)
+    ? (diffMetrics.group_drift_deltas as Array<Record<string, unknown>>)
+    : [];
+  const zoneDriftRows = Array.isArray(diffMetrics.zone_z_delta)
+    ? (diffMetrics.zone_z_delta as Array<Record<string, unknown>>)
+    : [];
+  const turningPoints = (diffMetrics.timeline_turning_point_delta ?? {}) as Record<string, unknown>;
+  const baseTurningPoints = Array.isArray(turningPoints.base)
+    ? (turningPoints.base as Array<Record<string, unknown>>)
+    : [];
+  const targetTurningPoints = Array.isArray(turningPoints.target)
+    ? (turningPoints.target as Array<Record<string, unknown>>)
+    : [];
 
   useEffect(() => {
     if (!worldId) {
@@ -73,10 +90,8 @@ export function ReviewLabWorkspace({
       setBaseWorldId("");
       return;
     }
-    const currentWorld = currentSession?.worlds.find((item) => item.world_id === worldId);
-    const suggested = comparisonCandidates[0]?.world_id ?? "";
-    setBaseWorldId(currentWorld?.world_id === suggested ? "" : suggested);
-  }, [worldId, currentSession, comparisonCandidates]);
+    setBaseWorldId(recommendedBaselineId);
+  }, [worldId, recommendedBaselineId]);
 
   useEffect(() => {
     if (!worldId || !baseWorldId) {
@@ -172,18 +187,25 @@ export function ReviewLabWorkspace({
         </div>
         <div className="grid gap-3">
           {comparisonCandidates.length > 0 ? (
-            <select
-              className="app-input"
-              value={baseWorldId}
-              onChange={(event) => setBaseWorldId(event.target.value)}
-            >
-              <option value="">Select baseline world</option>
-              {comparisonCandidates.map((item) => (
-                <option key={item.world_id} value={item.world_id}>
-                  {item.world_id.slice(0, 8)} · {item.status}
-                </option>
-              ))}
-            </select>
+            <div className="grid gap-2">
+              <select
+                className="app-input"
+                value={baseWorldId}
+                onChange={(event) => setBaseWorldId(event.target.value)}
+              >
+                <option value="">Select baseline world</option>
+                {comparisonCandidates.map((item) => (
+                  <option key={item.world_id} value={item.world_id}>
+                    {item.world_id.slice(0, 8)} · {item.status}
+                  </option>
+                ))}
+              </select>
+              {recommendedBaselineId ? (
+                <p className="text-xs text-slate-500">
+                  Recommended baseline: <span className="font-semibold text-slate-700">{recommendedBaselineId.slice(0, 8)}</span>
+                </p>
+              ) : null}
+            </div>
           ) : null}
           <button
             type="button"
@@ -249,6 +271,22 @@ export function ReviewLabWorkspace({
               {diff.key_deltas.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
+                  {targetTurningPoints[index] ? (
+                    <div className="session-thread-card__actions">
+                      <button
+                        type="button"
+                        className="app-button app-button--ghost"
+                        onClick={() =>
+                          onOpenWorldAt(
+                            diff.target_world_id,
+                            Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
+                          )
+                        }
+                      >
+                        Open Target Shift
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </>
@@ -301,50 +339,126 @@ export function ReviewLabWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <AppPanel title="Group Drift Gaps" subtitle="Role-level differences" bodyClassName="space-y-3">
-          {Array.isArray(diff?.compared_metrics?.group_drift_deltas) &&
-          (diff?.compared_metrics?.group_drift_deltas as Array<Record<string, unknown>>).length > 0 ? (
-            (diff.compared_metrics.group_drift_deltas as Array<Record<string, unknown>>)
-              .slice(0, 5)
-              .map((item, index) => (
-                <div key={`${index}-${String(item.group_id)}`} className="session-thread-card">
-                  <div className="session-thread-card__header">
-                    <p className="session-thread-card__title">{String(item.role_label ?? "group")}</p>
-                    <span className="session-thread-card__meta">
-                      {String(item.stance_base ?? "n/a")} → {String(item.stance_target ?? "n/a")}
-                    </span>
-                  </div>
-                  <p className="session-thread-card__prompt">
-                    cohesion {Number(item.cohesion_gap ?? 0).toFixed(2)} · tension{" "}
-                    {Number(item.tension_gap ?? 0).toFixed(2)} · z {Number(item.z_gap ?? 0).toFixed(2)}
-                  </p>
+          {groupDriftRows.length > 0 ? (
+            groupDriftRows.slice(0, 5).map((item, index) => (
+              <div key={`${index}-${String(item.group_id)}`} className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">{String(item.role_label ?? "group")}</p>
+                  <span className="session-thread-card__meta">
+                    {String(item.stance_base ?? "n/a")} → {String(item.stance_target ?? "n/a")}
+                  </span>
                 </div>
-              ))
+                <p className="session-thread-card__prompt">
+                  cohesion {Number(item.cohesion_gap ?? 0).toFixed(2)} · tension{" "}
+                  {Number(item.tension_gap ?? 0).toFixed(2)} · z {Number(item.z_gap ?? 0).toFixed(2)}
+                </p>
+              </div>
+            ))
           ) : (
             <p className="text-sm text-slate-500">집단 drift 차이가 아직 없습니다.</p>
           )}
         </AppPanel>
 
         <AppPanel title="Zone Z Gaps" subtitle="Regional elevation differences" bodyClassName="space-y-3">
-          {Array.isArray(diff?.compared_metrics?.zone_z_delta) &&
-          (diff?.compared_metrics?.zone_z_delta as Array<Record<string, unknown>>).length > 0 ? (
-            (diff.compared_metrics.zone_z_delta as Array<Record<string, unknown>>)
-              .slice(0, 5)
-              .map((item, index) => (
-                <div key={`${index}-${String(item.zone_id)}`} className="session-thread-card">
-                  <div className="session-thread-card__header">
-                    <p className="session-thread-card__title">{String(item.zone_label ?? "zone")}</p>
-                    <span className="session-thread-card__meta">
-                      cells {String(item.cell_count_gap ?? 0)}
-                    </span>
-                  </div>
-                  <p className="session-thread-card__prompt">
-                    avg z {Number(item.avg_z_gap ?? 0).toFixed(2)} · avg energy{" "}
-                    {Number(item.avg_energy_gap ?? 0).toFixed(2)}
-                  </p>
+          {zoneDriftRows.length > 0 ? (
+            zoneDriftRows.slice(0, 5).map((item, index) => (
+              <div key={`${index}-${String(item.zone_id)}`} className="session-thread-card">
+                <div className="session-thread-card__header">
+                  <p className="session-thread-card__title">{String(item.zone_label ?? "zone")}</p>
+                  <span className="session-thread-card__meta">
+                    cells {String(item.cell_count_gap ?? 0)}
+                  </span>
                 </div>
-              ))
+                <p className="session-thread-card__prompt">
+                  avg z {Number(item.avg_z_gap ?? 0).toFixed(2)} · avg energy{" "}
+                  {Number(item.avg_energy_gap ?? 0).toFixed(2)}
+                </p>
+              </div>
+            ))
           ) : (
             <p className="text-sm text-slate-500">zone z 차이가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <AppPanel
+          title="Group Before / After"
+          subtitle="Baseline to target role comparison"
+          bodyClassName="space-y-3"
+        >
+          {groupDriftRows.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-xs text-slate-600">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                    <th className="px-2 py-2">Group</th>
+                    <th className="px-2 py-2">Stance</th>
+                    <th className="px-2 py-2">Cohesion</th>
+                    <th className="px-2 py-2">Tension</th>
+                    <th className="px-2 py-2">Z</th>
+                    <th className="px-2 py-2">Cells</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupDriftRows.slice(0, 8).map((item, index) => (
+                    <tr key={`${index}-${String(item.group_id)}`} className="border-b border-slate-100">
+                      <td className="px-2 py-2 font-medium text-slate-800">{String(item.role_label ?? "group")}</td>
+                      <td className="px-2 py-2">
+                        {String(item.stance_base ?? "n/a")} → {String(item.stance_target ?? "n/a")}
+                      </td>
+                      <td className="px-2 py-2">{Number(item.cohesion_gap ?? 0).toFixed(2)}</td>
+                      <td className="px-2 py-2">{Number(item.tension_gap ?? 0).toFixed(2)}</td>
+                      <td className="px-2 py-2">{Number(item.z_gap ?? 0).toFixed(2)}</td>
+                      <td className="px-2 py-2">{String(item.cell_gap ?? 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">집단 before/after 표가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title="Turning Point Delta"
+          subtitle="Jump from comparison back into time"
+          bodyClassName="space-y-3"
+        >
+          {targetTurningPoints.length > 0 || baseTurningPoints.length > 0 ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Target</p>
+                {targetTurningPoints.slice(0, 4).map((item, index) => (
+                  <TurningPointCard
+                    key={`target-${index}-${String(item.t)}`}
+                    worldId={diff?.target_world_id ?? ""}
+                    label={String(item.label ?? "shift")}
+                    reason={String(item.reason ?? "")}
+                    score={Number(item.score ?? 0)}
+                    t={Number(item.t ?? 0)}
+                    onOpenWorldAt={onOpenWorldAt}
+                  />
+                ))}
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Baseline</p>
+                {baseTurningPoints.slice(0, 4).map((item, index) => (
+                  <TurningPointCard
+                    key={`base-${index}-${String(item.t)}`}
+                    worldId={diff?.base_world_id ?? ""}
+                    label={String(item.label ?? "shift")}
+                    reason={String(item.reason ?? "")}
+                    score={Number(item.score ?? 0)}
+                    t={Number(item.t ?? 0)}
+                    onOpenWorldAt={onOpenWorldAt}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">점프 가능한 turning point가 아직 없습니다.</p>
           )}
         </AppPanel>
       </div>
@@ -380,6 +494,22 @@ export function ReviewLabWorkspace({
               {diff.causal_comparison.map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
                   <p className="inspector-body">{item}</p>
+                  {targetTurningPoints[index] ? (
+                    <div className="session-thread-card__actions">
+                      <button
+                        type="button"
+                        className="app-button app-button--ghost"
+                        onClick={() =>
+                          onOpenWorldAt(
+                            diff.target_world_id,
+                            Number((targetTurningPoints[index] as Record<string, unknown>).t ?? 0)
+                          )
+                        }
+                      >
+                        Inspect Target Cause
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </>
@@ -467,4 +597,53 @@ function StageCard({ index, label }: { index: string; label: string }) {
       <p className="mt-2 text-sm font-medium text-slate-900">{label}</p>
     </div>
   );
+}
+
+function TurningPointCard({
+  worldId,
+  label,
+  reason,
+  score,
+  t,
+  onOpenWorldAt,
+}: {
+  worldId: string;
+  label: string;
+  reason: string;
+  score: number;
+  t: number;
+  onOpenWorldAt: (worldId: string, t?: number | null) => void;
+}) {
+  return (
+    <div className="session-thread-card">
+      <div className="session-thread-card__header">
+        <p className="session-thread-card__title">
+          t={t} · {label}
+        </p>
+        <span className="session-thread-card__meta">score {score.toFixed(2)}</span>
+      </div>
+      <p className="session-thread-card__prompt">{reason}</p>
+      <div className="session-thread-card__actions">
+        <button
+          type="button"
+          className="app-button app-button--ghost"
+          onClick={() => onOpenWorldAt(worldId, t)}
+        >
+          Open at t
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function recommendBaselineWorldId(session: SessionSummary, worldId: string | null): string {
+  if (!worldId) return "";
+  const ordered = [...session.worlds].sort(
+    (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+  );
+  const currentIndex = ordered.findIndex((item) => item.world_id === worldId);
+  if (currentIndex > 0) {
+    return ordered[currentIndex - 1]?.world_id ?? "";
+  }
+  return ordered.find((item) => item.world_id !== worldId)?.world_id ?? "";
 }
