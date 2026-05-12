@@ -242,6 +242,7 @@ export default function GodView({
   const {
     liveT,
     liveCellCount,
+    liveObserver,
     isRunning,
     streamError,
     runWithWebSocketStream,
@@ -648,9 +649,9 @@ export default function GodView({
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
       if (availableT.length === 0 && worldId) {
-      setVisibleCells([]);
-      setSnapshotCells([]);
-      setVisualStats(null);
+        setVisibleCells([]);
+        setSnapshotCells([]);
+        setVisualStats(null);
       }
       return;
     }
@@ -678,6 +679,36 @@ export default function GodView({
       cancelled = true;
     };
   }, [availableKey, currentT, worldId]);
+
+  const shouldUseLiveObserver =
+    Boolean(isRunning) &&
+    liveObserver != null &&
+    Math.round(Number(liveObserver?.t ?? -1)) === Math.round(currentT) &&
+    (liveObserver?.cells?.length ?? 0) > 0;
+
+  const renderedSnapshotCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : snapshotCells;
+  const renderedVisibleCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : visibleCells;
+  const renderedVisualStats = shouldUseLiveObserver
+    ? {
+        totalCells: liveObserver?.totalCells ?? renderedVisibleCells.length,
+        sampled: Boolean(liveObserver?.sampled),
+      }
+    : visualStats;
+
+  useEffect(() => {
+    if (!selectedAgent) return;
+    const refreshed = renderedSnapshotCells.find((cell) => cell.cell_id === selectedAgent.cell_id);
+    if (
+      refreshed &&
+      (
+        refreshed.t !== selectedAgent.t ||
+        refreshed.action_state?.last_thought_t !== selectedAgent.action_state?.last_thought_t ||
+        refreshed.action_state?.last_thought_summary !== selectedAgent.action_state?.last_thought_summary
+      )
+    ) {
+      setSelectedAgent(refreshed);
+    }
+  }, [renderedSnapshotCells, selectedAgent]);
 
   const sliderDisabled = availableT.length === 0 || snapshotLoading;
   const timelineMarkers = useMemo(() => {
@@ -1121,11 +1152,11 @@ export default function GodView({
     onDockPayloadChange?.({
       controlsContent: controlsDockContent,
       runtimeContent: runtimeDockContent,
-      thoughtCells: snapshotCells,
+      thoughtCells: renderedSnapshotCells,
       currentT,
       connectionState: llmConnectionState,
     });
-  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, runtimeDockContent, snapshotCells]);
+  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedSnapshotCells, runtimeDockContent]);
 
   useEffect(() => () => onDockPayloadChange?.(null), [onDockPayloadChange]);
 
@@ -1770,9 +1801,9 @@ export default function GodView({
             className="min-h-0"
             bodyClassName="flex h-full min-h-0 flex-col gap-4"
             action={
-              visualStats?.sampled ? (
+              renderedVisualStats?.sampled ? (
                 <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                  {isKo ? "샘플링" : "sampled"} {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
+                  {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
                 </span>
               ) : undefined
             }
@@ -1785,9 +1816,9 @@ export default function GodView({
 
             <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
               <SimulationMap2D
-                cells={visibleCells}
-                totalCells={visualStats?.totalCells ?? visibleCells.length}
-                sampled={visualStats?.sampled ?? false}
+                cells={renderedVisibleCells}
+                totalCells={renderedVisualStats?.totalCells ?? renderedVisibleCells.length}
+                sampled={renderedVisualStats?.sampled ?? false}
                 selectedAgentId={selectedAgent?.cell_id ?? null}
                 selectedZoneId={selectedZone?.zoneId ?? null}
                 selectedBandKey={selectedBand?.key ?? null}
@@ -1814,11 +1845,11 @@ export default function GodView({
                 worldSummary={{
                   worldId,
                   currentT,
-                  visibleCount: visibleCells.length,
-                  totalCount: visualStats?.totalCells ?? visibleCells.length,
-                  sampled: visualStats?.sampled ?? false,
+                  visibleCount: renderedVisibleCells.length,
+                  totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
+                  sampled: renderedVisualStats?.sampled ?? false,
                 }}
-                agentRoster={snapshotCells}
+                agentRoster={renderedSnapshotCells}
                 onSelectAgent={setSelectedAgent}
                 onOpenWorldAt={(_, t) => {
                   if (typeof t === "number") setCurrentT(t);
@@ -1828,7 +1859,7 @@ export default function GodView({
 
               <AgentDirectoryPanel
                 locale={locale}
-                agentRoster={snapshotCells}
+                agentRoster={renderedSnapshotCells}
                 onSelectAgent={setSelectedAgent}
               />
             </div>

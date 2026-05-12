@@ -12,15 +12,65 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+import numpy as np
 
 from app.core.store import world_store
 from app.core.ws_manager import ws_manager
 from app.graph.time_flow import create_time_flow_graph
+from app.models.cell import Cell
 from pydantic import BaseModel
 
 
 router = APIRouter(prefix="/worlds", tags=["run"])
 _executor = ThreadPoolExecutor(max_workers=4)
+
+
+def _serialize_live_cell(cell: Cell) -> dict:
+    return {
+        "cell_id": cell.cell_id,
+        "x": float(cell.x),
+        "y": float(cell.y),
+        "z": float(cell.z),
+        "t": float(cell.t),
+        "energy": float(cell.energy),
+        "gene_vec": [float(v) for v in cell.gene_vec.tolist()],
+        "emotion_vec": [float(v) for v in cell.emotion_vec.tolist()],
+        "thought_vec": [float(v) for v in cell.thought_vec.tolist()],
+        "worldview_vec": [float(v) for v in cell.worldview_vec.tolist()],
+        "role_key": cell.role_key,
+        "role_label": cell.role_label,
+        "persona_id": cell.persona_id,
+        "persona_text": cell.persona_text,
+        "persona_country": cell.persona_country,
+        "persona_attrs": dict(cell.persona_attrs),
+        "zone_id": cell.zone_id,
+        "zone_label": cell.zone_label,
+        "zone_influence": float(cell.zone_influence),
+        "zone_friction": float(cell.zone_friction),
+        "short_memory": [dict(item) for item in cell.short_memory[-6:]],
+        "long_memory": [dict(item) for item in cell.long_memory[-4:]],
+        "behavior_log": [dict(item) for item in cell.behavior_log[-10:]],
+        "action_state": dict(cell.action_state),
+    }
+
+
+def _build_live_observer_cells(cells: list[Cell], limit: int = 72) -> tuple[list[dict], bool]:
+    if not cells:
+        return [], False
+    ranked = sorted(
+        cells,
+        key=lambda cell: (
+            -int(bool(dict(cell.action_state).get("last_thought_summary"))),
+            -float(dict(cell.action_state).get("last_thought_t", -1.0) or -1.0),
+            -len(cell.short_memory),
+            -len(cell.behavior_log),
+            -float(np.linalg.norm(cell.thought_vec)),
+            str(cell.cell_id),
+        ),
+    )
+    sampled = len(ranked) > limit
+    selected = ranked[:limit] if sampled else ranked
+    return [_serialize_live_cell(cell) for cell in selected], sampled
 
 
 class RunRequest(BaseModel):
@@ -86,17 +136,25 @@ def _run_stream_producer(
                     coalition_state=s.get("coalition_state"),
                     coalition_history=s.get("coalition_history"),
                 )
+                observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
                 msg_queue.put({
                     "type": "step",
                     "t": s["current_t"],
                     "cell_count": len(s["cells"]),
+                    "observer_cells": observer_cells,
+                    "observer_total_cells": len(s["cells"]),
+                    "observer_sampled": observer_sampled,
                 })
             elif "init" in chunk:
                 s = chunk["init"]
+                observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
                 msg_queue.put({
                     "type": "step",
                     "t": 0.0,
                     "cell_count": len(s["cells"]),
+                    "observer_cells": observer_cells,
+                    "observer_total_cells": len(s["cells"]),
+                    "observer_sampled": observer_sampled,
                 })
         msg_queue.put({"type": "done"})
     except Exception as e:

@@ -62,10 +62,10 @@ def step_loop_node(state: "SimulationState") -> dict:
         current_t=next_t,
         engine_params=state.get("engine_params"),
     )
-    cells = update_emotions(cells, current_t)
-    cells = update_thoughts_if_due(cells, current_t)
-    cells = update_worldviews_if_due(cells, current_t)
-    cells = update_action_states_if_due(cells, current_t)
+    cells = update_emotions(cells, next_t)
+    cells = update_thoughts_if_due(cells, next_t)
+    cells = update_worldviews_if_due(cells, next_t)
+    cells = update_action_states_if_due(cells, next_t)
     cells = apply_agent_dialogues_if_due(cells, next_t)
     cells, coalition_state, coalition_history = apply_group_deliberation_if_due(
         cells,

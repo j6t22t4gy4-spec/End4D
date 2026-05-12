@@ -6,20 +6,36 @@
  */
 import { useCallback, useRef, useState } from "react";
 import {
+  type CellSnapshot,
   getWorldWebSocketUrl,
   runSimulation,
 } from "@/lib/api";
 
 export type StreamMessage =
-  | { type: "step"; t: number; cell_count: number }
+  | {
+      type: "step";
+      t: number;
+      cell_count: number;
+      observer_cells?: CellSnapshot[];
+      observer_total_cells?: number;
+      observer_sampled?: boolean;
+    }
   | { type: "done" }
   | { type: "error"; message?: string }
   | { type: "pong" };
+
+export type LiveObserverState = {
+  cells: CellSnapshot[];
+  totalCells: number;
+  sampled: boolean;
+  t: number;
+} | null;
 
 export function useSimulation() {
   const wsRef = useRef<WebSocket | null>(null);
   const [liveT, setLiveT] = useState<number | null>(null);
   const [liveCellCount, setLiveCellCount] = useState<number | null>(null);
+  const [liveObserver, setLiveObserver] = useState<LiveObserverState>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -39,6 +55,7 @@ export function useSimulation() {
       setStreamError(null);
       setLiveT(null);
       setLiveCellCount(null);
+      setLiveObserver(null);
       setIsRunning(true);
 
       return new Promise((resolve, reject) => {
@@ -52,6 +69,12 @@ export function useSimulation() {
             if (msg.type === "step") {
               setLiveT(msg.t);
               setLiveCellCount(msg.cell_count);
+              setLiveObserver({
+                cells: msg.observer_cells ?? [],
+                totalCells: msg.observer_total_cells ?? msg.cell_count,
+                sampled: Boolean(msg.observer_sampled),
+                t: msg.t,
+              });
             } else if (msg.type === "done") {
               setIsRunning(false);
               disconnectWebSocket();
@@ -98,6 +121,7 @@ export function useSimulation() {
     setIsRunning(true);
     setLiveT(null);
     setLiveCellCount(null);
+    setLiveObserver(null);
     try {
       await runSimulation(worldId, { stream: false });
     } finally {
@@ -108,6 +132,7 @@ export function useSimulation() {
   return {
     liveT,
     liveCellCount,
+    liveObserver,
     isRunning,
     streamError,
     runWithWebSocketStream,

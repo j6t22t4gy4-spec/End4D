@@ -15,6 +15,17 @@ def _compact_json_like(mapping: dict[str, object]) -> str:
     return "; ".join(f"{key}={value}" for key, value in mapping.items())
 
 
+def _compact_persona_attrs(attrs: dict[str, object], limit: int = 8) -> str:
+    if not attrs:
+        return "none"
+    compact: list[str] = []
+    for key, value in list(attrs.items())[:limit]:
+        value_text = " ".join(str(value).split())
+        if value_text:
+            compact.append(f"{key}={value_text[:72]}")
+    return " ; ".join(compact) or "none"
+
+
 def build_thought_prompt(cell: Cell) -> str:
     language_label = "Korean" if get_ui_language() == "ko" else "English"
     ev = cell.emotion_vec
@@ -28,6 +39,7 @@ def build_thought_prompt(cell: Cell) -> str:
         str(item.get("summary") or "") for item in cell.long_memory[-3:] if str(item.get("summary") or "").strip()
     ) or "none"
     reflection = build_memory_reflection(cell)
+    previous_thought = str(dict(cell.action_state).get("last_thought_summary") or "").strip() or "none"
     return build_prompt_contract(
         "thought",
         [
@@ -47,6 +59,8 @@ def build_thought_prompt(cell: Cell) -> str:
             ("salient_long_memory", salient_long[:280]),
             ("reflection", reflection[:360]),
             ("persona", cell.persona_text[:240]),
+            ("persona_attrs", _compact_persona_attrs(dict(cell.persona_attrs))[:240]),
+            ("previous_thought", previous_thought[:220]),
             ("output_language", language_label),
         ],
     )
