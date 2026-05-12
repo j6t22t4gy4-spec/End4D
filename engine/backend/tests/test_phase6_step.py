@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 
+from app.api.run import _build_live_observer_cells
 from app.core.snapshot import SnapshotStore
 from app.graph.time_flow import create_time_flow_graph
 from app.models.cell import Cell
@@ -178,3 +179,45 @@ def test_graph_updates_xy_positions_from_social_field_dynamics():
     assert any(delta > 0.05 for delta in moved)
     assert any(float(cell.action_state.get("last_spatial_shift", 0.0)) > 0.0 for cell in out["cells"])
     assert any(str(cell.action_state.get("mobility_state", "")) for cell in out["cells"])
+
+
+def test_live_observer_sampling_balances_focus_and_zone_coverage():
+    cells = []
+    for idx in range(8):
+        zone_id = f"zone-{idx % 3}"
+        cell = Cell(
+            cell_id=f"observer-{idx}",
+            x=float(idx),
+            y=float(idx % 2),
+            z=float(idx),
+            t=5.0,
+            energy=40.0 + idx * 5,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.full(256, 0.05 * (idx + 1)),
+            worldview_vec=np.zeros(384),
+            role_key=f"role-{idx % 4}",
+            role_label=f"role-{idx % 4}",
+            zone_id=zone_id,
+            zone_label=zone_id,
+            action_state={
+                "last_thought_summary": "reassess constraints" if idx in {0, 1, 2, 6} else "",
+                "last_thought_t": float(4 + idx % 3),
+                "thought_continuity_score": 0.75 if idx in {0, 1} else 0.2,
+                "last_spatial_shift": 0.6 if idx in {3, 4, 7} else 0.05,
+                "mobility_bias": 0.9 if idx in {3, 4} else 0.2,
+            },
+            short_memory=[{"summary": "recent signal"}] * (idx % 3),
+            behavior_log=[{"summary": "behavior", "event_type": "thought_update"}] * (1 + idx % 2),
+        )
+        cells.append(cell)
+
+    observer_cells, sampled = _build_live_observer_cells(cells, limit=6)
+    assert sampled is True
+    focuses = {str(cell["action_state"].get("observer_focus")) for cell in observer_cells}
+    zones = {str(cell.get("zone_id")) for cell in observer_cells}
+    assert "thought" in focuses
+    assert "mover" in focuses
+    assert "zone" in focuses or len(zones) >= 3
+    assert len(zones) >= 2
+    assert all("observer_score" in cell["action_state"] for cell in observer_cells)

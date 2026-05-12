@@ -24,6 +24,13 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/worlds", tags=["run"])
 _executor = ThreadPoolExecutor(max_workers=4)
 
+FOCUS_WEIGHTS = {
+    "thought": 1.0,
+    "mover": 0.8,
+    "zone": 0.55,
+    "field": 0.4,
+}
+
 
 def _serialize_live_cell(cell: Cell) -> dict:
     return {
@@ -54,82 +61,135 @@ def _serialize_live_cell(cell: Cell) -> dict:
     }
 
 
-def _build_live_observer_cells(cells: list[Cell], limit: int = 72) -> tuple[list[dict], bool]:
+def _normalized_metric(value: float, maximum: float) -> float:
+    if maximum <= 0:
+        return 0.0
+    return max(0.0, min(1.0, float(value) / float(maximum)))
+
+
+def _observer_features(cells: list[Cell]) -> dict[str, dict[str, object]]:
     if not cells:
-        return [], False
-    thought_quota = max(8, int(limit * 0.45))
-    mover_quota = max(6, int(limit * 0.25))
-    representative_quota = max(6, limit - thought_quota - mover_quota)
-
-    selected_ids: set[str] = set()
-    selected: list[Cell] = []
-
-    def append_unique(items: list[Cell], focus: str, quota: int) -> None:
-        for cell in items:
-            if len(selected) >= limit or quota <= 0:
-                break
-            if cell.cell_id in selected_ids:
-                continue
-            current_state = dict(cell.action_state)
-            current_state["observer_focus"] = focus
-            selected.append(cell.copy(action_state=current_state))
-            selected_ids.add(cell.cell_id)
-            quota -= 1
-
-    thought_ranked = sorted(
-        cells,
-        key=lambda cell: (
-            -int(bool(dict(cell.action_state).get("last_thought_summary"))),
-            -float(dict(cell.action_state).get("last_thought_t", -1.0) or -1.0),
-            -float(dict(cell.action_state).get("thought_continuity_score", 0.0) or 0.0),
-            -len(cell.short_memory),
-            -float(np.linalg.norm(cell.thought_vec)),
-            str(cell.cell_id),
-        ),
-    )
-    append_unique(thought_ranked, "thought", thought_quota)
-
-    mover_ranked = sorted(
-        cells,
-        key=lambda cell: (
-            -float(dict(cell.action_state).get("last_spatial_shift", 0.0) or 0.0),
-            -float(dict(cell.action_state).get("mobility_bias", 0.0) or 0.0),
-            -float(cell.energy),
-            str(cell.cell_id),
-        ),
-    )
-    append_unique(mover_ranked, "mover", mover_quota)
-
-    by_zone: dict[str, list[Cell]] = {}
+        return {}
+    max_energy = max(float(cell.energy) for cell in cells) or 1.0
+    max_shift = max(float(dict(cell.action_state).get("last_spatial_shift", 0.0) or 0.0) for cell in cells) or 1.0
+    max_memory = max(len(cell.short_memory) + len(cell.behavior_log) for cell in cells) or 1
+    max_thought_t = max(float(dict(cell.action_state).get("last_thought_t", 0.0) or 0.0) for cell in cells) or 1.0
+    max_thought_norm = max(float(np.linalg.norm(cell.thought_vec)) for cell in cells) or 1.0
+    zone_representatives: set[str] = set()
+    zone_groups: dict[str, list[Cell]] = {}
     for cell in cells:
-        by_zone.setdefault(str(cell.zone_id or "zone-0"), []).append(cell)
-    zone_representatives: list[Cell] = []
-    for zone_cells in by_zone.values():
-        zone_representatives.append(
-            sorted(
-                zone_cells,
-                key=lambda cell: (
-                    -float(cell.energy),
-                    -len(cell.behavior_log),
-                    -float(np.linalg.norm(cell.thought_vec)),
-                    str(cell.cell_id),
-                ),
-            )[0]
-        )
-    append_unique(zone_representatives, "zone", representative_quota)
-
-    if len(selected) < min(limit, len(cells)):
-        fallback_ranked = sorted(
-            cells,
+        zone_groups.setdefault(str(cell.zone_id or "zone-0"), []).append(cell)
+    for zone_cells in zone_groups.values():
+        representative = max(
+            zone_cells,
             key=lambda cell: (
-                -len(cell.behavior_log),
-                -float(cell.energy),
+                float(cell.energy),
+                len(cell.behavior_log),
+                float(np.linalg.norm(cell.thought_vec)),
                 str(cell.cell_id),
             ),
         )
-        append_unique(fallback_ranked, "field", limit - len(selected))
+        zone_representatives.add(representative.cell_id)
 
-    sampled = len(cells) > len(selected)
+    features: dict[str, dict[str, object]] = {}
+    for cell in cells:
+        action_state = dict(cell.action_state)
+        thought_present = bool(str(action_state.get("last_thought_summary", "")).strip())
+        thought_recency = float(action_state.get("last_thought_t", -1.0) or -1.0)
+        continuity_score = float(action_state.get("thought_continuity_score", 0.0) or 0.0)
+        spatial_shift = float(action_state.get("last_spatial_shift", 0.0) or 0.0)
+        mobility_bias = float(action_state.get("mobility_bias", 0.0) or 0.0)
+        memory_density = len(cell.short_memory) + len(cell.behavior_log)
+
+        focus_scores = {
+            "thought": (
+                (0.42 if thought_present else 0.0)
+                + 0.28 * continuity_score
+                + 0.18 * _normalized_metric(thought_recency, max_thought_t)
+                + 0.12 * _normalized_metric(memory_density, max_memory)
+            ),
+            "mover": (
+                0.62 * _normalized_metric(spatial_shift, max_shift)
+                + 0.23 * mobility_bias
+                + 0.15 * _normalized_metric(float(cell.energy), max_energy)
+            ),
+            "zone": (
+                (0.7 if cell.cell_id in zone_representatives else 0.0)
+                + 0.3 * _normalized_metric(float(cell.energy), max_energy)
+            ),
+            "field": (
+                0.45 * _normalized_metric(float(cell.energy), max_energy)
+                + 0.25 * _normalized_metric(float(np.linalg.norm(cell.thought_vec)), max_thought_norm)
+                + 0.15 * _normalized_metric(memory_density, max_memory)
+                + 0.15 * _normalized_metric(spatial_shift, max_shift)
+            ),
+        }
+        primary_focus = max(focus_scores.items(), key=lambda item: item[1])[0]
+        weighted_score = sum(FOCUS_WEIGHTS[focus] * score for focus, score in focus_scores.items())
+        features[cell.cell_id] = {
+            "focus_scores": focus_scores,
+            "primary_focus": primary_focus,
+            "weighted_score": weighted_score,
+            "zone_id": str(cell.zone_id or "zone-0"),
+            "role_key": str(cell.role_key or "agent"),
+        }
+    return features
+
+
+def _build_live_observer_cells(cells: list[Cell], limit: int = 72) -> tuple[list[dict], bool]:
+    if not cells:
+        return [], False
+    features = _observer_features(cells)
+    selected_ids: set[str] = set()
+    selected: list[Cell] = []
+    covered_focuses: set[str] = set()
+    covered_zones: set[str] = set()
+    covered_roles: set[str] = set()
+    target_count = min(limit, len(cells))
+
+    while len(selected) < target_count:
+        best_cell: Cell | None = None
+        best_score = -1.0
+        for cell in cells:
+            if cell.cell_id in selected_ids:
+                continue
+            feature = features[cell.cell_id]
+            score = float(feature["weighted_score"])
+            primary_focus = str(feature["primary_focus"])
+            zone_id = str(feature["zone_id"])
+            role_key = str(feature["role_key"])
+            focus_scores = feature["focus_scores"]
+            if primary_focus not in covered_focuses:
+                score += 0.32
+            if zone_id not in covered_zones:
+                score += 0.26
+            if role_key not in covered_roles:
+                score += 0.12
+            score += 0.04 * sum(
+                float(value)
+                for focus, value in focus_scores.items()
+                if focus not in covered_focuses
+            )
+            if score > best_score:
+                best_score = score
+                best_cell = cell
+        if best_cell is None:
+            break
+        feature = features[best_cell.cell_id]
+        current_state = dict(best_cell.action_state)
+        current_state["observer_focus"] = str(feature["primary_focus"])
+        current_state["observer_score"] = round(float(feature["weighted_score"]), 3)
+        current_state["observer_focus_scores"] = {
+            key: round(float(value), 3)
+            for key, value in dict(feature["focus_scores"]).items()
+        }
+        selected.append(best_cell.copy(action_state=current_state))
+        selected_ids.add(best_cell.cell_id)
+        covered_focuses.add(str(feature["primary_focus"]))
+        covered_zones.add(str(feature["zone_id"]))
+        covered_roles.add(str(feature["role_key"]))
+
+    sampled = len(cells) > target_count
     return [_serialize_live_cell(cell) for cell in selected], sampled
 
 
