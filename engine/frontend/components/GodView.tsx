@@ -115,6 +115,9 @@ export default function GodView({
   onOpenWorkbenchView,
   onWorldSelected,
   onConsumeInitialInjectPreset,
+  runtimeStatusExternal,
+  runtimeErrorExternal,
+  onRefreshRuntimeExternal,
 }: {
   locale?: UiLocale;
   initialWorldId?: string | null;
@@ -123,6 +126,9 @@ export default function GodView({
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
   onWorldSelected?: (worldId: string) => void;
   onConsumeInitialInjectPreset?: () => void;
+  runtimeStatusExternal?: LocalRuntimeStatus | null;
+  runtimeErrorExternal?: string | null;
+  onRefreshRuntimeExternal?: () => Promise<void> | void;
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
@@ -204,6 +210,7 @@ export default function GodView({
   const [taskPriorityDraft, setTaskPriorityDraft] = useState<Record<string, string>>({});
   const [llmConfigStatus, setLlmConfigStatus] = useState<string | null>(null);
   const [llmTestResult, setLlmTestResult] = useState<RuntimeLlmTestResponse | null>(null);
+  const usesExternalRuntime = runtimeStatusExternal !== undefined;
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -218,6 +225,53 @@ export default function GodView({
     runSync,
     disconnectWebSocket,
   } = useSimulation();
+
+  const applyRuntimePayload = useCallback(
+    (payload: LocalRuntimeStatus) => {
+      setRuntimeStatus(payload);
+      setLlmEnabled(Boolean(payload.llm?.enabled));
+      setLlmProvider(String(payload.llm?.provider || "openai"));
+      setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
+      setLlmBaseUrl(String(payload.llm?.base_url || ""));
+      const matchedPreset =
+        LLM_PROVIDER_PRESETS.find((item) => item.provider === String(payload.llm?.provider || "openai")) ?? null;
+      const matchedPresetModels: string[] = matchedPreset ? [...matchedPreset.models] : [];
+      setLlmProviderPreset(matchedPreset?.id ?? "custom");
+      setLlmModelPreset(
+        matchedPresetModels.includes(String(payload.llm?.model || "gpt-4.1-mini"))
+          ? String(payload.llm?.model || "gpt-4.1-mini")
+          : "custom"
+      );
+      setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
+      setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
+      setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
+      setLlmAgentSampleSize(String(payload.llm_runtime?.agent_sample_size || 256));
+      setLlmDialoguePairs(String(payload.llm_runtime?.dialogue_max_pairs || 64));
+      setLlmDeliberationGroups(String(payload.llm_runtime?.group_deliberation_max_groups || 12));
+      setTaskBudgetDraft(
+        Object.fromEntries(
+          Object.entries(payload.llm_runtime?.task_budgets ?? {}).map(([key, value]) => [key, String(value)])
+        )
+      );
+      setTaskPriorityDraft(
+        Object.fromEntries(
+          Object.entries(payload.llm_runtime?.task_priorities ?? {}).map(([key, value]) => [key, String(value)])
+        )
+      );
+      if (!selectedPackId && payload.packs[0]?.pack_id) {
+        setSelectedPackId(payload.packs[0].pack_id);
+      }
+    },
+    [selectedPackId]
+  );
+
+  const reloadRuntimeStatus = useCallback(async () => {
+    const payload = await getLocalRuntimeStatus();
+    applyRuntimePayload(payload);
+    setRuntimeError(null);
+    await onRefreshRuntimeExternal?.();
+    return payload;
+  }, [applyRuntimePayload, onRefreshRuntimeExternal]);
 
   const tSliderMin = useMemo(
     () => (availableT.length ? Math.min(...availableT) : 0),
@@ -327,6 +381,17 @@ export default function GodView({
   }, [llmModelPreset]);
 
   useEffect(() => {
+    if (!usesExternalRuntime) return;
+    if (runtimeStatusExternal) {
+      applyRuntimePayload(runtimeStatusExternal);
+    } else {
+      setRuntimeStatus(null);
+    }
+    setRuntimeError(runtimeErrorExternal ?? null);
+  }, [applyRuntimePayload, runtimeErrorExternal, runtimeStatusExternal, usesExternalRuntime]);
+
+  useEffect(() => {
+    if (usesExternalRuntime) return;
     let cancelled = false;
     const refreshRuntime = async (firstLoad: boolean) => {
       if (firstLoad) {
@@ -336,39 +401,7 @@ export default function GodView({
       try {
         const payload = await getLocalRuntimeStatus();
         if (cancelled) return;
-        setRuntimeStatus(payload);
-        setLlmEnabled(Boolean(payload.llm?.enabled));
-        setLlmProvider(String(payload.llm?.provider || "openai"));
-        setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
-        setLlmBaseUrl(String(payload.llm?.base_url || ""));
-        const matchedPreset =
-          LLM_PROVIDER_PRESETS.find((item) => item.provider === String(payload.llm?.provider || "openai")) ?? null;
-        const matchedPresetModels: string[] = matchedPreset ? [...matchedPreset.models] : [];
-        setLlmProviderPreset(matchedPreset?.id ?? "custom");
-        setLlmModelPreset(
-          matchedPresetModels.includes(String(payload.llm?.model || "gpt-4.1-mini"))
-            ? String(payload.llm?.model || "gpt-4.1-mini")
-            : "custom"
-        );
-        setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
-        setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
-        setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
-        setLlmAgentSampleSize(String(payload.llm_runtime?.agent_sample_size || 256));
-        setLlmDialoguePairs(String(payload.llm_runtime?.dialogue_max_pairs || 64));
-        setLlmDeliberationGroups(String(payload.llm_runtime?.group_deliberation_max_groups || 12));
-        setTaskBudgetDraft(
-          Object.fromEntries(
-            Object.entries(payload.llm_runtime?.task_budgets ?? {}).map(([key, value]) => [key, String(value)])
-          )
-        );
-        setTaskPriorityDraft(
-          Object.fromEntries(
-            Object.entries(payload.llm_runtime?.task_priorities ?? {}).map(([key, value]) => [key, String(value)])
-          )
-        );
-        if (!selectedPackId && payload.packs[0]?.pack_id) {
-          setSelectedPackId(payload.packs[0].pack_id);
-        }
+        applyRuntimePayload(payload);
       } catch (reason) {
         if (!cancelled) {
           setRuntimeError(reason instanceof Error ? reason.message : "runtime status error");
@@ -385,7 +418,7 @@ export default function GodView({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [personaRefreshKey]);
+  }, [applyRuntimePayload, personaRefreshKey, usesExternalRuntime]);
 
   useEffect(() => {
     setSelectedHistoryIndex(null);
@@ -393,7 +426,7 @@ export default function GodView({
   }, [selectedPackId]);
 
   useEffect(() => {
-    if (!worldId) {
+    if (!worldId || availableT.length === 0) {
       setReviewSummary(null);
       setReviewLoading(false);
       setReviewError(null);
@@ -422,7 +455,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [worldId, chartRefreshKey]);
+  }, [availableKey, chartRefreshKey, worldId]);
 
   const handleCreateWorld = useCallback(async () => {
     setCreateError(null);
@@ -507,11 +540,18 @@ export default function GodView({
   ]);
 
   const refreshSnapshots = useCallback(
-    async (wid: string) => {
+    async (wid: string, options?: { preferLatest?: boolean }) => {
       const list = await listSnapshotTimes(wid);
       setAvailableT(list.available_t);
       const last = list.available_t[list.available_t.length - 1] ?? 0;
-      setCurrentT(last);
+      setCurrentT((previousT) => {
+        if (options?.preferLatest) return last;
+        if (list.available_t.length === 0) return 0;
+        if (list.available_t.includes(previousT)) return previousT;
+        return list.available_t.reduce((best, value) =>
+          Math.abs(value - previousT) < Math.abs(best - previousT) ? value : best
+        );
+      });
       bumpChartRefresh();
     },
     [bumpChartRefresh]
@@ -522,7 +562,7 @@ export default function GodView({
     setActionError(null);
     try {
       await runWithWebSocketStream(worldId);
-      await refreshSnapshots(worldId);
+      await refreshSnapshots(worldId, { preferLatest: true });
     } catch (e) {
       setActionError((e as Error).message);
     }
@@ -533,7 +573,7 @@ export default function GodView({
     setActionError(null);
     try {
       await runSync(worldId);
-      await refreshSnapshots(worldId);
+      await refreshSnapshots(worldId, { preferLatest: true });
     } catch (e) {
       setActionError((e as Error).message);
     }
@@ -541,7 +581,7 @@ export default function GodView({
 
   const handleInjected = useCallback(async () => {
     if (!worldId) return;
-    await refreshSnapshots(worldId);
+    await refreshSnapshots(worldId, { preferLatest: true });
   }, [refreshSnapshots, worldId]);
 
   useEffect(() => {
@@ -1126,7 +1166,7 @@ export default function GodView({
                           Object.entries(taskPriorityDraft).map(([key, value]) => [key, Number(value) || 0])
                         ),
                       });
-                      setRuntimeStatus(await getLocalRuntimeStatus());
+                      await reloadRuntimeStatus();
                       setLlmConfigStatus(isKo ? "LLM 런타임 저장 완료" : "llm runtime saved");
                     } catch (reason) {
                       setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 설정 저장 실패" : "llm config save failed");
@@ -1143,7 +1183,7 @@ export default function GodView({
                     try {
                       const result = await testRuntimeLlmConfig();
                       setLlmTestResult(result);
-                      setRuntimeStatus(await getLocalRuntimeStatus());
+                      await reloadRuntimeStatus();
                       setLlmConfigStatus(
                         result.ok
                           ? isKo
@@ -1357,7 +1397,7 @@ export default function GodView({
                             setPackActionStatus("syncing manifest…");
                             try {
                               await syncDataPacks();
-                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              await reloadRuntimeStatus();
                               setPackActionStatus("manifest synced");
                             } catch (reason) {
                               setPackActionStatus(reason instanceof Error ? reason.message : "sync failed");
@@ -1374,7 +1414,7 @@ export default function GodView({
                             setPackActionStatus("verifying pack…");
                             try {
                               await verifyRuntimeDataPack(selectedPack.pack_id);
-                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              await reloadRuntimeStatus();
                               setPackActionStatus("verification complete");
                             } catch (reason) {
                               setPackActionStatus(reason instanceof Error ? reason.message : "verify failed");
@@ -1391,7 +1431,7 @@ export default function GodView({
                             setPackActionStatus("pinning pack…");
                             try {
                               await pinRuntimeDataPack(selectedPack.pack_id, pinVersion.trim());
-                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              await reloadRuntimeStatus();
                               setPackActionStatus("pin updated");
                             } catch (reason) {
                               setPackActionStatus(reason instanceof Error ? reason.message : "pin failed");
@@ -1414,7 +1454,7 @@ export default function GodView({
                                 dataset_id: selectedPack.dataset_id,
                                 source_url: selectedPack.source_url,
                               });
-                              setRuntimeStatus(await getLocalRuntimeStatus());
+                              await reloadRuntimeStatus();
                               setPackActionStatus("install complete");
                             } catch (reason) {
                               setPackActionStatus(reason instanceof Error ? reason.message : "install failed");
@@ -1475,7 +1515,7 @@ export default function GodView({
                                         setPackActionStatus("rolling back pack…");
                                         try {
                                           await rollbackRuntimeDataPack(selectedPack.pack_id, historyIndex);
-                                          setRuntimeStatus(await getLocalRuntimeStatus());
+                                          await reloadRuntimeStatus();
                                           setPackActionStatus("rollback complete");
                                         } catch (reason) {
                                           setPackActionStatus(

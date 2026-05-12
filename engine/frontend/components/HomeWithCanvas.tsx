@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
 import {
   deleteSession,
@@ -46,25 +46,31 @@ export default function HomeWithCanvas() {
 
   const isKo = locale === "ko";
 
-  const refreshSessions = () =>
-    listSessions()
-      .then((items) => {
-        setSessions(items);
-        setSessionsError(null);
-      })
-      .catch((error: Error) => {
-        setSessionsError(error.message);
-      });
+  const refreshSessions = useCallback(
+    () =>
+      listSessions()
+        .then((items) => {
+          setSessions(items);
+          setSessionsError(null);
+        })
+        .catch((error: Error) => {
+          setSessionsError(error.message);
+        }),
+    []
+  );
 
-  const refreshRuntime = () =>
-    getLocalRuntimeStatus()
-      .then((status) => {
-        setRuntime(status);
-        setRuntimeError(null);
-      })
-      .catch((error: Error) => {
-        setRuntimeError(error.message);
-      });
+  const refreshRuntime = useCallback(
+    () =>
+      getLocalRuntimeStatus()
+        .then((status) => {
+          setRuntime(status);
+          setRuntimeError(null);
+        })
+        .catch((error: Error) => {
+          setRuntimeError(error.message);
+        }),
+    []
+  );
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? window.localStorage.getItem("end4d-ui-locale") : null;
@@ -80,46 +86,22 @@ export default function HomeWithCanvas() {
   }, [locale]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadRuntime = () =>
-      getLocalRuntimeStatus()
-        .then((status) => {
-          if (!cancelled) {
-            setRuntime(status);
-            setRuntimeError(null);
-          }
-        })
-        .catch((error: Error) => {
-          if (!cancelled) {
-            setRuntimeError(error.message);
-          }
-        });
+    const loadRuntime = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+      void refreshRuntime();
+    };
     loadRuntime();
-    const timer = window.setInterval(loadRuntime, 5000);
+    const timer = window.setInterval(loadRuntime, 10000);
     return () => {
-      cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [refreshRuntime]);
 
   useEffect(() => {
-    let cancelled = false;
-    listSessions()
-      .then((items) => {
-        if (!cancelled) {
-          setSessions(items);
-          setSessionsError(null);
-        }
-      })
-      .catch((error: Error) => {
-        if (!cancelled) {
-          setSessionsError(error.message);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    refreshSessions();
+  }, [refreshSessions]);
 
   const countriesLabel = useMemo(() => {
     if (!runtime || runtime.available_countries.length === 0) {
@@ -151,6 +133,39 @@ export default function HomeWithCanvas() {
     [dockWidth]
   );
 
+  const handleOpenWorld = useCallback((worldId: string, snapshotT: number | null = null) => {
+    setSelectedWorldId(worldId);
+    setSelectedSnapshotT(snapshotT);
+    setActiveView("simulation");
+  }, []);
+
+  const handleSimulationWorldSelected = useCallback((worldId: string) => {
+    setSelectedWorldId((prev) => (prev === worldId ? prev : worldId));
+  }, []);
+
+  const handleConsumeInitialInjectPreset = useCallback(() => {
+    setPendingInjectPreset(null);
+  }, []);
+
+  const handleQueueInjectPreset = useCallback(
+    (worldId: string, preset: ReviewSummaryResponse["inject_presets"][number]) => {
+      setSelectedWorldId(worldId);
+      setSelectedSnapshotT(typeof preset.t === "number" ? Number(preset.t) : null);
+      setPendingInjectPreset(preset);
+      setActiveView("simulation");
+    },
+    []
+  );
+
+  const handleSyncDataPacks = useCallback(() => {
+    setDataPackSyncing(true);
+    setDataPackSyncError(null);
+    syncDataPacks()
+      .then(() => refreshRuntime())
+      .catch((error: Error) => setDataPackSyncError(error.message))
+      .finally(() => setDataPackSyncing(false));
+  }, [refreshRuntime]);
+
   return (
     <main className="app-shell">
       <div className="app-shell__frame">
@@ -175,17 +190,9 @@ export default function HomeWithCanvas() {
                 sessionsError={sessionsError}
                 apiBase={getApiBase()}
                 onOpenView={setActiveView}
-                onOpenWorld={(worldId) => {
-                  setSelectedWorldId(worldId);
-                  setSelectedSnapshotT(null);
-                  setActiveView("simulation");
-                }}
-                onRenameSession={(sessionId, title) =>
-                  renameSession(sessionId, title).then(() => refreshSessions())
-                }
-                onDeleteSession={(sessionId) =>
-                  deleteSession(sessionId).then(() => refreshSessions())
-                }
+                onOpenWorld={(worldId) => handleOpenWorld(worldId, null)}
+                onRenameSession={(sessionId, title) => renameSession(sessionId, title).then(() => refreshSessions())}
+                onDeleteSession={(sessionId) => deleteSession(sessionId).then(() => refreshSessions())}
               />
             ) : null}
 
@@ -196,12 +203,12 @@ export default function HomeWithCanvas() {
                 initialWorldId={selectedWorldId}
                 initialT={selectedSnapshotT}
                 onOpenWorkbenchView={setActiveView}
-                onWorldSelected={(worldId) => {
-                  setSelectedWorldId(worldId);
-                  setSelectedSnapshotT(null);
-                }}
+                onWorldSelected={handleSimulationWorldSelected}
                 initialInjectPreset={pendingInjectPreset}
-                onConsumeInitialInjectPreset={() => setPendingInjectPreset(null)}
+                onConsumeInitialInjectPreset={handleConsumeInitialInjectPreset}
+                runtimeStatusExternal={runtime}
+                runtimeErrorExternal={runtimeError}
+                onRefreshRuntimeExternal={refreshRuntime}
               />
             ) : null}
 
@@ -211,17 +218,8 @@ export default function HomeWithCanvas() {
                 worldId={selectedWorldId ?? sessions[0]?.latest_world_id ?? null}
                 sessions={sessions}
                 onOpenView={setActiveView}
-                onOpenWorldAt={(worldId, t) => {
-                  setSelectedWorldId(worldId);
-                  setSelectedSnapshotT(typeof t === "number" ? t : null);
-                  setActiveView("simulation");
-                }}
-                onQueueInjectPreset={(worldId, preset) => {
-                  setSelectedWorldId(worldId);
-                  setSelectedSnapshotT(typeof preset.t === "number" ? Number(preset.t) : null);
-                  setPendingInjectPreset(preset);
-                  setActiveView("simulation");
-                }}
+                onOpenWorldAt={(worldId, t) => handleOpenWorld(worldId, typeof t === "number" ? t : null)}
+                onQueueInjectPreset={handleQueueInjectPreset}
               />
             ) : null}
 
@@ -231,14 +229,7 @@ export default function HomeWithCanvas() {
                 runtime={runtime}
                 syncing={dataPackSyncing}
                 syncError={dataPackSyncError}
-                onSync={() => {
-                  setDataPackSyncing(true);
-                  setDataPackSyncError(null);
-                  syncDataPacks()
-                    .then(() => refreshRuntime())
-                    .catch((error: Error) => setDataPackSyncError(error.message))
-                    .finally(() => setDataPackSyncing(false));
-                }}
+                onSync={handleSyncDataPacks}
               />
             ) : null}
 
