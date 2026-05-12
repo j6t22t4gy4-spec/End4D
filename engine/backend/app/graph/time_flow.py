@@ -6,6 +6,7 @@ ARCHITECTURE_CHECKLIST 5.1: 입력 → 4D세계 → 에이전트 풀 → 시간 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+import re
 
 from langgraph.graph import StateGraph, START, END
 
@@ -141,13 +142,101 @@ def _seed_action_state_from_persona(*, label: str, attrs: Dict[str, Any], zone_i
     interests = str(attrs.get("hobbies_and_interests", "") or "").lower()
     if interests and any(token in interests for token in ("community", "봉사", "volunteer")):
         cooperation += 0.08
+    priors = _persona_priors(attrs)
+    cooperation += priors["cooperation_delta"]
+    policy += priors["policy_delta"]
+    resource += priors["resource_delta"]
+    mobility += priors["mobility_delta"]
     return {
         "cooperation_bias": round(max(0.0, min(1.0, cooperation)), 4),
         "policy_sensitivity": round(max(0.0, min(1.0, policy)), 4),
         "resource_bias": round(max(0.0, min(1.0, resource)), 4),
         "mobility_bias": round(max(0.0, min(1.0, mobility)), 4),
         "strategy_summary": "persona_seeded_initial_state",
+        "persona_prior_summary": priors["summary"],
+        "persona_prior_factors": priors["factors"],
     }
+
+
+def _persona_priors(attrs: Dict[str, Any]) -> Dict[str, Any]:
+    occupation = _normalize_attr_text(attrs.get("occupation"))
+    region = _normalize_attr_text(
+        attrs.get("district") or attrs.get("province") or attrs.get("region")
+    )
+    education = _normalize_attr_text(attrs.get("education_level"))
+    interests = _normalize_attr_text(attrs.get("hobbies_and_interests"))
+    commute = _normalize_attr_text(
+        attrs.get("commute") or attrs.get("transportation") or attrs.get("mobility_pattern")
+    )
+    household = _normalize_attr_text(
+        attrs.get("household_type") or attrs.get("family_status") or attrs.get("marital_status")
+    )
+
+    cooperation_delta = 0.0
+    policy_delta = 0.0
+    resource_delta = 0.0
+    mobility_delta = 0.0
+    factors: list[str] = []
+
+    def apply(delta_key: str, amount: float, reason: str) -> None:
+        nonlocal cooperation_delta, policy_delta, resource_delta, mobility_delta
+        if delta_key == "cooperation":
+            cooperation_delta += amount
+        elif delta_key == "policy":
+            policy_delta += amount
+        elif delta_key == "resource":
+            resource_delta += amount
+        elif delta_key == "mobility":
+            mobility_delta += amount
+        factors.append(reason)
+
+    if _contains_any(occupation, ["teacher", "nurse", "social worker", "care", "교사", "간호", "복지", "공무", "public"]):
+        apply("cooperation", 0.08, "public-facing occupation lifts cooperation")
+        apply("policy", 0.06, "public-facing occupation raises policy sensitivity")
+    if _contains_any(occupation, ["entrepreneur", "founder", "business", "trader", "investor", "자영업", "사업", "투자", "상인"]):
+        apply("resource", 0.1, "market-facing occupation raises resource focus")
+        apply("mobility", 0.05, "market-facing occupation adds movement pressure")
+    if _contains_any(occupation, ["driver", "delivery", "field", "sales", "logistics", "운전", "배송", "영업", "물류"]):
+        apply("mobility", 0.14, "mobile occupation raises mobility bias")
+    if _contains_any(education, ["phd", "doctor", "석사", "박사", "master"]):
+        apply("policy", 0.05, "higher education lifts policy sensitivity")
+        apply("resource", 0.03, "higher education slightly raises strategic resource focus")
+    if _contains_any(interests, ["volunteer", "community", "activism", "civic", "봉사", "공동체", "시민", "활동"]):
+        apply("cooperation", 0.08, "community-oriented interest raises cooperation")
+        apply("policy", 0.04, "community-oriented interest raises policy attention")
+    if _contains_any(interests, ["investing", "finance", "market", "trading", "재테크", "금융", "주식", "시장"]):
+        apply("resource", 0.08, "finance-oriented interest raises resource focus")
+    if _contains_any(commute, ["car", "bus", "subway", "train", "taxi", "bike", "도보", "자차", "버스", "지하철", "기차", "오토바이"]):
+        apply("mobility", 0.08, "commute footprint raises mobility bias")
+    if _contains_any(commute, ["remote", "home", "재택", "원격", "home office"]):
+        apply("mobility", -0.06, "remote pattern lowers mobility bias")
+        apply("cooperation", 0.03, "remote pattern slightly increases local coordination")
+    if _contains_any(household, ["single parent", "caregiver", "대가족", "부양", "돌봄", "single-parent"]):
+        apply("cooperation", 0.05, "care burden raises cooperation need")
+        apply("mobility", -0.04, "care burden slightly reduces mobility")
+    if _contains_any(region, ["capital", "seoul", "metro", "urban", "서울", "수도권", "도심"]):
+        apply("mobility", 0.04, "urban region slightly raises mobility")
+        apply("policy", 0.03, "urban region slightly raises policy sensitivity")
+
+    summary = "; ".join(factors[:6]) if factors else "default persona priors"
+    return {
+        "cooperation_delta": cooperation_delta,
+        "policy_delta": policy_delta,
+        "resource_delta": resource_delta,
+        "mobility_delta": mobility_delta,
+        "factors": factors[:8],
+        "summary": summary,
+    }
+
+
+def _normalize_attr_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _contains_any(text: str, needles: List[str]) -> bool:
+    if not text:
+        return False
+    return any(needle in text for needle in needles)
 
 
 # State: TypedDict 대신 dict 사용 (Cell 직렬화 이슈 회피)

@@ -4,7 +4,7 @@ import pytest
 
 from app.api.run import _build_live_observer_cells
 from app.core.snapshot import SnapshotStore
-from app.graph.time_flow import create_time_flow_graph
+from app.graph.time_flow import _create_initial_cells, create_time_flow_graph
 from app.llm import thought as thought_module
 from app.models.cell import Cell
 
@@ -263,3 +263,35 @@ def test_thought_continuity_falls_back_to_token_overlap(monkeypatch):
         "Local transport pressure keeps rising around the zone boundary tonight.",
     )
     assert score > 0.7
+
+
+def test_persona_attrs_seed_action_priors():
+    persona_catalog = [
+        {
+            "persona_id": "persona-1",
+            "persona_text": "A civic-minded delivery worker in Seoul who volunteers on weekends.",
+            "role_key": "citizen",
+            "role_label": "citizen",
+            "country": "KR",
+            "attrs": {
+                "occupation": "delivery driver",
+                "hobbies_and_interests": "community volunteer, local activism",
+                "region": "Seoul metro",
+                "transportation": "motorbike and subway",
+                "education_level": "master",
+            },
+        }
+    ]
+    cells = _create_initial_cells(
+        count=1,
+        t=0.0,
+        role_catalog=["citizen"],
+        persona_catalog=persona_catalog,
+        engine_params={"zone_count": 1},
+    )
+    action_state = cells[0].action_state
+    assert float(action_state["mobility_bias"]) > 0.55
+    assert float(action_state["cooperation_bias"]) > 0.6
+    assert float(action_state["policy_sensitivity"]) > 0.55
+    assert "persona_prior_summary" in action_state
+    assert action_state["persona_prior_factors"]
