@@ -243,6 +243,7 @@ def _run_stream_producer(
                 "engine_params": world_store.get_engine_params(world_id),
                 "coalition_state": dict(entry.get("coalition_state") or {}),
                 "coalition_history": list(entry.get("coalition_history") or []),
+                "group_state": dict(entry.get("group_state") or {}),
                 "world_events": list(entry["world"].nutrients),
                 "snapshot_store": store,
                 "nutrient_per_step": nps,
@@ -256,6 +257,10 @@ def _run_stream_producer(
                     coalition_state=s.get("coalition_state"),
                     coalition_history=s.get("coalition_history"),
                 )
+                world_store.update_group_state(
+                    world_id,
+                    group_state=s.get("group_state"),
+                )
                 observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
                 msg_queue.put({
                     "type": "step",
@@ -264,9 +269,14 @@ def _run_stream_producer(
                     "observer_cells": observer_cells,
                     "observer_total_cells": len(s["cells"]),
                     "observer_sampled": observer_sampled,
+                    "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
                 })
             elif "init" in chunk:
                 s = chunk["init"]
+                world_store.update_group_state(
+                    world_id,
+                    group_state=s.get("group_state"),
+                )
                 observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
                 msg_queue.put({
                     "type": "step",
@@ -275,6 +285,7 @@ def _run_stream_producer(
                     "observer_cells": observer_cells,
                     "observer_total_cells": len(s["cells"]),
                     "observer_sampled": observer_sampled,
+                    "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
                 })
         msg_queue.put({"type": "done"})
     except Exception as e:
@@ -343,6 +354,7 @@ def run_simulation(
                 "engine_params": world_store.get_engine_params(world_id),
                 "coalition_state": dict(entry.get("coalition_state") or {}),
                 "coalition_history": list(entry.get("coalition_history") or []),
+                "group_state": dict(entry.get("group_state") or {}),
                 "world_events": list(world.nutrients),
                 "snapshot_store": store,
                 "nutrient_per_step": nps,
@@ -355,6 +367,10 @@ def run_simulation(
             world_id,
             coalition_state=result.get("coalition_state"),
             coalition_history=result.get("coalition_history"),
+        )
+        world_store.update_group_state(
+            world_id,
+            group_state=result.get("group_state"),
         )
     finally:
         world_store.set_status(world_id, "done")

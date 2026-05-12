@@ -295,3 +295,43 @@ def test_persona_attrs_seed_action_priors():
     assert float(action_state["policy_sensitivity"]) > 0.55
     assert "persona_prior_summary" in action_state
     assert action_state["persona_prior_factors"]
+
+
+def test_graph_emits_collective_group_state_and_feedback():
+    store = SnapshotStore()
+    graph = create_time_flow_graph()
+    initial_cells = [
+        Cell(
+            cell_id=f"group-{idx}",
+            x=float(idx),
+            y=float(idx % 2),
+            z=0.1 * idx,
+            t=0.0,
+            energy=45.0 + idx * 3,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.full(8, 0.05 * (idx + 1)),
+            thought_vec=np.full(256, 0.02 * (idx + 1)),
+            worldview_vec=np.full(384, 0.03 * (idx + 1)),
+            role_key="citizen" if idx < 3 else "merchant",
+            role_label="citizen" if idx < 3 else "merchant",
+            zone_id="zone-a" if idx % 2 == 0 else "zone-b",
+            zone_label="zone-a" if idx % 2 == 0 else "zone-b",
+            action_state={"mobility_bias": 0.35 + idx * 0.05},
+        )
+        for idx in range(6)
+    ]
+    out = graph.invoke(
+        {
+            "initial_cells": initial_cells,
+            "t_max": 2,
+            "snapshot_store": store,
+        }
+    )
+    group_state = dict(out.get("group_state") or {})
+    assert group_state["collective_signal"] in {"stable", "realigning", "fracturing"}
+    assert "citizen" in group_state["role_groups"]
+    assert "zone-a" in group_state["zone_groups"]
+    sample = out["cells"][0].action_state
+    assert "role_group_cohesion" in sample
+    assert "zone_group_tension" in sample
+    assert "collective_pressure" in sample

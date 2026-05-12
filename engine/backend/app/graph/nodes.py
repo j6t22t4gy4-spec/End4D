@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from app.core.agent_interactions import apply_agent_interactions
+from app.core.collective_dynamics import apply_collective_dynamics
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
 from app.core.policy_events import apply_active_policies
@@ -78,6 +79,11 @@ def step_loop_node(state: "SimulationState") -> dict:
         current_t=next_t,
         engine_params=state.get("engine_params"),
     )
+    cells, group_state = apply_collective_dynamics(
+        cells,
+        current_t=next_t,
+        previous_group_state=state.get("group_state"),
+    )
     cells = [c.copy(t=next_t) for c in cells]
 
     store = state.get("snapshot_store")
@@ -100,4 +106,5 @@ def step_loop_node(state: "SimulationState") -> dict:
         out["engine_params"] = dict(state["engine_params"])
     out["coalition_state"] = dict(coalition_state)
     out["coalition_history"] = [dict(item) for item in coalition_history]
+    out["group_state"] = dict(group_state)
     return out

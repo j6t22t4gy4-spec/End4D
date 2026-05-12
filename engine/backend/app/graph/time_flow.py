@@ -10,6 +10,7 @@ import re
 
 from langgraph.graph import StateGraph, START, END
 
+from app.core.collective_dynamics import apply_collective_dynamics
 from app.models.cell import Cell
 from app.core.memory_store import seed_memory_from_text
 from app.core.social_elevation import refresh_social_elevation
@@ -260,11 +261,17 @@ def _init_node(state: SimulationState) -> SimulationState:
             current_t=0.0,
             engine_params=state.get("engine_params"),
         )
+    cells, group_state = apply_collective_dynamics(
+        cells,
+        current_t=0.0,
+        previous_group_state=state.get("group_state"),
+    )
     out: SimulationState = {
         "cells": cells,
         "current_t": 0.0,
         "coalition_state": dict(state.get("coalition_state") or {}),
         "coalition_history": [dict(item) for item in state.get("coalition_history") or []],
+        "group_state": dict(group_state),
     }
     if "t_max" in state:
         out["t_max"] = state["t_max"]

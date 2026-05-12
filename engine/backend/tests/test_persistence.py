@@ -35,6 +35,10 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
             "coalition_signal": "moderate",
         }
     ]
+    entry["group_state"] = {
+        "collective_signal": "realigning",
+        "summary": {"role": {"avg_cohesion": 0.64}, "zone": {"avg_fracture_risk": 0.38}},
+    }
     entry["snapshot_store"].save(
         3.0,
         [
@@ -93,6 +97,7 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert raw["payload_schema_version"] == "world-entry/v4"
     assert raw["integrity"]["algorithm"] == "sha256"
     assert raw["payload"]["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
+    assert raw["payload"]["group_state"]["collective_signal"] == "realigning"
     assert raw["payload"]["snapshot_index"][0]["cell_count"] == 1
     assert raw["payload"]["snapshot_archive"]["archived_count"] == 0
 
@@ -110,4 +115,5 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap.cells[0].zone_id == "zone-0"
     assert loaded_entry["config_version"]
     assert loaded_entry["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
+    assert loaded_entry["group_state"]["collective_signal"] == "realigning"
     assert loaded_entry["snapshot_store"].snapshot_index()[0]["digest"]

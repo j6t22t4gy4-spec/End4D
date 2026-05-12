@@ -38,6 +38,7 @@ class StateSnapshotResponse(BaseModel):
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
     coalition_state: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     coalition_history: List[Dict[str, Any]] = Field(default_factory=list)
+    group_state: Dict[str, Any] = Field(default_factory=dict)
     snapshot_index: List[Dict[str, Any]] = Field(default_factory=list)
     snapshot_archive: Dict[str, Any] = Field(default_factory=dict)
     cell_count: int
@@ -100,6 +101,7 @@ def export_state(
             for role, payload in dict(entry.get("coalition_state") or {}).items()
         },
         coalition_history=[dict(item) for item in list(entry.get("coalition_history") or [])],
+        group_state=dict(entry.get("group_state") or {}),
         snapshot_index=store.snapshot_index(),
         snapshot_archive=store.archive_summary(),
         cell_count=len(snap.cells),
@@ -147,6 +149,7 @@ def restore_state(world_id: str, body: RestoreRequest):
                         "nutrient_per_step": world_store.get_nutrient_per_step(new_world_id),
                         "coalition_state": dict(fork_entry.get("coalition_state") or {}),
                         "coalition_history": list(fork_entry.get("coalition_history") or []),
+                        "group_state": dict(fork_entry.get("group_state") or {}),
                     },
                     config={"recursion_limit": int(max(target_world.t_max - restored_t, 0)) + 80},
                 )
@@ -156,6 +159,10 @@ def restore_state(world_id: str, body: RestoreRequest):
                     new_world_id,
                     coalition_state=result.get("coalition_state"),
                     coalition_history=result.get("coalition_history"),
+                )
+                world_store.update_group_state(
+                    new_world_id,
+                    group_state=result.get("group_state"),
                 )
             finally:
                 world_store.set_status(new_world_id, "done")
@@ -192,6 +199,7 @@ def restore_state(world_id: str, body: RestoreRequest):
                     "nutrient_per_step": world_store.get_nutrient_per_step(world_id),
                     "coalition_state": dict(entry.get("coalition_state") or {}),
                     "coalition_history": list(entry.get("coalition_history") or []),
+                    "group_state": dict(entry.get("group_state") or {}),
                 },
                 config={"recursion_limit": int(max(entry["world"].t_max - restored_t, 0)) + 80},
             )
@@ -201,6 +209,10 @@ def restore_state(world_id: str, body: RestoreRequest):
                 world_id,
                 coalition_state=result.get("coalition_state"),
                 coalition_history=result.get("coalition_history"),
+            )
+            world_store.update_group_state(
+                world_id,
+                group_state=result.get("group_state"),
             )
         finally:
             world_store.set_status(world_id, "done")

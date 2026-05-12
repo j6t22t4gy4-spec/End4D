@@ -229,3 +229,23 @@ def test_delete_world_removes_it_from_store():
 
     missing = client.get(f"/worlds/{world_id}")
     assert missing.status_code == 404
+
+
+def test_get_world_includes_group_state():
+    created = client.post(
+        "/worlds",
+        json={"prompt": "집단 상태가 world 응답에 보이는지 확인"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+    entry = world_store.get(world_id)
+    assert entry is not None
+    entry["group_state"] = {
+        "collective_signal": "realigning",
+        "summary": {"role": {"avg_cohesion": 0.61}, "zone": {"avg_fracture_risk": 0.41}},
+    }
+
+    response = client.get(f"/worlds/{world_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["group_state"]["collective_signal"] == "realigning"

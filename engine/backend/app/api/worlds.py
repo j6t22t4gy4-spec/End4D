@@ -86,6 +86,7 @@ class WorldResponse(BaseModel):
     simulation_config: Dict[str, Any] = Field(default_factory=dict)
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
     coalition_state: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    group_state: Dict[str, Any] = Field(default_factory=dict)
     session_id: str = ""
 
 
@@ -242,6 +243,7 @@ def get_world(world_id: str):
             str(role): dict(payload)
             for role, payload in dict(entry.get("coalition_state") or {}).items()
         },
+        group_state=dict(entry.get("group_state") or {}),
         session_id=str(entry.get("session_id") or ""),
     )
 

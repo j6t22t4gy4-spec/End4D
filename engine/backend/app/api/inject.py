@@ -117,6 +117,7 @@ def inject_event(world_id: str, body: InjectRequest):
                 "nutrient_per_step": nps,
                 "coalition_state": dict(entry.get("coalition_state") or {}),
                 "coalition_history": list(entry.get("coalition_history") or []),
+                "group_state": dict(entry.get("group_state") or {}),
             },
             config={"recursion_limit": int(max(t_max - t_inject, 0)) + 80},
         )
@@ -126,6 +127,10 @@ def inject_event(world_id: str, body: InjectRequest):
             world_id,
             coalition_state=result.get("coalition_state"),
             coalition_history=result.get("coalition_history"),
+        )
+        world_store.update_group_state(
+            world_id,
+            group_state=result.get("group_state"),
         )
     finally:
         world_store.set_status(world_id, "done")

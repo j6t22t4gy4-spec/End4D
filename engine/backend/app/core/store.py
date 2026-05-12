@@ -131,6 +131,7 @@ class WorldStore:
             "session_id": str(session.get("session_id") or ""),
             "coalition_state": {},
             "coalition_history": [],
+            "group_state": {},
         }
         session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
@@ -187,6 +188,12 @@ class WorldStore:
             }
         if coalition_history is not None:
             self._worlds[world_id]["coalition_history"] = [dict(item) for item in list(coalition_history)]
+        self._persist(world_id)
+
+    def update_group_state(self, world_id: str, *, group_state: Optional[dict] = None) -> None:
+        if world_id not in self._worlds or group_state is None:
+            return
+        self._worlds[world_id]["group_state"] = dict(group_state)
         self._persist(world_id)
 
     def get_initial_cell_count(self, world_id: str) -> int:
@@ -273,6 +280,7 @@ class WorldStore:
             for role, payload in dict(source.get("coalition_state") or {}).items()
         }
         new_entry["coalition_history"] = [dict(item) for item in list(source.get("coalition_history") or [])]
+        new_entry["group_state"] = dict(source.get("group_state") or {})
         new_entry["snapshot_store"].save(float(snapshot_t), [c.copy() for c in snap.cells])
         self._persist(new_world_id)
         return new_world_id
