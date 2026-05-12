@@ -48,6 +48,13 @@ type ElevationBand = {
   dominantRole: string;
 };
 
+type ObserverSemantics = {
+  focus: string;
+  score: number;
+  ring: string;
+  halo: string;
+};
+
 type ZSemantics = {
   mode: string;
   label: string;
@@ -210,14 +217,25 @@ export default function SimulationMap2D({
 
             {scene.nodes.map((node) => (
               <g key={node.id}>
+                {node.observer.score > 0 ? (
+                  <circle
+                    cx={node.cx}
+                    cy={node.cy}
+                    r={node.r + 5 + node.observer.score * 6}
+                    fill={node.observer.halo}
+                    fillOpacity={0.22 + node.observer.score * 0.18}
+                    stroke="none"
+                    className="simulation-map__agent-observer-halo"
+                  />
+                ) : null}
                 <circle
                   cx={node.cx}
                   cy={node.cy}
                   r={node.r}
                   fill={node.fill}
                   fillOpacity="0.92"
-                  stroke={selectedAgentId === node.id ? "#0f172a" : "#ffffff"}
-                  strokeWidth={selectedAgentId === node.id ? "2.5" : "1.5"}
+                  stroke={selectedAgentId === node.id ? "#0f172a" : node.observer.ring}
+                  strokeWidth={selectedAgentId === node.id ? "2.5" : 1.5 + node.observer.score * 1.8}
                   className="simulation-map__agent-node"
                   onClick={() => onSelectAgent?.(node.cell)}
                 />
@@ -283,6 +301,20 @@ export default function SimulationMap2D({
             </span>
           </div>
         </div>
+        <div className="simulation-map__legend-item simulation-map__legend-item--elevation">
+          <span
+            className="simulation-map__legend-contour"
+            style={{
+              background:
+                "linear-gradient(180deg, rgba(124, 58, 237, 0.24), rgba(14, 165, 233, 0.16)), #ffffff",
+              borderColor: "rgba(124, 58, 237, 0.48)",
+            }}
+          />
+          <div>
+            <strong>observer signal</strong>
+            <span>focus halo + ring intensity mark live observer importance</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -323,6 +355,7 @@ function buildScene(cells: CellSnapshot[]) {
     const cy = projectY(cell.y);
     const { rgb, scale } = emotionToColorAndScale(cell.emotion_vec);
     const fill = rgbToCss(rgb);
+    const observer = observerSemantics(cell);
     const zoneId = cell.zone_id ?? "zone-0";
     const zoneLabel = cell.zone_label ?? zoneId;
     const box = zoneAcc.get(zoneId) ?? {
@@ -348,11 +381,12 @@ function buildScene(cells: CellSnapshot[]) {
       cell,
       cx,
       cy,
-      r: 4 + scale * 5,
+      r: 4 + scale * 5 + observer.score * 1.5,
       fill,
+      observer,
       title: `${cell.role_label ?? cell.role_key ?? "agent"} · ${
         zoneLabel
-      } · energy ${cell.energy.toFixed(1)}`,
+      } · energy ${cell.energy.toFixed(1)} · observer ${observer.focus} ${observer.score.toFixed(2)}`,
     };
   });
 
@@ -383,6 +417,41 @@ function buildScene(cells: CellSnapshot[]) {
     zRange: { min: minZ, max: maxZ },
     zLabel: zSemantics.label,
     zSemantics,
+  };
+}
+
+function observerSemantics(cell: CellSnapshot): ObserverSemantics {
+  const focus = String(cell.action_state?.observer_focus ?? "field");
+  const score = Math.max(0, Math.min(1, Number(cell.action_state?.observer_score ?? 0)));
+  if (focus === "thought") {
+    return {
+      focus,
+      score,
+      ring: "rgba(124, 58, 237, 0.88)",
+      halo: "rgba(167, 139, 250, 0.95)",
+    };
+  }
+  if (focus === "mover") {
+    return {
+      focus,
+      score,
+      ring: "rgba(14, 165, 233, 0.88)",
+      halo: "rgba(125, 211, 252, 0.9)",
+    };
+  }
+  if (focus === "zone") {
+    return {
+      focus,
+      score,
+      ring: "rgba(245, 158, 11, 0.88)",
+      halo: "rgba(253, 230, 138, 0.9)",
+    };
+  }
+  return {
+    focus,
+    score,
+    ring: "rgba(148, 163, 184, 0.8)",
+    halo: "rgba(203, 213, 225, 0.8)",
   };
 }
 

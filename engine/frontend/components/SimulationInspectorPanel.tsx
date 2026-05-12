@@ -335,6 +335,16 @@ function AgentCard({
       ? Number(agent.action_state.last_thought_t)
       : null;
   const zMode = String(agent.action_state?.z_mode ?? "hybrid");
+  const continuityScore =
+    typeof agent.action_state?.thought_continuity_score === "number"
+      ? Number(agent.action_state.thought_continuity_score)
+      : null;
+  const continuityState = String(agent.action_state?.thought_continuity_state ?? "");
+  const observerFocus = String(agent.action_state?.observer_focus ?? "field");
+  const observerScore =
+    typeof agent.action_state?.observer_score === "number"
+      ? Number(agent.action_state.observer_score)
+      : null;
   const [question, setQuestion] = useState(
     "지금 상황을 너의 입장에서 어떻게 보고 있어?"
   );
@@ -397,6 +407,8 @@ function AgentCard({
       <div className="inspector-grid">
         <MetricRow label="energy" value={agent.energy.toFixed(2)} />
         <MetricRow label="z" value={(agent.z ?? 0).toFixed(2)} />
+        <MetricRow label="continuity" value={formatContinuityMetric(continuityState, continuityScore, isKo)} />
+        <MetricRow label="observer" value={formatObserverMetric(observerFocus, observerScore, isKo)} />
         <MetricRow label="z mode" value={zMode} />
         <MetricRow label="zone influence" value={String(agent.zone_influence ?? 1)} />
         <MetricRow label="short mem" value={String(shortCount)} />
@@ -585,6 +597,35 @@ function continuityPillClass(state?: string): string {
     return "rounded-full bg-rose-50 px-2 py-1 font-semibold text-rose-700";
   }
   return "rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600";
+}
+
+function formatContinuityMetric(state: string, score: number | null, isKo: boolean): string {
+  const scoreText = score != null ? ` ${Math.round(score * 100)}` : "";
+  if (state === "stable") return isKo ? `높음${scoreText}` : `high${scoreText}`;
+  if (state === "evolving") return isKo ? `변화${scoreText}` : `evolving${scoreText}`;
+  if (state === "volatile") return isKo ? `급변${scoreText}` : `volatile${scoreText}`;
+  return isKo ? "미측정" : "n/a";
+}
+
+function formatObserverMetric(focus: string, score: number | null, isKo: boolean): string {
+  const focusLabel =
+    focus === "thought"
+      ? isKo
+        ? "생각"
+        : "thought"
+      : focus === "mover"
+        ? isKo
+          ? "이동"
+          : "mover"
+        : focus === "zone"
+          ? isKo
+            ? "구역"
+            : "zone"
+          : isKo
+            ? "필드"
+            : "field";
+  const scoreText = score != null ? ` ${Math.round(score * 100)}` : "";
+  return `${focusLabel}${scoreText}`;
 }
 
 function extractThoughtEntries(agent: CellSnapshot): ThoughtEntry[] {
