@@ -22,7 +22,7 @@ def test_llm_first_profile_uses_denser_cadence(monkeypatch):
     monkeypatch.setenv("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE", "2048")
     monkeypatch.setenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "1200")
 
-    assert get_thought_refresh_interval() <= 6
+    assert get_thought_refresh_interval() <= 3
     assert get_action_refresh_interval() <= 2
     assert get_worldview_refresh_interval() <= 12
     assert get_worldview_memory_threshold() <= 48
@@ -43,7 +43,7 @@ def test_rules_first_profile_uses_more_conservative_cadence(monkeypatch):
     monkeypatch.delenv("ORGANIC4D_DIALOGUE_INTERVAL", raising=False)
     monkeypatch.delenv("ORGANIC4D_GROUP_DELIBERATION_INTERVAL", raising=False)
 
-    assert get_thought_refresh_interval() >= 24
+    assert get_thought_refresh_interval() >= 16
     assert get_action_refresh_interval() >= 12
     assert get_worldview_refresh_interval() >= 48
     assert get_dialogue_interval() >= 30

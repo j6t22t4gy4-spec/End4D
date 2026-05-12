@@ -1,9 +1,16 @@
 """Phase 6: 스텝 루프에 Emotion·Thought·메모리 연동."""
 import numpy as np
+import pytest
 
 from app.core.snapshot import SnapshotStore
 from app.graph.time_flow import create_time_flow_graph
 from app.models.cell import Cell
+
+
+@pytest.fixture(autouse=True)
+def disable_live_llm(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "0")
+    monkeypatch.setenv("ORGANIC4D_LLM_PROVIDER", "stub")
 
 
 def test_graph_run_preserves_vector_shapes_and_advances_t():
@@ -70,7 +77,7 @@ def test_graph_assigns_social_elevation_from_engine_params():
 
 
 def test_thought_refresh_at_interval_changes_vector():
-    """Thought는 current_t=20인 스텝에서 갱신되므로 t_max>20 필요."""
+    """Thought는 첫 스텝과 cadence마다 갱신되어야 한다."""
     store = SnapshotStore()
     graph = create_time_flow_graph()
     graph.invoke(
@@ -84,6 +91,7 @@ def test_thought_refresh_at_interval_changes_vector():
     snap21 = store.get(21.0)
     assert snap0 is not None and snap21 is not None
     assert not np.allclose(snap0.cells[0].thought_vec, snap21.cells[0].thought_vec)
+    assert str(snap21.cells[0].action_state.get("last_thought_summary", "")).strip()
 
 
 def test_graph_writes_agent_social_memory_before_thought_refresh():
@@ -114,17 +122,20 @@ def test_graph_writes_agent_social_memory_before_thought_refresh():
             "snapshot_store": store,
         }
     )
-    snap20 = store.get(20.0)
+    snap15 = store.get(15.0)
     snap21 = store.get(21.0)
-    assert snap20 is not None and snap21 is not None
+    assert snap15 is not None and snap21 is not None
     assert any(
         "social_observation" in line
-        for cell in snap20.cells
+        for cell in snap15.cells
         for line in cell.memory
     )
     assert any(
         "borrowed_signal=" in line
-        for cell in snap20.cells
+        for cell in snap15.cells
         for line in cell.memory
     )
-    assert not np.allclose(snap20.cells[0].thought_vec, snap21.cells[0].thought_vec)
+    assert any(
+        str(cell.action_state.get("last_thought_summary", "")).strip()
+        for cell in snap21.cells
+    )

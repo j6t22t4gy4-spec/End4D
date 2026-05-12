@@ -20,7 +20,10 @@ from app.models.cell import Cell
 def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
     interval = get_thought_refresh_interval()
-    if t_int <= 0 or t_int % interval != 0:
+    if t_int <= 0:
+        return cells
+    # Write an early first thought so short runs still expose cognition traces.
+    if t_int != 1 and t_int % interval != 0:
         return cells
 
     selected = _selected_indices(cells, t_int, get_llm_agent_sample_size())

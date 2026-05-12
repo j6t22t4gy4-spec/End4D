@@ -22,24 +22,27 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
     out: List[Cell] = [cell.copy() for cell in cells]
     for idx, cell, text in zip(selected, selected_cells, generated):
         action_state = _parse_action_state(text, cell)
+        merged_action_state = dict(cell.action_state)
+        merged_action_state.update(action_state)
+        merged_action_state["last_action_t"] = float(current_t)
         entry = memory_entry(
             t=float(current_t),
             kind="action_plan",
-            summary=str(action_state.get("strategy_summary") or "action plan"),
+            summary=str(merged_action_state.get("strategy_summary") or "action plan"),
             importance=0.62,
             source="llm.action",
-            payload=dict(action_state),
+            payload=dict(merged_action_state),
             tags=["llm", "action_plan"],
         )
         behavior = behavior_event(
             t=float(current_t),
             event_type="action_plan",
             source="llm.action",
-            summary=str(action_state.get("strategy_summary") or "action plan"),
+            summary=str(merged_action_state.get("strategy_summary") or "action plan"),
             quality_score=0.66,
-            payload=dict(action_state),
+            payload=dict(merged_action_state),
         )
-        updated = append_memory(cell.copy(action_state=action_state), entry, behavior=behavior, promote=False)
+        updated = append_memory(cell.copy(action_state=merged_action_state), entry, behavior=behavior, promote=False)
         out[idx] = updated
     selected_set = set(selected)
     for idx, cell in enumerate(out):

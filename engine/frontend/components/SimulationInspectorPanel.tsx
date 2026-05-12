@@ -65,8 +65,8 @@ export function SimulationInspectorPanel({
 
   return (
     <AppPanel
-      title={isKo ? "선택 상세" : "Selection Details"}
-      subtitle={isKo ? "에이전트, 구역, 고도 맥락" : "Agent, zone, and elevation context"}
+      title={isKo ? "필드 로그" : "Field Log"}
+      subtitle={isKo ? "소셜 필드 옆에서 최근 에이전트 생각과 선택 맥락을 같이 봅니다" : "Read recent agent thoughts and selection context beside the social field"}
       bodyClassName="space-y-4"
       action={
         hasSelection ? (
@@ -93,28 +93,22 @@ export function SimulationInspectorPanel({
         />
       </div>
 
-      {!hasSelection ? (
-        <div className="space-y-4">
-          <EmptyState locale={locale} />
-          <ThoughtPreviewRail locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
-          <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {selectedAgent ? (
-            <AgentCard
-              locale={locale}
-              agent={selectedAgent}
-              worldId={worldSummary.worldId}
-              currentT={worldSummary.currentT}
-              onOpenWorldAt={onOpenWorldAt}
-            />
-          ) : null}
-          <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
-          {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
-          {selectedBand ? <BandCard band={selectedBand} /> : null}
-        </div>
-      )}
+      <div className="space-y-4">
+        {!hasSelection ? <EmptyState locale={locale} /> : null}
+        <ThoughtPreviewRail locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+        {selectedAgent ? (
+          <AgentCard
+            locale={locale}
+            agent={selectedAgent}
+            worldId={worldSummary.worldId}
+            currentT={worldSummary.currentT}
+            onOpenWorldAt={onOpenWorldAt}
+          />
+        ) : null}
+        {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
+        {selectedBand ? <BandCard band={selectedBand} /> : null}
+        <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+      </div>
     </AppPanel>
   );
 }
@@ -132,8 +126,12 @@ function ThoughtPreviewRail({
   const previewAgents = useMemo(
     () =>
       agentRoster
-        .filter((agent) => String(agent.action_state?.last_thought_summary ?? "").trim())
-        .sort((a, b) => Number(b.action_state?.last_thought_t ?? -1) - Number(a.action_state?.last_thought_t ?? -1))
+        .map((agent) => ({
+          agent,
+          preview: getAgentThoughtPreview(agent),
+        }))
+        .filter((item) => Boolean(item.preview?.summary))
+        .sort((a, b) => Number(b.preview?.t ?? -1) - Number(a.preview?.t ?? -1))
         .slice(0, 4),
     [agentRoster]
   );
@@ -147,7 +145,7 @@ function ThoughtPreviewRail({
         subtitle={isKo ? "선택하기 전에도 현재 사고 흔적을 빠르게 봅니다" : "Scan current thought traces before selecting an agent"}
       />
       <div className="grid gap-2">
-        {previewAgents.map((agent) => (
+        {previewAgents.map(({ agent, preview }) => (
           <button
             key={`thought-preview-${agent.cell_id}`}
             type="button"
@@ -157,11 +155,11 @@ function ThoughtPreviewRail({
             <div className="session-thread-card__header">
               <p className="session-thread-card__title">{agent.role_label ?? agent.role_key ?? "agent"}</p>
               <span className="session-thread-card__meta">
-                t={Number(agent.action_state?.last_thought_t ?? agent.t ?? 0).toFixed(0)}
+                t={Number(preview?.t ?? agent.t ?? 0).toFixed(0)}
               </span>
             </div>
             <p className="session-thread-card__prompt">
-              {String(agent.action_state?.last_thought_summary ?? "").trim()}
+              {preview?.summary ?? ""}
             </p>
           </button>
         ))}
@@ -476,6 +474,23 @@ type ThoughtEntry = {
   summary: string;
   t?: number;
 };
+
+function getAgentThoughtPreview(agent: CellSnapshot): { summary: string; t?: number } | null {
+  const summary = String(agent.action_state?.last_thought_summary ?? "").trim();
+  if (summary) {
+    return {
+      summary,
+      t: typeof agent.action_state?.last_thought_t === "number" ? Number(agent.action_state.last_thought_t) : agent.t,
+    };
+  }
+  const entries = extractThoughtEntries(agent);
+  const thoughtEntry = entries.find((item) => item.label === "thought") ?? entries[0];
+  if (!thoughtEntry?.summary) return null;
+  return {
+    summary: thoughtEntry.summary,
+    t: thoughtEntry.t,
+  };
+}
 
 function extractThoughtEntries(agent: CellSnapshot): ThoughtEntry[] {
   const entries: ThoughtEntry[] = [];

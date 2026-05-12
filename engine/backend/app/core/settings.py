@@ -342,10 +342,10 @@ def get_thought_refresh_interval() -> int:
             pass
     profile = get_llm_runtime_profile()
     if profile == "llm-first":
-        return 6
+        return 3
     if profile == "rules-first":
-        return 24
-    return 20
+        return 16
+    return 8
 
 
 def get_action_refresh_interval() -> int:

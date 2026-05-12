@@ -1635,21 +1635,13 @@ export default function GodView({
           </div>
         </div>
       ) : (
-        <div
-          className={`godview-layout ${
-            layoutMode === "focus"
-              ? "godview-layout--focus"
-              : layoutMode === "wide-left"
-                ? "godview-layout--wide-left"
-                : "godview-layout--balanced"
-          }`}
-        >
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
-            <AppPanel
-              title={isKo ? "실행 제어" : "Run Controls"}
-              subtitle={isKo ? "실행, 주입, 시간 탐색" : "Execution, injections, and time navigation"}
-              bodyClassName="flex flex-wrap gap-2"
-              action={
+        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
+          <AppPanel
+            title={isKo ? "시뮬레이션 워크스페이스" : "Simulation Workspace"}
+            subtitle={isKo ? "넓은 화면에서는 실행 제어와 시뮬레이션 진입 흐름을 한 덩어리로 봅니다" : "On wider screens, keep execution and simulation entry in one workspace"}
+            bodyClassName="space-y-4"
+            action={
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="app-button app-button--ghost"
@@ -1657,8 +1649,13 @@ export default function GodView({
                 >
                   {strings.backToSetup}
                 </button>
-              }
-            >
+                <span className="rounded-full bg-slate-100 px-3 py-2 text-xs text-slate-600">
+                  {autoFitLayout ? (isKo ? "자동 맞춤 활성" : "Auto-fit enabled") : isKo ? "수동 레이아웃" : "Manual layout"}
+                </span>
+              </div>
+            }
+          >
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 className={`app-button ${autoFitLayout ? "app-button--primary" : "app-button--secondary"}`}
@@ -1696,248 +1693,222 @@ export default function GodView({
               >
                 {strings.wideControls}
               </button>
-              <span className="rounded-full bg-slate-100 px-3 py-2 text-xs text-slate-600">
-                {autoFitLayout ? (isKo ? "자동 맞춤 활성" : "Auto-fit enabled") : isKo ? "수동 레이아웃" : "Manual layout"}
-              </span>
-            </AppPanel>
+            </div>
 
-            <RunPanel
-              locale={locale}
-              worldId={worldId}
-              isRunning={isRunning}
-              liveT={liveT}
-              liveCellCount={liveCellCount}
-              onRunStream={handleRunStream}
-              onRunSync={handleRunSync}
-            />
+            <div className="grid gap-4 xl:grid-cols-3">
+              <RunPanel
+                locale={locale}
+                worldId={worldId}
+                isRunning={isRunning}
+                liveT={liveT}
+                liveCellCount={liveCellCount}
+                onRunStream={handleRunStream}
+                onRunSync={handleRunSync}
+              />
 
-            <InjectPanel
-              locale={locale}
-              worldId={worldId}
-              suggestedT={currentT}
-              simRunning={isRunning}
-              preset={reviewInjectPreset}
-              onInjected={async ({ t, eventType }) => {
-                setEventMarkers((prev) => [
-                  ...prev,
-                  {
-                    key: `inject-${t}-${eventType}-${prev.length}`,
-                    t,
-                    label: `${eventType} @ t=${t}`,
-                    kind: "inject" as const,
-                  },
-                ]);
-                await handleInjected();
-              }}
-            />
+              <InjectPanel
+                locale={locale}
+                worldId={worldId}
+                suggestedT={currentT}
+                simRunning={isRunning}
+                preset={reviewInjectPreset}
+                onInjected={async ({ t, eventType }) => {
+                  setEventMarkers((prev) => [
+                    ...prev,
+                    {
+                      key: `inject-${t}-${eventType}-${prev.length}`,
+                      t,
+                      label: `${eventType} @ t=${t}`,
+                      kind: "inject" as const,
+                    },
+                  ]);
+                  await handleInjected();
+                }}
+              />
 
-            <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
-          </div>
-
-          <div className="grid min-h-0 gap-4 xl:grid-rows-[minmax(0,1fr)_minmax(320px,0.48fr)]">
-            <AppPanel
-              title={isKo ? "시뮬레이션 뷰" : "Simulation View"}
-              subtitle={isKo ? "신념 동학, 선택 상태, 맵 기반 검사" : "Belief dynamics, selection, and map-driven inspection"}
-              className="min-h-0"
-              bodyClassName="flex h-full min-h-0 flex-col gap-4"
-              action={
-                visualStats?.sampled ? (
-                  <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                    {isKo ? "샘플링" : "sampled"} {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
-                  </span>
-                ) : undefined
-              }
-            >
-              {err && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {err}
-                </div>
-              )}
-
-              <div className="godview-main">
-                <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-0">
-                  <SimulationMap2D
-                    cells={visibleCells}
-                    totalCells={visualStats?.totalCells ?? visibleCells.length}
-                    sampled={visualStats?.sampled ?? false}
-                    selectedAgentId={selectedAgent?.cell_id ?? null}
-                    selectedZoneId={selectedZone?.zoneId ?? null}
-                    selectedBandKey={selectedBand?.key ?? null}
-                    onSelectAgent={(cell) => {
-                      setSelectedAgent(cell);
-                      setSelectedZone(null);
-                    }}
-                    onSelectZone={(zone) => {
-                      setSelectedZone(zone);
-                      setSelectedAgent(null);
-                    }}
-                    onSelectBand={(band) => {
-                      setSelectedBand(band);
-                    }}
-                  />
-                </div>
-
-                <div className="grid gap-3 content-start">
-                  {lastGenesis ? <GenesisMeta locale={locale} lastGenesis={lastGenesis} /> : null}
-                  {reviewSummary ? (
-                    <AppPanel
-                      title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
-                      subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
-                      bodyClassName="space-y-3"
-                    >
-                      <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
-                      {reviewSummary.causal_analysis.slice(0, 2).map((item, index) => (
-                        <div key={`${index}-${item}`} className="session-thread-card">
-                          <p className="session-thread-card__prompt">{item}</p>
-                        </div>
-                      ))}
-                      {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
-                        <div className="grid gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            {isKo ? "리뷰 기반 정책 프리셋" : "Review-driven Policy Presets"}
-                          </p>
-                          {reviewSummary.inject_presets.map((item, index) => (
-                            <div
-                              key={`${index}-${String(item.label ?? "preset")}`}
-                              className="session-thread-card"
-                            >
-                              <div className="session-thread-card__header">
-                                <p className="session-thread-card__title">{String(item.label ?? "Policy preset")}</p>
-                                <span className="session-thread-card__meta">
-                                  t={Number(item.t ?? currentT).toFixed(0)}
-                                </span>
-                              </div>
-                              <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
-                              <div className="session-thread-card__actions">
-                                <button
-                                  type="button"
-                                  className="app-button app-button--ghost"
-                                  onClick={() => {
-                                    setReviewInjectPreset({
-                                      label: String(item.label ?? "Policy preset"),
-                                      t: Number(item.t ?? currentT),
-                                      eventType: String(item.event_type ?? "policy_shift"),
-                                      payload: (item.payload as Record<string, unknown>) ?? {},
-                                    });
-                                    setCurrentT(Number(item.t ?? currentT));
-                                  }}
-                                >
-                                  {isKo ? "주입 패널로 사용" : "Use in Injection Panel"}
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="app-button app-button--ghost"
-                        onClick={() => onOpenWorkbenchView?.("review-lab")}
-                      >
-                        {isKo ? "전체 리뷰 열기" : "Open Full Review"}
-                      </button>
-                    </AppPanel>
-                  ) : null}
-                </div>
-
-                <SimulationInspectorPanel
-                  locale={locale}
-                  selectedAgent={selectedAgent}
-                  selectedZone={selectedZone}
-                  selectedBand={selectedBand}
-                  worldSummary={{
-                    worldId,
-                    currentT,
-                    visibleCount: visibleCells.length,
-                    totalCount: visualStats?.totalCells ?? visibleCells.length,
-                    sampled: visualStats?.sampled ?? false,
-                  }}
-                  agentRoster={snapshotCells}
-                  onSelectAgent={setSelectedAgent}
-                  onOpenWorldAt={(_, t) => {
-                    if (typeof t === "number") setCurrentT(t);
-                  }}
-                  onClearSelection={clearSelection}
-                />
-              </div>
-            </AppPanel>
-
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(300px,0.42fr)_minmax(0,1fr)]">
-              <AppPanel
-                title={isKo ? "시간 탐색" : "Time Navigation"}
-                subtitle={isKo ? "저장된 스냅샷 탐색" : "Browse saved snapshots"}
-                bodyClassName="space-y-3"
-              >
-                <TimeSlider
-                  t={currentT}
-                  tMin={tSliderMin}
-                  tMax={tSliderMax}
-                  step={1}
-                  onChange={setCurrentT}
-                  disabled={sliderDisabled}
-                />
-                <TimelineBookmarks
-                  t={currentT}
-                  tMin={tSliderMin}
-                  tMax={Math.max(tSliderMin + 1, tSliderMax)}
-                  markers={[...timelineMarkers, ...reviewMarkers]}
-                  bookmarks={bookmarks}
-                  onJump={setCurrentT}
-                  onAddBookmark={addBookmark}
-                  onRemoveBookmark={removeBookmark}
-                />
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>
-                    {snapshotLoading
-                      ? "스냅샷 로딩 중"
-                      : availableT.length === 0 && worldId && !isRunning
-                        ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
-                        : "저장된 t 시점을 탐색합니다."}
-                  </span>
-                  <span>{availableT.length} {isKo ? "프레임" : "frames"}</span>
-                </div>
-              </AppPanel>
-
-              <div className="grid min-h-0 gap-3">
-                <ScenarioTimeline
-                  locale={locale}
-                  worldId={worldId}
-                  refreshKey={chartRefreshKey}
-                  annotations={reviewSummary?.timeline_annotations ?? []}
-                  emergentCurve={
-                    ((reviewSummary?.emergent_dynamics?.worldview_curve as
-                      | Array<Record<string, unknown>>
-                      | undefined) ?? []
-                    ).map((item) => ({
-                      t: Number(item.t ?? 0),
-                      avg_z: Number(item.avg_z ?? 0),
-                      cell_count: Number(item.cell_count ?? 0),
-                    }))
-                  }
-                  onJumpToT={setCurrentT}
-                />
-                <AppPanel
-                  title={isKo ? "분석 그래프" : "Analysis Graph"}
-                  subtitle={isKo ? "장기 추세를 읽기 위한 확장 차트 레인" : "A larger chart lane for long-run trend reading"}
-                  bodyClassName="space-y-2"
-                >
-                  <p className="text-sm leading-6 text-slate-600">
-                    시간축 그래프를 별도 영역으로 분리해서, 실행 뷰와 시계열 분석을 동시에 보더라도
-                    흐름이 덜 답답하게 유지되도록 했습니다. annotation을 클릭하면 해당 시점으로 바로
-                    이동합니다.
-                  </p>
-                  <div className="grid gap-2 md:grid-cols-3">
-                    <MetricChip label={isKo ? "프레임 수" : "Frames"} value={String(availableT.length)} />
-                    <MetricChip
-                      label={isKo ? "어노테이션 수" : "Annotations"}
-                      value={String(reviewSummary?.timeline_annotations.length ?? 0)}
-                    />
-                    <MetricChip label={isKo ? "현재 t" : "Current t"} value={String(currentT)} />
-                  </div>
-                </AppPanel>
+              <div className="grid gap-4">
+                <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
+                {lastGenesis ? <GenesisMeta locale={locale} lastGenesis={lastGenesis} /> : null}
               </div>
             </div>
-          </div>
+          </AppPanel>
+
+          <AppPanel
+            title={isKo ? "소셜 필드" : "Social Field"}
+            subtitle={isKo ? "2D 소셜 필드와 에이전트 생각 로그를 같은 구역에서 읽습니다" : "Read the 2D social field and agent thought log in the same zone"}
+            className="min-h-0"
+            bodyClassName="flex h-full min-h-0 flex-col gap-4"
+            action={
+              visualStats?.sampled ? (
+                <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                  {isKo ? "샘플링" : "sampled"} {visibleCells.length.toLocaleString()} / {visualStats.totalCells.toLocaleString()}
+                </span>
+              ) : undefined
+            }
+          >
+            {err ? (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {err}
+              </div>
+            ) : null}
+
+            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
+                <SimulationMap2D
+                  cells={visibleCells}
+                  totalCells={visualStats?.totalCells ?? visibleCells.length}
+                  sampled={visualStats?.sampled ?? false}
+                  selectedAgentId={selectedAgent?.cell_id ?? null}
+                  selectedZoneId={selectedZone?.zoneId ?? null}
+                  selectedBandKey={selectedBand?.key ?? null}
+                  onSelectAgent={(cell) => {
+                    setSelectedAgent(cell);
+                    setSelectedZone(null);
+                  }}
+                  onSelectZone={(zone) => {
+                    setSelectedZone(zone);
+                    setSelectedAgent(null);
+                  }}
+                  onSelectBand={(band) => {
+                    setSelectedBand(band);
+                  }}
+                />
+              </div>
+
+              <SimulationInspectorPanel
+                locale={locale}
+                selectedAgent={selectedAgent}
+                selectedZone={selectedZone}
+                selectedBand={selectedBand}
+                worldSummary={{
+                  worldId,
+                  currentT,
+                  visibleCount: visibleCells.length,
+                  totalCount: visualStats?.totalCells ?? visibleCells.length,
+                  sampled: visualStats?.sampled ?? false,
+                }}
+                agentRoster={snapshotCells}
+                onSelectAgent={setSelectedAgent}
+                onOpenWorldAt={(_, t) => {
+                  if (typeof t === "number") setCurrentT(t);
+                }}
+                onClearSelection={clearSelection}
+              />
+            </div>
+          </AppPanel>
+
+          <AppPanel
+            title={isKo ? "t 시점 조절" : "Time Step Control"}
+            subtitle={isKo ? "드래그로 저장된 시점을 조절하고 북마크를 남깁니다" : "Drag through saved time steps and leave bookmarks"}
+            bodyClassName="space-y-3"
+          >
+            <TimeSlider
+              t={currentT}
+              tMin={tSliderMin}
+              tMax={tSliderMax}
+              step={1}
+              onChange={setCurrentT}
+              disabled={sliderDisabled}
+            />
+            <TimelineBookmarks
+              t={currentT}
+              tMin={tSliderMin}
+              tMax={Math.max(tSliderMin + 1, tSliderMax)}
+              markers={[...timelineMarkers, ...reviewMarkers]}
+              bookmarks={bookmarks}
+              onJump={setCurrentT}
+              onAddBookmark={addBookmark}
+              onRemoveBookmark={removeBookmark}
+            />
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>
+                {snapshotLoading
+                  ? "스냅샷 로딩 중"
+                  : availableT.length === 0 && worldId && !isRunning
+                    ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
+                    : "저장된 t 시점을 탐색합니다."}
+              </span>
+              <span>{availableT.length} {isKo ? "프레임" : "frames"}</span>
+            </div>
+          </AppPanel>
+
+          <ScenarioTimeline
+            locale={locale}
+            worldId={worldId}
+            refreshKey={chartRefreshKey}
+            annotations={reviewSummary?.timeline_annotations ?? []}
+            emergentCurve={
+              ((reviewSummary?.emergent_dynamics?.worldview_curve as
+                | Array<Record<string, unknown>>
+                | undefined) ?? []
+              ).map((item) => ({
+                t: Number(item.t ?? 0),
+                avg_z: Number(item.avg_z ?? 0),
+                cell_count: Number(item.cell_count ?? 0),
+              }))
+            }
+            onJumpToT={setCurrentT}
+          />
+
+          {reviewSummary ? (
+            <AppPanel
+              title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
+              subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
+              bodyClassName="space-y-3"
+            >
+              <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
+              {reviewSummary.causal_analysis.slice(0, 2).map((item, index) => (
+                <div key={`${index}-${item}`} className="session-thread-card">
+                  <p className="session-thread-card__prompt">{item}</p>
+                </div>
+              ))}
+              {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
+                <div className="grid gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {isKo ? "리뷰 기반 정책 프리셋" : "Review-driven Policy Presets"}
+                  </p>
+                  {reviewSummary.inject_presets.map((item, index) => (
+                    <div
+                      key={`${index}-${String(item.label ?? "preset")}`}
+                      className="session-thread-card"
+                    >
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">{String(item.label ?? "Policy preset")}</p>
+                        <span className="session-thread-card__meta">
+                          t={Number(item.t ?? currentT).toFixed(0)}
+                        </span>
+                      </div>
+                      <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
+                      <div className="session-thread-card__actions">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => {
+                            setReviewInjectPreset({
+                              label: String(item.label ?? "Policy preset"),
+                              t: Number(item.t ?? currentT),
+                              eventType: String(item.event_type ?? "policy_shift"),
+                              payload: (item.payload as Record<string, unknown>) ?? {},
+                            });
+                            setCurrentT(Number(item.t ?? currentT));
+                          }}
+                        >
+                          {isKo ? "주입 패널로 사용" : "Use in Injection Panel"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="app-button app-button--ghost"
+                onClick={() => onOpenWorkbenchView?.("review-lab")}
+              >
+                {isKo ? "전체 리뷰 열기" : "Open Full Review"}
+              </button>
+            </AppPanel>
+          ) : null}
         </div>
       )}
     </div>
