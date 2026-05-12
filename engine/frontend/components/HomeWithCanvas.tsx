@@ -93,7 +93,7 @@ export default function HomeWithCanvas() {
       void refreshRuntime();
     };
     loadRuntime();
-    const timer = window.setInterval(loadRuntime, 10000);
+    const timer = window.setInterval(loadRuntime, 20000);
     return () => {
       window.clearInterval(timer);
     };
@@ -198,7 +198,6 @@ export default function HomeWithCanvas() {
 
             {activeView === "simulation" ? (
               <GodView
-                key={`${selectedWorldId ?? "none"}:${selectedSnapshotT ?? "latest"}`}
                 locale={locale}
                 initialWorldId={selectedWorldId}
                 initialT={selectedSnapshotT}
