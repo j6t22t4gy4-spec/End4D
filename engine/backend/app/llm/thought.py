@@ -12,7 +12,7 @@ from typing import List
 import numpy as np
 
 from app.core.memory_store import append_memory, behavior_event, memory_entry
-from app.core.settings import get_llm_agent_sample_size, get_thought_refresh_interval
+from app.core.settings import get_llm_agent_sample_size, get_thought_refresh_interval, get_ui_language
 from app.llm.embeddings import embed_texts
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
@@ -86,4 +86,6 @@ def _summarize_thought_text(text: str, cell: Cell) -> str:
     if raw:
         return raw[:220]
     role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    if get_ui_language() == "ko":
+        return f"{role}는 당장의 제약과 다음 선택지를 다시 계산하고 있다."
     return f"{role} is reassessing immediate goals and constraints."

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import SimulationMap2D from "@/components/SimulationMap2D";
 import { TimeSlider } from "@/components/TimeSlider/TimeSlider";
 import { InjectPanel } from "@/components/InjectPanel/InjectPanel";
@@ -126,6 +126,7 @@ export default function GodView({
   runtimeStatusExternal,
   runtimeErrorExternal,
   onRefreshRuntimeExternal,
+  onDockPayloadChange,
 }: {
   locale?: UiLocale;
   initialWorldId?: string | null;
@@ -137,6 +138,18 @@ export default function GodView({
   runtimeStatusExternal?: LocalRuntimeStatus | null;
   runtimeErrorExternal?: string | null;
   onRefreshRuntimeExternal?: () => Promise<void> | void;
+  onDockPayloadChange?: (payload: {
+    controlsContent: ReactNode;
+    runtimeContent: ReactNode;
+    thoughtCells: CellSnapshot[];
+    currentT: number;
+    connectionState: {
+      key: string;
+      label: string;
+      tone: "green" | "amber" | "red";
+      detail: string;
+    };
+  } | null) => void;
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
@@ -159,7 +172,7 @@ export default function GodView({
   const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [godModeEnabled, setGodModeEnabled] = useState(false);
-  const [autoRolesFromPersonas, setAutoRolesFromPersonas] = useState(true);
+  const [godRoleMode, setGodRoleMode] = useState<"auto" | "manual">("auto");
   const [customTMax, setCustomTMax] = useState("160");
   const [customInitialCells, setCustomInitialCells] = useState("16");
   const [customRoles, setCustomRoles] = useState("시민, 규제자, 시장참여자, 기업, 관측자");
@@ -219,7 +232,6 @@ export default function GodView({
   const [llmConfigStatus, setLlmConfigStatus] = useState<string | null>(null);
   const [llmTestResult, setLlmTestResult] = useState<RuntimeLlmTestResponse | null>(null);
   const [llmTestedConfigKey, setLlmTestedConfigKey] = useState<string | null>(null);
-  const [runtimePanelView, setRuntimePanelView] = useState<"connection" | "activity" | "packs">("connection");
   const usesExternalRuntime = runtimeStatusExternal !== undefined;
   const hydratedInitialWorldKeyRef = useRef<string | null>(null);
 
@@ -313,7 +325,6 @@ export default function GodView({
     [selectedPack]
   );
   const llmRuntime = runtimeStatus?.llm_runtime ?? null;
-  const llmHealth = llmRuntime?.health ?? null;
   const currentLlmConfigKey = useMemo(
     () =>
       JSON.stringify({
@@ -371,31 +382,6 @@ export default function GodView({
       detail: llmTestResult.fallback_reason || (isKo ? "연결 이상" : "connection issue"),
     };
   }, [currentLlmConfigKey, isKo, llmTestResult, llmTestedConfigKey]);
-  const liveBenchmarkReadiness = useMemo(() => {
-    const provider = runtimeStatus?.llm?.provider ?? "stub";
-    const model = runtimeStatus?.llm?.model ?? "stub";
-    const hasKey = Boolean(runtimeStatus?.llm?.has_api_key);
-    const enabled = Boolean(runtimeStatus?.llm?.enabled);
-    const baseUrl = String(runtimeStatus?.llm?.base_url || "");
-    const isLocalOllama = provider === "ollama";
-    const ready = enabled && provider !== "stub" && (isLocalOllama || hasKey) && Boolean(baseUrl);
-    const reasons: string[] = [];
-    if (!enabled) reasons.push(isKo ? "LLM 런타임이 비활성화됨" : "LLM runtime disabled");
-    if (provider === "stub") reasons.push(isKo ? "provider가 stub 상태" : "provider is still stub");
-    if (!baseUrl) reasons.push(isKo ? "base URL이 비어 있음" : "base URL is missing");
-    if (!isLocalOllama && !hasKey) reasons.push(isKo ? "API 키가 없음" : "API key missing");
-    return {
-      ready,
-      provider,
-      model,
-      reasons,
-      command: `engine/backend/.venv/bin/python engine/backend/scripts/benchmark_simulation.py --cells 1000 --steps 4 --repeat 1 --llm-mode runtime-config --llm-profiles balanced llm-first --llm-strict-mode llm-preferred --include-review-payload --include-review-suite --json`,
-    };
-  }, [isKo, runtimeStatus]);
-  const recentFallbackRuns = useMemo(
-    () => (llmRuntime?.recent_runs ?? []).filter((item) => item.used_fallback).slice(0, 5),
-    [llmRuntime]
-  );
   const llmTaskRows = useMemo(
     () =>
       IMPORTANT_LLM_TASKS.map((task) => ({
@@ -538,11 +524,11 @@ export default function GodView({
       const godMode: GodModePayload | null = godModeEnabled
         ? {
             enabled: true,
-            auto_roles_from_personas: autoRolesFromPersonas,
+            auto_roles_from_personas: godRoleMode === "auto",
             overrides: {
               t_max: parsePositiveNumber(customTMax),
               initial_cell_count: parsePositiveInt(customInitialCells),
-              role_catalog: splitRoles(customRoles),
+              role_catalog: godRoleMode === "manual" ? splitRoles(customRoles) : undefined,
               t_step_unit: customTUnit.trim() || undefined,
               nutrient_per_step: parsePositiveNumber(customNutrient),
               persona_country: customCountry.trim() || undefined,
@@ -586,7 +572,6 @@ export default function GodView({
     }
   }, [
     activeSessionId,
-    autoRolesFromPersonas,
     bumpChartRefresh,
     customCountry,
     customInitialCells,
@@ -595,6 +580,7 @@ export default function GodView({
     customTMax,
     customTUnit,
     disconnectWebSocket,
+    godRoleMode,
     genesisPrompt,
     godModeEnabled,
     zoneCount,
@@ -651,6 +637,13 @@ export default function GodView({
     if (!worldId) return;
     await refreshSnapshots(worldId, { preferLatest: true });
   }, [refreshSnapshots, worldId]);
+
+  useEffect(() => {
+    if (!isRunning || !worldId || liveT == null) return;
+    const nextT = Math.max(0, Math.round(liveT));
+    setAvailableT((prev) => (prev.includes(nextT) ? prev : [...prev, nextT].sort((a, b) => a - b)));
+    setCurrentT(nextT);
+  }, [isRunning, liveT, worldId]);
 
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
@@ -739,6 +732,402 @@ export default function GodView({
       })),
     [reviewSummary]
   );
+
+  const handleSaveLlmConfig = useCallback(async () => {
+    setLlmConfigStatus(isKo ? "LLM 런타임 설정 저장 중…" : "saving llm runtime config…");
+    try {
+      await updateRuntimeLlmConfig({
+        enabled: llmEnabled,
+        provider: llmProvider,
+        model: llmModel,
+        base_url: llmBaseUrl,
+        api_key: llmApiKey,
+        temperature: Number(llmTemperature) || 0.2,
+        timeout_s: Number(llmTimeout) || 20,
+        runtime_profile: llmRuntimeProfile,
+        strict_mode: llmStrictMode,
+        cycle_prompt_budget: Number(llmCycleBudget) || 160,
+        agent_sample_size: Number(llmAgentSampleSize) || 256,
+        dialogue_max_pairs: Number(llmDialoguePairs) || 64,
+        group_deliberation_max_groups: Number(llmDeliberationGroups) || 12,
+        task_budgets: Object.fromEntries(Object.entries(taskBudgetDraft).map(([key, value]) => [key, Number(value) || 1])),
+        task_priorities: Object.fromEntries(Object.entries(taskPriorityDraft).map(([key, value]) => [key, Number(value) || 0])),
+        ui_language: locale,
+      });
+      setLlmTestResult(null);
+      setLlmTestedConfigKey(null);
+      await reloadRuntimeStatus();
+      setLlmConfigStatus(isKo ? "LLM 런타임 저장 완료" : "llm runtime saved");
+    } catch (reason) {
+      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 설정 저장 실패" : "llm config save failed");
+    }
+  }, [
+    isKo,
+    llmAgentSampleSize,
+    llmApiKey,
+    llmBaseUrl,
+    llmCycleBudget,
+    llmDeliberationGroups,
+    llmDialoguePairs,
+    llmEnabled,
+    llmModel,
+    llmProvider,
+    llmRuntimeProfile,
+    llmStrictMode,
+    llmTemperature,
+    llmTimeout,
+    locale,
+    reloadRuntimeStatus,
+    taskBudgetDraft,
+    taskPriorityDraft,
+  ]);
+
+  const handleTestLlmConnection = useCallback(async () => {
+    setLlmConfigStatus(isKo ? "LLM 연결 테스트 중…" : "testing llm connection…");
+    try {
+      const result = await testRuntimeLlmConfig();
+      setLlmTestResult(result);
+      setLlmTestedConfigKey(currentLlmConfigKey);
+      await reloadRuntimeStatus();
+      setLlmConfigStatus(
+        result.ok
+          ? isKo
+            ? "LLM 테스트 완료"
+            : "llm test completed"
+          : `${isKo ? "LLM 테스트 실패" : "llm test failed"}: ${result.fallback_reason}`
+      );
+    } catch (reason) {
+      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 테스트 실패" : "llm test failed");
+    }
+  }, [currentLlmConfigKey, isKo, reloadRuntimeStatus]);
+
+  const controlsDockContent = useMemo(
+    () => (
+      <div className="space-y-3">
+        <RunPanel
+          locale={locale}
+          worldId={worldId}
+          isRunning={isRunning}
+          liveT={liveT}
+          liveCellCount={liveCellCount}
+          onRunStream={handleRunStream}
+          onRunSync={handleRunSync}
+          compact
+        />
+        <InjectPanel
+          locale={locale}
+          worldId={worldId}
+          suggestedT={currentT}
+          simRunning={isRunning}
+          preset={reviewInjectPreset}
+          onInjected={async ({ t, eventType }) => {
+            setEventMarkers((prev) => [
+              ...prev,
+              {
+                key: `inject-${t}-${eventType}-${prev.length}`,
+                t,
+                label: `${eventType} @ t=${t}`,
+                kind: "inject" as const,
+              },
+            ]);
+            await handleInjected();
+          }}
+        />
+        <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{isKo ? "t 시점 변경" : "Time Step Control"}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {isKo ? "현재 관측 중인 시점을 즉시 옮깁니다." : "Move the currently observed simulation time instantly."}
+              </p>
+            </div>
+            <span className="text-xs text-slate-500">
+              {availableT.length} {isKo ? "프레임" : "frames"}
+            </span>
+          </div>
+          <div className="space-y-3">
+            <TimeSlider t={currentT} tMin={tSliderMin} tMax={tSliderMax} step={1} onChange={setCurrentT} disabled={sliderDisabled} />
+            <TimelineBookmarks
+              t={currentT}
+              tMin={tSliderMin}
+              tMax={Math.max(tSliderMin + 1, tSliderMax)}
+              markers={[...timelineMarkers, ...reviewMarkers]}
+              bookmarks={bookmarks}
+              onJump={setCurrentT}
+              onAddBookmark={addBookmark}
+              onRemoveBookmark={removeBookmark}
+            />
+          </div>
+        </div>
+        <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey + currentT} />
+      </div>
+    ),
+    [
+      addBookmark,
+      availableT.length,
+      bookmarks,
+      chartRefreshKey,
+      currentT,
+      handleInjected,
+      handleRunStream,
+      handleRunSync,
+      isKo,
+      isRunning,
+      liveCellCount,
+      liveT,
+      locale,
+      reviewInjectPreset,
+      reviewMarkers,
+      sliderDisabled,
+      timelineMarkers,
+      tSliderMax,
+      tSliderMin,
+      worldId,
+    ]
+  );
+
+  const runtimeDockContent = useMemo(
+    () => (
+      <div className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input type="checkbox" checked={llmEnabled} onChange={(event) => setLlmEnabled(event.target.checked)} />
+            {isKo ? "실시간 LLM cognition 사용" : "enable live LLM cognition"}
+          </label>
+          <div className="grid gap-2 md:grid-cols-2">
+            <ConnectionMetric
+              label={isKo ? "현재 프로바이더" : "current provider"}
+              value={runtimeStatus?.llm?.provider ?? "stub"}
+              tone={llmConnectionState.tone}
+              detail={runtimeStatus?.llm?.model ?? "stub"}
+            />
+            <ConnectionMetric
+              label={isKo ? "연결 상태" : "connection"}
+              value={llmConnectionState.label}
+              tone={llmConnectionState.tone}
+              detail={llmConnectionState.detail}
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "연결 프리셋" : "connection preset"}
+            <select className="app-input" value={llmProviderPreset} onChange={(event) => setLlmProviderPreset(event.target.value)}>
+              {LLM_PROVIDER_PRESETS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+              <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "프로바이더" : "provider"}
+            <select
+              className="app-input"
+              value={llmProvider}
+              onChange={(event) => {
+                setLlmProviderPreset("custom");
+                setLlmProvider(event.target.value);
+              }}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="openai-compatible">OpenAI-compatible</option>
+              <option value="ollama">Ollama</option>
+              <option value="stub">Stub</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "추천 모델" : "model preset"}
+            <select className="app-input" value={llmModelPreset} onChange={(event) => setLlmModelPreset(event.target.value)}>
+              {availableModelPresets.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+              <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "직접 모델 입력" : "custom model"}
+            <input
+              className="app-input"
+              value={llmModel}
+              onChange={(event) => {
+                setLlmModelPreset("custom");
+                setLlmModel(event.target.value);
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "직접 URL 입력" : "custom base url"}
+            <input
+              className="app-input"
+              value={llmBaseUrl}
+              onChange={(event) => {
+                setLlmProviderPreset("custom");
+                setLlmBaseUrl(event.target.value);
+              }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "API 키" : "api key"}
+            <input type="password" className="app-input" value={llmApiKey} onChange={(event) => setLlmApiKey(event.target.value)} />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "런타임 프로필" : "runtime profile"}
+            <select
+              className="app-input"
+              value={llmRuntimeProfile}
+              onChange={(event) => {
+                const nextProfile = event.target.value;
+                setLlmRuntimeProfile(nextProfile);
+                const preset = LLM_RUNTIME_PROFILE_PRESETS[nextProfile];
+                if (preset) {
+                  setLlmCycleBudget(preset.cycleBudget);
+                  setLlmAgentSampleSize(preset.agentSample);
+                  setLlmDialoguePairs(preset.dialoguePairs);
+                  setLlmDeliberationGroups(preset.deliberationGroups);
+                }
+              }}
+            >
+              <option value="rules-first">Rules-first</option>
+              <option value="balanced">Balanced</option>
+              <option value="llm-first">LLM-first</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "엄격 모드" : "strict mode"}
+            <select className="app-input" value={llmStrictMode} onChange={(event) => setLlmStrictMode(event.target.value)}>
+              <option value="adaptive">Adaptive</option>
+              <option value="llm-preferred">LLM-preferred</option>
+              <option value="fail-hard">Fail-hard</option>
+            </select>
+          </label>
+        </div>
+        <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {isKo ? "필요할 때만 펼쳐서 pressure를 조절합니다." : "Expand only when you need to tune task pressure."}
+              </p>
+            </div>
+            <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
+            <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
+          </summary>
+          <div className="grid gap-2 border-t border-slate-200 p-3">
+            {llmTaskRows.map((row) => (
+              <details key={row.task} className="rounded-2xl border border-slate-200 bg-white px-3 py-3" open={false}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">{row.task}</p>
+                  <span className="text-[11px] text-slate-500">
+                    live {row.totals?.prompt_count_sent ?? 0}/{row.totals?.prompt_count_in ?? 0}
+                  </span>
+                </summary>
+                <div className="mt-3 grid gap-2 grid-cols-2">
+                  <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+                    {isKo ? "예산" : "budget"}
+                    <select className="app-input" value={row.budget} onChange={(event) => setTaskBudgetDraft((current) => ({ ...current, [row.task]: event.target.value }))}>
+                      {TASK_BUDGET_OPTIONS.map((item) => (
+                        <option key={`${row.task}-budget-${item}`} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+                    {isKo ? "우선순위" : "priority"}
+                    <select className="app-input" value={row.priority} onChange={(event) => setTaskPriorityDraft((current) => ({ ...current, [row.task]: event.target.value }))}>
+                      {TASK_PRIORITY_OPTIONS.map((item) => (
+                        <option key={`${row.task}-priority-${item}`} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+            ))}
+          </div>
+        </details>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="app-button app-button--ghost" onClick={() => void handleSaveLlmConfig()}>
+            {isKo ? "LLM 설정 저장" : "Save LLM Config"}
+          </button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void handleTestLlmConnection()}>
+            {isKo ? "연결 테스트" : "Test Connection"}
+          </button>
+        </div>
+        {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
+        {llmTestResult ? (
+          <div className="session-thread-card">
+            <div className="session-thread-card__header">
+              <p className="session-thread-card__title">{isKo ? "LLM 테스트 결과" : "LLM Test Result"}</p>
+              <span className="session-thread-card__meta">
+                {llmTestResult.provider} · {llmTestResult.model}
+              </span>
+            </div>
+            <p className="session-thread-card__prompt">{llmTestResult.preview}</p>
+            <p className="text-xs text-slate-500">
+              mode={llmTestResult.mode} · {isKo ? "폴백" : "fallback"}={String(llmTestResult.used_fallback)}
+              {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
+            </p>
+          </div>
+        ) : null}
+        {reviewError ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
+            <p className="font-semibold">{isKo ? "리뷰 실행 오류" : "Review Runtime Error"}</p>
+            <p className="mt-1">{reviewError}</p>
+          </div>
+        ) : null}
+      </div>
+    ),
+    [
+      availableModelPresets,
+      currentLlmConfigKey,
+      handleSaveLlmConfig,
+      handleTestLlmConnection,
+      isKo,
+      llmAgentSampleSize,
+      llmApiKey,
+      llmBaseUrl,
+      llmConfigStatus,
+      llmConnectionState.detail,
+      llmConnectionState.label,
+      llmConnectionState.tone,
+      llmCycleBudget,
+      llmDeliberationGroups,
+      llmDialoguePairs,
+      llmEnabled,
+      llmModel,
+      llmModelPreset,
+      llmProvider,
+      llmProviderPreset,
+      llmRuntimeProfile,
+      llmStrictMode,
+      llmTaskRows,
+      locale,
+      reviewError,
+      runtimeStatus?.llm?.model,
+      runtimeStatus?.llm?.provider,
+      taskBudgetDraft,
+      taskPriorityDraft,
+      llmTestResult,
+    ]
+  );
+
+  useEffect(() => {
+    onDockPayloadChange?.({
+      controlsContent: controlsDockContent,
+      runtimeContent: runtimeDockContent,
+      thoughtCells: snapshotCells,
+      currentT,
+      connectionState: llmConnectionState,
+    });
+  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, runtimeDockContent, snapshotCells]);
+
+  useEffect(() => () => onDockPayloadChange?.(null), [onDockPayloadChange]);
 
 
   useEffect(() => {
@@ -883,9 +1272,22 @@ export default function GodView({
                       <input value={customInitialCells} onChange={(e) => setCustomInitialCells(e.target.value)} className="app-input" />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
-                      {isKo ? "역할 목록 (쉼표 구분)" : "roles (comma separated)"}
-                      <input value={customRoles} onChange={(e) => setCustomRoles(e.target.value)} className="app-input" />
+                      {isKo ? "역할 선택 방식" : "role selection mode"}
+                      <select
+                        value={godRoleMode}
+                        onChange={(e) => setGodRoleMode(e.target.value as "auto" | "manual")}
+                        className="app-input"
+                      >
+                        <option value="auto">{isKo ? "자동 (페르소나 기반)" : "Auto (from personas)"}</option>
+                        <option value="manual">{isKo ? "수동 입력" : "Manual"}</option>
+                      </select>
                     </label>
+                    {godRoleMode === "manual" ? (
+                      <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
+                        {isKo ? "역할 목록 (쉼표 구분)" : "roles (comma separated)"}
+                        <input value={customRoles} onChange={(e) => setCustomRoles(e.target.value)} className="app-input" />
+                      </label>
+                    ) : null}
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
                       {isKo ? "페르소나 국가" : "persona country"}
                       <input value={customCountry} onChange={(e) => setCustomCountry(e.target.value)} className="app-input" />
@@ -904,14 +1306,15 @@ export default function GodView({
                         <option value="decade_scale">decade_scale</option>
                       </select>
                     </label>
-                    <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={autoRolesFromPersonas}
-                        onChange={(e) => setAutoRolesFromPersonas(e.target.checked)}
-                      />
-                      {isKo ? "페르소나 역할 자동 병합" : "persona roles auto-merge"}
-                    </label>
+                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                      {godRoleMode === "auto"
+                        ? isKo
+                          ? "페르소나 분포를 기준으로 역할 목록을 자동 구성합니다."
+                          : "Role catalog is derived automatically from persona distribution."
+                        : isKo
+                          ? "수동 입력한 역할 목록을 그대로 사용합니다."
+                          : "The manual role catalog is used as entered."}
+                    </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="flex flex-col gap-1 text-xs text-slate-500">
@@ -980,472 +1383,6 @@ export default function GodView({
             </AppPanel>
 
             <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
-
-            <AppPanel
-              title={isKo ? "LLM 런타임 연결" : "LLM Runtime Connection"}
-              subtitle={
-                isKo
-                  ? "실제 프로바이더를 연결해서 에이전트가 실시간 LLM 호출로 생각하고 행동하게 합니다"
-                  : "Connect a real provider so agents think, decide, and act through live LLM calls"
-              }
-              bodyClassName="space-y-3"
-            >
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="flex items-center gap-2 text-xs text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={llmEnabled}
-                    onChange={(event) => setLlmEnabled(event.target.checked)}
-                  />
-                  {isKo ? "실시간 LLM cognition 사용" : "enable live LLM cognition"}
-                </label>
-                <div className="grid gap-2 md:grid-cols-2">
-                  <MetricChip label={isKo ? "현재 프로바이더" : "current provider"} value={runtimeStatus?.llm?.provider ?? "stub"} />
-                  <MetricChip
-                    label={isKo ? "API 키" : "api key"}
-                    value={runtimeStatus?.llm?.has_api_key ? (isKo ? "설정됨" : "configured") : isKo ? "없음" : "missing"}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "연결 프리셋" : "connection preset"}
-                  <select
-                    className="app-input"
-                    value={llmProviderPreset}
-                    onChange={(event) => setLlmProviderPreset(event.target.value)}
-                  >
-                    {LLM_PROVIDER_PRESETS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "프로바이더" : "provider"}
-                  <select
-                    className="app-input"
-                    value={llmProvider}
-                    onChange={(event) => {
-                      setLlmProviderPreset("custom");
-                      setLlmProvider(event.target.value);
-                    }}
-                  >
-                    <option value="openai">OpenAI</option>
-                    <option value="openai-compatible">OpenAI-compatible</option>
-                    <option value="ollama">Ollama</option>
-                    <option value="stub">Stub</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "추천 모델" : "model preset"}
-                  <select
-                    className="app-input"
-                    value={llmModelPreset}
-                    onChange={(event) => setLlmModelPreset(event.target.value)}
-                  >
-                    {availableModelPresets.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "직접 모델 입력" : "custom model"}
-                  <input
-                    className="app-input"
-                    value={llmModel}
-                    onChange={(event) => {
-                      setLlmModelPreset("custom");
-                      setLlmModel(event.target.value);
-                    }}
-                    placeholder={isKo ? "예: gpt-4.1-mini / llama3.1 / custom-model" : "e.g. gpt-4.1-mini / llama3.1 / custom-model"}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "추천 URL" : "url preset"}
-                  <select
-                    className="app-input"
-                    value={llmProviderPreset === "custom" ? "custom" : llmBaseUrl || activeProviderPreset?.baseUrl || ""}
-                    onChange={(event) => {
-                      const next = event.target.value;
-                      if (next === "custom") return;
-                      setLlmBaseUrl(next);
-                    }}
-                  >
-                    {LLM_PROVIDER_PRESETS.map((item) => (
-                      <option key={`${item.id}-url`} value={item.baseUrl}>
-                        {item.label} · {item.baseUrl}
-                      </option>
-                    ))}
-                    <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "직접 URL 입력" : "custom base url"}
-                  <input
-                    className="app-input"
-                    value={llmBaseUrl}
-                    onChange={(event) => {
-                      setLlmProviderPreset("custom");
-                      setLlmBaseUrl(event.target.value);
-                    }}
-                    placeholder={isKo ? "https://api.openai.com/v1 또는 http://127.0.0.1:11434" : "https://api.openai.com/v1 or http://127.0.0.1:11434"}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "API 키" : "api key"}
-                  <input
-                    type="password"
-                    className="app-input"
-                    value={llmApiKey}
-                    onChange={(event) => setLlmApiKey(event.target.value)}
-                    placeholder={isKo ? "sk-... 또는 로컬 토큰" : "sk-... or local token"}
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "런타임 프로필" : "runtime profile"}
-                  <select
-                    className="app-input"
-                    value={llmRuntimeProfile}
-                    onChange={(event) => {
-                      const nextProfile = event.target.value;
-                      setLlmRuntimeProfile(nextProfile);
-                      const preset = LLM_RUNTIME_PROFILE_PRESETS[nextProfile];
-                      if (preset) {
-                        setLlmCycleBudget(preset.cycleBudget);
-                        setLlmAgentSampleSize(preset.agentSample);
-                        setLlmDialoguePairs(preset.dialoguePairs);
-                        setLlmDeliberationGroups(preset.deliberationGroups);
-                      }
-                    }}
-                  >
-                    <option value="rules-first">Rules-first</option>
-                    <option value="balanced">Balanced</option>
-                    <option value="llm-first">LLM-first</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "엄격 모드" : "strict mode"}
-                  <select className="app-input" value={llmStrictMode} onChange={(event) => setLlmStrictMode(event.target.value)}>
-                    <option value="adaptive">Adaptive</option>
-                    <option value="llm-preferred">LLM-preferred</option>
-                    <option value="fail-hard">Fail-hard</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "온도" : "temperature"}
-                  <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "타임아웃(초)" : "timeout (s)"}
-                  <input className="app-input" value={llmTimeout} onChange={(event) => setLlmTimeout(event.target.value)} />
-                </label>
-              </div>
-              <div className="grid gap-3 md:grid-cols-4">
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "사이클 프롬프트 예산" : "cycle prompt budget"}
-                  <select className="app-input" value={llmCycleBudget} onChange={(event) => setLlmCycleBudget(event.target.value)}>
-                    {CYCLE_BUDGET_OPTIONS.map((item) => (
-                      <option key={`cycle-${item}`} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "에이전트 샘플 수" : "agent sample size"}
-                  <select className="app-input" value={llmAgentSampleSize} onChange={(event) => setLlmAgentSampleSize(event.target.value)}>
-                    {AGENT_SAMPLE_OPTIONS.map((item) => (
-                      <option key={`sample-${item}`} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "대화 최대 페어" : "dialogue max pairs"}
-                  <select className="app-input" value={llmDialoguePairs} onChange={(event) => setLlmDialoguePairs(event.target.value)}>
-                    {DIALOGUE_PAIR_OPTIONS.map((item) => (
-                      <option key={`dialogue-${item}`} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-slate-500">
-                  {isKo ? "협의 그룹 수" : "deliberation groups"}
-                  <select className="app-input" value={llmDeliberationGroups} onChange={(event) => setLlmDeliberationGroups(event.target.value)}>
-                    {DELIBERATION_GROUP_OPTIONS.map((item) => (
-                      <option key={`delib-${item}`} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {isKo ? "평소에는 접어두고, pressure를 조절할 때만 펼칩니다" : "Keep this collapsed until you need to tune pressure"}
-                    </p>
-                  </div>
-                  <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
-                  <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
-                </summary>
-                <div className="grid gap-2 border-t border-slate-200 p-3 md:grid-cols-2 xl:grid-cols-3">
-                  {llmTaskRows.map((row) => (
-                    <div key={row.task} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">{row.task}</p>
-                        <span className="text-[11px] text-slate-500">
-                          live {row.totals?.prompt_count_sent ?? 0}/{row.totals?.prompt_count_in ?? 0}
-                        </span>
-                      </div>
-                      <div className="mt-2 grid gap-2 grid-cols-2">
-                        <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                          {isKo ? "예산" : "budget"}
-                          <select
-                            className="app-input"
-                            value={row.budget}
-                            onChange={(event) =>
-                              setTaskBudgetDraft((current) => ({ ...current, [row.task]: event.target.value }))
-                            }
-                          >
-                            {TASK_BUDGET_OPTIONS.map((item) => (
-                              <option key={`${row.task}-budget-${item}`} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                          {isKo ? "우선순위" : "priority"}
-                          <select
-                            className="app-input"
-                            value={row.priority}
-                            onChange={(event) =>
-                              setTaskPriorityDraft((current) => ({ ...current, [row.task]: event.target.value }))
-                            }
-                          >
-                            {TASK_PRIORITY_OPTIONS.map((item) => (
-                              <option key={`${row.task}-priority-${item}`} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                      <p className="mt-2 text-[11px] text-slate-500">
-                        {isKo ? "폴백" : "fallback"} {row.totals?.fallback_calls ?? 0} · {isKo ? "태스크 예산 초과" : "skipped task"} {row.totals?.prompt_count_skipped_by_task_budget ?? 0}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </details>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="app-button app-button--ghost"
-                  onClick={async () => {
-                    setLlmConfigStatus(isKo ? "LLM 런타임 설정 저장 중…" : "saving llm runtime config…");
-                    try {
-                      await updateRuntimeLlmConfig({
-                        enabled: llmEnabled,
-                        provider: llmProvider,
-                        model: llmModel,
-                        base_url: llmBaseUrl,
-                        api_key: llmApiKey,
-                        temperature: Number(llmTemperature) || 0.2,
-                        timeout_s: Number(llmTimeout) || 20,
-                        runtime_profile: llmRuntimeProfile,
-                        strict_mode: llmStrictMode,
-                        cycle_prompt_budget: Number(llmCycleBudget) || 160,
-                        agent_sample_size: Number(llmAgentSampleSize) || 256,
-                        dialogue_max_pairs: Number(llmDialoguePairs) || 64,
-                        group_deliberation_max_groups: Number(llmDeliberationGroups) || 12,
-                        task_budgets: Object.fromEntries(
-                          Object.entries(taskBudgetDraft).map(([key, value]) => [key, Number(value) || 1])
-                        ),
-                        task_priorities: Object.fromEntries(
-                          Object.entries(taskPriorityDraft).map(([key, value]) => [key, Number(value) || 0])
-                        ),
-                      });
-                      setLlmTestResult(null);
-                      setLlmTestedConfigKey(null);
-                      await reloadRuntimeStatus();
-                      setLlmConfigStatus(isKo ? "LLM 런타임 저장 완료" : "llm runtime saved");
-                    } catch (reason) {
-                      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 설정 저장 실패" : "llm config save failed");
-                    }
-                  }}
-                >
-                  {isKo ? "LLM 설정 저장" : "Save LLM Config"}
-                </button>
-                <button
-                  type="button"
-                  className="app-button app-button--ghost"
-                  onClick={async () => {
-                    setLlmConfigStatus(isKo ? "LLM 연결 테스트 중…" : "testing llm connection…");
-                    try {
-                      const result = await testRuntimeLlmConfig();
-                      setLlmTestResult(result);
-                      setLlmTestedConfigKey(currentLlmConfigKey);
-                      await reloadRuntimeStatus();
-                      setLlmConfigStatus(
-                        result.ok
-                          ? isKo
-                            ? "LLM 테스트 완료"
-                            : "llm test completed"
-                          : `${isKo ? "LLM 테스트 실패" : "llm test failed"}: ${result.fallback_reason}`
-                      );
-                    } catch (reason) {
-                      setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 테스트 실패" : "llm test failed");
-                    }
-                  }}
-                >
-                  {isKo ? "연결 테스트" : "Test Connection"}
-                </button>
-              </div>
-              {llmTestResult ? (
-                <div className="session-thread-card">
-                  <div className="session-thread-card__header">
-                    <p className="session-thread-card__title">{isKo ? "LLM 테스트 결과" : "LLM Test Result"}</p>
-                    <span className="session-thread-card__meta">
-                      {llmTestResult.provider} · {llmTestResult.model}
-                    </span>
-                  </div>
-                  <p className="session-thread-card__prompt">{llmTestResult.preview}</p>
-                  <p className="text-xs text-slate-500">
-                    mode={llmTestResult.mode} · {isKo ? "폴백" : "fallback"}={String(llmTestResult.used_fallback)}
-                    {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
-                  </p>
-                </div>
-              ) : null}
-              <div className={`rounded-2xl border px-3 py-3 text-xs ${
-                llmConnectionState.tone === "green"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : llmConnectionState.tone === "amber"
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : "border-rose-200 bg-rose-50 text-rose-800"
-              }`}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-semibold">{isKo ? "Live Baseline 준비도" : "Live Baseline Readiness"}</p>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
-                    <span
-                      className={`inline-block h-2.5 w-2.5 rounded-full ${
-                        llmConnectionState.tone === "green"
-                          ? "bg-emerald-500"
-                          : llmConnectionState.tone === "amber"
-                            ? "bg-amber-500"
-                            : "bg-rose-500"
-                      }`}
-                    />
-                    {llmConnectionState.label}
-                  </span>
-                </div>
-                <p className="mt-2">{llmConnectionState.detail}</p>
-                <p className="mt-2">
-                  {isKo
-                    ? `현재 설정: ${liveBenchmarkReadiness.provider} · ${liveBenchmarkReadiness.model}`
-                    : `Current config: ${liveBenchmarkReadiness.provider} · ${liveBenchmarkReadiness.model}`}
-                </p>
-                {liveBenchmarkReadiness.reasons.length ? (
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {liveBenchmarkReadiness.reasons.map((item, index) => (
-                      <li key={`${index}-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2">
-                    {isKo
-                      ? "이제 실제 provider 기준 short baseline을 바로 수집할 수 있습니다."
-                      : "You can now run the short live-provider baseline directly."}
-                  </p>
-                )}
-                <div className="mt-3 rounded-2xl border border-current/10 bg-white/70 px-3 py-2 font-mono text-[11px] break-all">
-                  {liveBenchmarkReadiness.command}
-                </div>
-              </div>
-              {llmTestResult && !llmTestResult.ok ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
-                  <p className="font-semibold">{isKo ? "연결 진단" : "Connection Diagnosis"}</p>
-                  <p className="mt-1">{llmTestResult.diagnosis}</p>
-                  <p className="mt-1">
-                    {llmTestResult.fallback_reason || (isKo ? "프로바이더 응답이 유효하지 않습니다." : "The provider response is invalid.")}
-                  </p>
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {!llmApiKey && llmProvider !== "ollama" ? (
-                      <li>{isKo ? "선택한 프로바이더에 API 키가 없습니다." : "The selected provider is missing an API key."}</li>
-                    ) : null}
-                    {llmProvider === "ollama" && !llmBaseUrl ? (
-                      <li>{isKo ? "Ollama base URL을 입력하세요. 예: http://127.0.0.1:11434" : "Provide an Ollama base URL, for example http://127.0.0.1:11434"}</li>
-                    ) : null}
-                    {llmTestResult.suggestions.map((item, index) => (
-                      <li key={`${index}-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <p className="text-xs text-slate-500">
-                {isKo
-                  ? "`LLM-first`를 선택하면 Thought, Worldview, Action, Policy, Dialogue, Group Deliberation의 샘플링과 예산이 더 공격적으로 올라가서 규칙보다 실제 provider 호출이 주가 되도록 맞춥니다."
-                  : "`LLM-first` raises sampling and budgets for Thought, Worldview, Action, Policy, Dialogue, and Group Deliberation so live provider calls dominate over rule-based execution."}
-              </p>
-              {llmHealth ? (
-                <div className="grid gap-2 md:grid-cols-4">
-                  <MetricChip label={isKo ? "상태" : "health"} value={llmHealth.status} />
-                  <MetricChip label={isKo ? "최근 호출" : "recent calls"} value={String(llmHealth.recent_call_count)} />
-                  <MetricChip label={isKo ? "실시간 비율" : "live rate"} value={`${Math.round((llmHealth.live_call_rate ?? 0) * 100)}%`} />
-                  <MetricChip label={isKo ? "폴백 비율" : "fallback rate"} value={`${Math.round((llmHealth.recent_fallback_rate ?? 0) * 100)}%`} />
-                  <MetricChip label={isKo ? "주요 실패" : "dominant failure"} value={llmHealth.dominant_failure_reason || (isKo ? "없음" : "none")} />
-                </div>
-              ) : null}
-              {runtimeStatus?.llm_runtime?.recommended_actions?.length ? (
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
-                  <p className="font-semibold">{isKo ? "권장 조치" : "Recommended Actions"}</p>
-                  <ul className="mt-2 list-disc space-y-1 pl-4">
-                    {runtimeStatus.llm_runtime.recommended_actions.map((item, index) => (
-                      <li key={`${index}-${item}`}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {recentFallbackRuns.length ? (
-                <div className="grid gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">{isKo ? "폴백 압력" : "Fallback Pressure"}</p>
-                  {recentFallbackRuns.map((run, index) => (
-                    <div key={`${run.task}-${index}`} className="session-thread-card">
-                      <div className="session-thread-card__header">
-                        <p className="session-thread-card__title">{run.task}</p>
-                        <span className="session-thread-card__meta">
-                          {run.prompt_count_sent}/{run.prompt_count_in} · p{run.task_priority}
-                        </span>
-                      </div>
-                      <p className="session-thread-card__prompt">{run.fallback_reason || (isKo ? "폴백" : "fallback")}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {reviewError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
-                  <p className="font-semibold">{isKo ? "리뷰 실행 오류" : "Review Runtime Error"}</p>
-                  <p className="mt-1">{reviewError}</p>
-                  <p className="mt-1">
-                    {isKo
-                      ? "연결 테스트보다 review 프롬프트가 훨씬 크기 때문에 timeout이 더 쉽게 발생할 수 있습니다."
-                      : "Review prompts are much heavier than the connection test, so timeouts can appear there first."}
-                  </p>
-                </div>
-              ) : null}
-              {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
-            </AppPanel>
 
             <AppPanel
               title={isKo ? "데이터 팩 라이프사이클" : "Data Pack Lifecycle"}
@@ -1825,417 +1762,6 @@ export default function GodView({
               </button>
             </div>
 
-            <AppPanel
-              title={isKo ? "런타임" : "Runtime"}
-              subtitle={isKo ? "실행 탭에서 바로 LLM 연결, 활동, 팩 상태를 확인합니다" : "Check LLM connection, activity, and pack status directly from the run tab"}
-              bodyClassName="space-y-3"
-              action={
-                <select
-                  className="app-input min-w-[220px]"
-                  value={runtimePanelView}
-                  onChange={(event) => setRuntimePanelView(event.target.value as "connection" | "activity" | "packs")}
-                >
-                  <option value="connection">{isKo ? "LLM 연결" : "LLM Connection"}</option>
-                  <option value="activity">{isKo ? "LLM 활동" : "LLM Activity"}</option>
-                  <option value="packs">{isKo ? "설치된 팩" : "Installed Packs"}</option>
-                </select>
-              }
-            >
-              {runtimePanelView === "connection" ? (
-                <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="flex items-center gap-2 text-xs text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={llmEnabled}
-                        onChange={(event) => setLlmEnabled(event.target.checked)}
-                      />
-                      {isKo ? "실시간 LLM cognition 사용" : "enable live LLM cognition"}
-                    </label>
-                    <ConnectionMetric
-                      label={isKo ? "연결 상태" : "connection status"}
-                      value={llmConnectionState.label}
-                      tone={llmConnectionState.tone}
-                      detail={llmConnectionState.detail}
-                    />
-                    <MetricChip label={isKo ? "현재 프로바이더" : "current provider"} value={runtimeStatus?.llm?.provider ?? "stub"} />
-                    <MetricChip label={isKo ? "현재 모델" : "current model"} value={runtimeStatus?.llm?.model ?? "stub"} />
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "연결 프리셋" : "connection preset"}
-                      <select className="app-input" value={llmProviderPreset} onChange={(event) => setLlmProviderPreset(event.target.value)}>
-                        {LLM_PROVIDER_PRESETS.map((item) => (
-                          <option key={`run-${item.id}`} value={item.id}>
-                            {item.label}
-                          </option>
-                        ))}
-                        <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "프로바이더" : "provider"}
-                      <select
-                        className="app-input"
-                        value={llmProvider}
-                        onChange={(event) => {
-                          setLlmProviderPreset("custom");
-                          setLlmProvider(event.target.value);
-                        }}
-                      >
-                        <option value="openai">OpenAI</option>
-                        <option value="openai-compatible">OpenAI-compatible</option>
-                        <option value="ollama">Ollama</option>
-                        <option value="stub">Stub</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "추천 모델" : "model preset"}
-                      <select className="app-input" value={llmModelPreset} onChange={(event) => setLlmModelPreset(event.target.value)}>
-                        {availableModelPresets.map((item) => (
-                          <option key={`run-model-${item}`} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                        <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "직접 모델 입력" : "custom model"}
-                      <input
-                        className="app-input"
-                        value={llmModel}
-                        onChange={(event) => {
-                          setLlmModelPreset("custom");
-                          setLlmModel(event.target.value);
-                        }}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500 xl:col-span-2">
-                      {isKo ? "직접 URL 입력" : "custom base url"}
-                      <input
-                        className="app-input"
-                        value={llmBaseUrl}
-                        onChange={(event) => {
-                          setLlmProviderPreset("custom");
-                          setLlmBaseUrl(event.target.value);
-                        }}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500 xl:col-span-2">
-                      {isKo ? "API 키" : "api key"}
-                      <input
-                        type="password"
-                        className="app-input"
-                        value={llmApiKey}
-                        onChange={(event) => setLlmApiKey(event.target.value)}
-                        placeholder={isKo ? "연결 테스트 후 ready로 전환됩니다" : "Becomes ready only after a test"}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "런타임 프로필" : "runtime profile"}
-                      <select
-                        className="app-input"
-                        value={llmRuntimeProfile}
-                        onChange={(event) => {
-                          const nextProfile = event.target.value;
-                          setLlmRuntimeProfile(nextProfile);
-                          const preset = LLM_RUNTIME_PROFILE_PRESETS[nextProfile];
-                          if (preset) {
-                            setLlmCycleBudget(preset.cycleBudget);
-                            setLlmAgentSampleSize(preset.agentSample);
-                            setLlmDialoguePairs(preset.dialoguePairs);
-                            setLlmDeliberationGroups(preset.deliberationGroups);
-                          }
-                        }}
-                      >
-                        <option value="rules-first">Rules-first</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="llm-first">LLM-first</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "엄격 모드" : "strict mode"}
-                      <select className="app-input" value={llmStrictMode} onChange={(event) => setLlmStrictMode(event.target.value)}>
-                        <option value="adaptive">Adaptive</option>
-                        <option value="llm-preferred">LLM-preferred</option>
-                        <option value="fail-hard">Fail-hard</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "사이클 예산" : "cycle budget"}
-                      <select className="app-input" value={llmCycleBudget} onChange={(event) => setLlmCycleBudget(event.target.value)}>
-                        {CYCLE_BUDGET_OPTIONS.map((item) => (
-                          <option key={`run-cycle-${item}`} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "에이전트 샘플" : "agent sample"}
-                      <select className="app-input" value={llmAgentSampleSize} onChange={(event) => setLlmAgentSampleSize(event.target.value)}>
-                        {AGENT_SAMPLE_OPTIONS.map((item) => (
-                          <option key={`run-sample-${item}`} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "대화 페어" : "dialogue pairs"}
-                      <select className="app-input" value={llmDialoguePairs} onChange={(event) => setLlmDialoguePairs(event.target.value)}>
-                        {DIALOGUE_PAIR_OPTIONS.map((item) => (
-                          <option key={`run-dialogue-${item}`} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "협의 그룹" : "deliberation groups"}
-                      <select className="app-input" value={llmDeliberationGroups} onChange={(event) => setLlmDeliberationGroups(event.target.value)}>
-                        {DELIBERATION_GROUP_OPTIONS.map((item) => (
-                          <option key={`run-delib-${item}`} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "온도" : "temperature"}
-                      <input className="app-input" value={llmTemperature} onChange={(event) => setLlmTemperature(event.target.value)} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "타임아웃(초)" : "timeout (s)"}
-                      <input className="app-input" value={llmTimeout} onChange={(event) => setLlmTimeout(event.target.value)} />
-                    </label>
-                  </div>
-
-                  <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          {isKo ? "평소에는 접어두고, 필요할 때만 펼쳐서 조정합니다" : "Keep this collapsed and expand only when you want to tune it"}
-                        </p>
-                      </div>
-                      <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
-                      <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
-                    </summary>
-                    <div className="grid gap-2 border-t border-slate-200 p-3 md:grid-cols-2 xl:grid-cols-3">
-                      {llmTaskRows.map((row) => (
-                        <div key={`run-task-${row.task}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">{row.task}</p>
-                            <span className="text-[11px] text-slate-500">
-                              live {row.totals?.prompt_count_sent ?? 0}/{row.totals?.prompt_count_in ?? 0}
-                            </span>
-                          </div>
-                          <div className="mt-2 grid gap-2 grid-cols-2">
-                            <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                              {isKo ? "예산" : "budget"}
-                              <select
-                                className="app-input"
-                                value={row.budget}
-                                onChange={(event) =>
-                                  setTaskBudgetDraft((current) => ({ ...current, [row.task]: event.target.value }))
-                                }
-                              >
-                                {TASK_BUDGET_OPTIONS.map((item) => (
-                                  <option key={`run-${row.task}-budget-${item}`} value={item}>
-                                    {item}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex flex-col gap-1 text-[11px] text-slate-500">
-                              {isKo ? "우선순위" : "priority"}
-                              <select
-                                className="app-input"
-                                value={row.priority}
-                                onChange={(event) =>
-                                  setTaskPriorityDraft((current) => ({ ...current, [row.task]: event.target.value }))
-                                }
-                              >
-                                {TASK_PRIORITY_OPTIONS.map((item) => (
-                                  <option key={`run-${row.task}-priority-${item}`} value={item}>
-                                    {item}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      className="app-button app-button--ghost"
-                      onClick={async () => {
-                        setLlmConfigStatus(isKo ? "LLM 런타임 설정 저장 중…" : "saving llm runtime config…");
-                        try {
-                          await updateRuntimeLlmConfig({
-                            enabled: llmEnabled,
-                            provider: llmProvider,
-                            model: llmModel,
-                            base_url: llmBaseUrl,
-                            api_key: llmApiKey,
-                            temperature: Number(llmTemperature) || 0.2,
-                            timeout_s: Number(llmTimeout) || 20,
-                            runtime_profile: llmRuntimeProfile,
-                            strict_mode: llmStrictMode,
-                            cycle_prompt_budget: Number(llmCycleBudget) || 160,
-                            agent_sample_size: Number(llmAgentSampleSize) || 256,
-                            dialogue_max_pairs: Number(llmDialoguePairs) || 64,
-                            group_deliberation_max_groups: Number(llmDeliberationGroups) || 12,
-                            task_budgets: Object.fromEntries(
-                              Object.entries(taskBudgetDraft).map(([key, value]) => [key, Number(value) || 1])
-                            ),
-                            task_priorities: Object.fromEntries(
-                              Object.entries(taskPriorityDraft).map(([key, value]) => [key, Number(value) || 0])
-                            ),
-                          });
-                          setLlmTestResult(null);
-                          setLlmTestedConfigKey(null);
-                          await reloadRuntimeStatus();
-                          setLlmConfigStatus(isKo ? "LLM 런타임 저장 완료" : "llm runtime saved");
-                        } catch (reason) {
-                          setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 설정 저장 실패" : "llm config save failed");
-                        }
-                      }}
-                    >
-                      {isKo ? "LLM 설정 저장" : "Save LLM Config"}
-                    </button>
-                    <button
-                      type="button"
-                      className="app-button app-button--ghost"
-                      onClick={async () => {
-                        setLlmConfigStatus(isKo ? "LLM 연결 테스트 중…" : "testing llm connection…");
-                        try {
-                          const result = await testRuntimeLlmConfig();
-                          setLlmTestResult(result);
-                          setLlmTestedConfigKey(currentLlmConfigKey);
-                          await reloadRuntimeStatus();
-                          setLlmConfigStatus(
-                            result.ok
-                              ? isKo
-                                ? "LLM 테스트 완료"
-                                : "llm test completed"
-                              : `${isKo ? "LLM 테스트 실패" : "llm test failed"}: ${result.fallback_reason}`
-                          );
-                        } catch (reason) {
-                          setLlmConfigStatus(reason instanceof Error ? reason.message : isKo ? "LLM 테스트 실패" : "llm test failed");
-                        }
-                      }}
-                    >
-                      {isKo ? "연결 테스트" : "Test Connection"}
-                    </button>
-                  </div>
-
-                  {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
-                </div>
-              ) : null}
-
-              {runtimePanelView === "activity" ? (
-                <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                    <MetricChip label={isKo ? "최근 호출" : "recent calls"} value={String(llmHealth?.recent_call_count ?? 0)} />
-                    <MetricChip label={isKo ? "실시간 비율" : "live rate"} value={`${Math.round((llmHealth?.live_call_rate ?? 0) * 100)}%`} />
-                    <MetricChip label={isKo ? "폴백 비율" : "fallback rate"} value={`${Math.round((llmHealth?.recent_fallback_rate ?? 0) * 100)}%`} />
-                    <MetricChip label="Stability" value={`${Math.round((llmHealth?.stability_score ?? 0) * 100)}%`} />
-                    <MetricChip label={isKo ? "주요 실패" : "dominant failure"} value={llmHealth?.dominant_failure_reason || "none"} />
-                  </div>
-                  {llmRuntime?.recent_runs?.length ? (
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                      {llmRuntime.recent_runs.slice(-6).reverse().map((run, index) => (
-                        <div key={`run-activity-${run.task}-${index}`} className="session-thread-card">
-                          <div className="session-thread-card__header">
-                            <p className="session-thread-card__title">{run.task}</p>
-                            <span className="session-thread-card__meta">
-                              {run.prompt_count_sent}/{run.prompt_count_in}
-                            </span>
-                          </div>
-                          <p className="session-thread-card__prompt">
-                            {run.provider} · {run.model} · {run.used_fallback ? `fallback ${run.fallback_reason || ""}` : "live llm"}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">{isKo ? "아직 LLM 활동 기록이 없습니다." : "No LLM activity yet."}</p>
-                  )}
-                </div>
-              ) : null}
-
-              {runtimePanelView === "packs" ? (
-                <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <MetricChip label={isKo ? "설치된 팩" : "installed packs"} value={String(runtimeStatus?.installed_pack_count ?? 0)} />
-                    <MetricChip label={isKo ? "지역 수" : "regions"} value={String(runtimeStatus?.available_countries.length ?? 0)} />
-                  </div>
-                  {runtimeStatus?.packs?.length ? (
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                      {runtimeStatus.packs.slice(0, 6).map((pack) => (
-                        <div key={`runtime-pack-${pack.pack_id}-${pack.version}`} className="session-thread-card">
-                          <div className="session-thread-card__header">
-                            <p className="session-thread-card__title">{pack.country.toUpperCase()} · {pack.kind}</p>
-                            <span className="session-thread-card__meta">v{pack.version}</span>
-                          </div>
-                          <p className="session-thread-card__prompt">{pack.pack_id}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">{isKo ? "설치된 팩이 없습니다." : "No installed packs yet."}</p>
-                  )}
-                </div>
-              ) : null}
-            </AppPanel>
-
-            <div className="grid gap-4 xl:grid-cols-3">
-              <RunPanel
-                locale={locale}
-                worldId={worldId}
-                isRunning={isRunning}
-                liveT={liveT}
-                liveCellCount={liveCellCount}
-                onRunStream={handleRunStream}
-                onRunSync={handleRunSync}
-              />
-
-              <InjectPanel
-                locale={locale}
-                worldId={worldId}
-                suggestedT={currentT}
-                simRunning={isRunning}
-                preset={reviewInjectPreset}
-                onInjected={async ({ t, eventType }) => {
-                  setEventMarkers((prev) => [
-                    ...prev,
-                    {
-                      key: `inject-${t}-${eventType}-${prev.length}`,
-                      t,
-                      label: `${eventType} @ t=${t}`,
-                      kind: "inject" as const,
-                    },
-                  ]);
-                  await handleInjected();
-                }}
-              />
-
-              <div className="grid gap-4">
-                <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
-                {lastGenesis ? <GenesisMeta locale={locale} lastGenesis={lastGenesis} /> : null}
-              </div>
-            </div>
           </AppPanel>
 
           <AppPanel
@@ -2277,53 +1803,6 @@ export default function GodView({
                   setSelectedBand(band);
                 }}
               />
-            </div>
-
-            <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {isKo ? "t 시점 조절" : "Time Step Control"}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {isKo
-                      ? "필드 바로 아래에서 저장된 시점을 드래그하고 북마크를 남깁니다"
-                      : "Drag through saved time steps directly under the field and leave bookmarks"}
-                  </p>
-                </div>
-                <span className="text-xs text-slate-500">
-                  {availableT.length} {isKo ? "프레임" : "frames"}
-                </span>
-              </div>
-              <div className="space-y-3">
-                <TimeSlider
-                  t={currentT}
-                  tMin={tSliderMin}
-                  tMax={tSliderMax}
-                  step={1}
-                  onChange={setCurrentT}
-                  disabled={sliderDisabled}
-                />
-                <TimelineBookmarks
-                  t={currentT}
-                  tMin={tSliderMin}
-                  tMax={Math.max(tSliderMin + 1, tSliderMax)}
-                  markers={[...timelineMarkers, ...reviewMarkers]}
-                  bookmarks={bookmarks}
-                  onJump={setCurrentT}
-                  onAddBookmark={addBookmark}
-                  onRemoveBookmark={removeBookmark}
-                />
-                <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>
-                    {snapshotLoading
-                      ? "스냅샷 로딩 중"
-                      : availableT.length === 0 && worldId && !isRunning
-                        ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
-                        : "저장된 t 시점을 탐색합니다."}
-                  </span>
-                </div>
-              </div>
             </div>
 
             <div className="grid min-h-0 gap-4 xl:grid-cols-2">
@@ -2469,6 +1948,7 @@ function RunPanel({
   liveCellCount,
   onRunStream,
   onRunSync,
+  compact = false,
 }: {
   locale?: UiLocale;
   worldId: string | null;
@@ -2477,13 +1957,22 @@ function RunPanel({
   liveCellCount: number | null;
   onRunStream: () => Promise<void>;
   onRunSync: () => Promise<void>;
+  compact?: boolean;
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
   return (
     <AppPanel
       title={isKo ? "실행" : "Execution"}
-      subtitle={isKo ? "이 머신에서 로컬로 실행" : "Run locally on this machine"}
+      subtitle={
+        compact
+          ? isKo
+            ? "실행과 상태를 한 패널에서 빠르게 제어합니다"
+            : "Quick execution and state control in one panel"
+          : isKo
+            ? "이 머신에서 로컬로 실행"
+            : "Run locally on this machine"
+      }
       bodyClassName="space-y-3"
     >
       <div className="grid gap-2">

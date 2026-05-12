@@ -16,7 +16,7 @@ from app.core.data_packs import (
     validate_data_pack,
     verify_data_pack,
 )
-from app.core.settings import set_runtime_llm_config
+from app.core.settings import get_ui_language, set_runtime_llm_config, set_runtime_ui_language
 from app.llm.chat_runtime import generate_reasoning_batch
 
 router = APIRouter(prefix="/runtime", tags=["runtime"])
@@ -53,6 +53,7 @@ class RuntimeLlmResponse(BaseModel):
     configured_via: str = "default"
     runtime_profile: str = "balanced"
     strict_mode: str = "adaptive"
+    ui_language: str = "ko"
 
 
 class RuntimeLlmRunResponse(BaseModel):
@@ -280,6 +281,7 @@ class RuntimeLlmConfigRequest(BaseModel):
     group_deliberation_max_groups: Optional[int] = None
     task_budgets: Dict[str, int] = Field(default_factory=dict)
     task_priorities: Dict[str, int] = Field(default_factory=dict)
+    ui_language: Optional[str] = None
 
 
 class RuntimeLlmConfigResponse(BaseModel):
@@ -299,6 +301,15 @@ class RuntimeLlmConfigResponse(BaseModel):
     group_deliberation_max_groups: int = 0
     task_budgets: Dict[str, int] = Field(default_factory=dict)
     task_priorities: Dict[str, int] = Field(default_factory=dict)
+    ui_language: str = "ko"
+
+
+class RuntimeUiLanguageRequest(BaseModel):
+    language: str = "ko"
+
+
+class RuntimeUiLanguageResponse(BaseModel):
+    language: str = "ko"
 
 
 class RuntimeLlmTestResponse(BaseModel):
@@ -322,7 +333,12 @@ def get_local_runtime_status():
         data_cache_dir=str(status.get("data_cache_dir") or ""),
         manifest_path=str(status.get("manifest_path") or ""),
         remote_manifest_url=str(status.get("remote_manifest_url") or ""),
-        llm=RuntimeLlmResponse(**dict(status.get("llm") or {})),
+        llm=RuntimeLlmResponse(
+            **{
+                **dict(status.get("llm") or {}),
+                "ui_language": get_ui_language(),
+            }
+        ),
         llm_runtime=RuntimeLlmRuntimeResponse(
             provider=str((status.get("llm_runtime") or {}).get("provider") or "stub"),
             model=str((status.get("llm_runtime") or {}).get("model") or "stub"),
@@ -396,6 +412,7 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
         group_deliberation_max_groups=req.group_deliberation_max_groups,
         task_budgets=dict(req.task_budgets or {}),
         task_priorities=dict(req.task_priorities or {}),
+        ui_language=req.ui_language,
     )
     return RuntimeLlmConfigResponse(
         enabled=config["ORGANIC4D_LLM_CHAT_ENABLED"] == "1",
@@ -422,7 +439,13 @@ def update_runtime_llm_config(req: RuntimeLlmConfigRequest):
             for key, value in config.items()
             if key.startswith("ORGANIC4D_LLM_PRIORITY_")
         },
+        ui_language=str(config.get("ORGANIC4D_UI_LANGUAGE") or get_ui_language()),
     )
+
+
+@router.post("/ui-language", response_model=RuntimeUiLanguageResponse)
+def update_runtime_ui_language(req: RuntimeUiLanguageRequest):
+    return RuntimeUiLanguageResponse(language=set_runtime_ui_language(req.language))
 
 
 @router.post("/llm-config/test", response_model=RuntimeLlmTestResponse)

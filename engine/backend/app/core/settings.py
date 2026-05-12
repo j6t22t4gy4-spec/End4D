@@ -99,6 +99,7 @@ def set_runtime_llm_config(
     group_deliberation_max_groups: int | None = None,
     task_budgets: dict[str, int] | None = None,
     task_priorities: dict[str, int] | None = None,
+    ui_language: str | None = None,
 ) -> dict[str, str]:
     runtime_profile = runtime_profile.strip() if runtime_profile.strip() in LLM_RUNTIME_PROFILES else "balanced"
     strict_mode = strict_mode.strip() if strict_mode.strip() in LLM_STRICT_MODES else "adaptive"
@@ -114,6 +115,11 @@ def set_runtime_llm_config(
         "ORGANIC4D_LLM_RUNTIME_PROFILE": runtime_profile,
         "ORGANIC4D_LLM_STRICT_MODE": strict_mode,
     }
+    next_ui_language = (ui_language or "").strip().lower()
+    if next_ui_language in {"ko", "en"}:
+        config["ORGANIC4D_UI_LANGUAGE"] = next_ui_language
+    elif "ORGANIC4D_UI_LANGUAGE" in existing:
+        config["ORGANIC4D_UI_LANGUAGE"] = existing["ORGANIC4D_UI_LANGUAGE"]
     if cycle_prompt_budget is not None:
         config["ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET"] = str(int(cycle_prompt_budget))
     elif "ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET" in existing:
@@ -147,6 +153,17 @@ def set_runtime_llm_config(
     for key, value in config.items():
         os.environ[key] = value
     return config
+
+
+def set_runtime_ui_language(language: str) -> str:
+    normalized = str(language or "").strip().lower()
+    if normalized not in {"ko", "en"}:
+        normalized = "ko"
+    config = _load_runtime_llm_config()
+    config["ORGANIC4D_UI_LANGUAGE"] = normalized
+    _write_runtime_llm_config(config)
+    os.environ["ORGANIC4D_UI_LANGUAGE"] = normalized
+    return normalized
 
 
 def get_llm_chat_enabled() -> bool:
@@ -232,6 +249,11 @@ def get_llm_runtime_profile() -> str:
 def get_llm_strict_mode() -> str:
     mode = _get_runtime_llm_value("ORGANIC4D_LLM_STRICT_MODE", "adaptive")
     return mode if mode in LLM_STRICT_MODES else "adaptive"
+
+
+def get_ui_language() -> str:
+    language = _get_runtime_llm_value("ORGANIC4D_UI_LANGUAGE", "ko").lower()
+    return language if language in {"ko", "en"} else "ko"
 
 
 def get_llm_max_prompts_per_task() -> int:

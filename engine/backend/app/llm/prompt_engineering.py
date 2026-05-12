@@ -6,6 +6,7 @@ import numpy as np
 from app.core.emotion import EMOTION_LABELS
 from app.core.memory_reflection import build_memory_reflection, build_worldview_reflection
 from app.core.relationship_state import average_relationship_metrics, summarize_relationship
+from app.core.settings import get_ui_language
 from app.llm.prompt_registry import build_prompt_contract
 from app.models.cell import Cell
 
@@ -15,6 +16,7 @@ def _compact_json_like(mapping: dict[str, object]) -> str:
 
 
 def build_thought_prompt(cell: Cell) -> str:
+    language_label = "Korean" if get_ui_language() == "ko" else "English"
     ev = cell.emotion_vec
     dom = int(np.argmax(np.abs(ev))) if ev.size else 0
     label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
@@ -45,6 +47,7 @@ def build_thought_prompt(cell: Cell) -> str:
             ("salient_long_memory", salient_long[:280]),
             ("reflection", reflection[:360]),
             ("persona", cell.persona_text[:240]),
+            ("output_language", language_label),
         ],
     )
 

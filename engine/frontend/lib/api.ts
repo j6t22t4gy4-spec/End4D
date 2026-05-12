@@ -135,6 +135,7 @@ export type RuntimeLlmStatus = {
   configured_via: string;
   runtime_profile: string;
   strict_mode: string;
+  ui_language: string;
 };
 
 export type RuntimeLlmRun = {
@@ -257,6 +258,7 @@ export type RuntimeLlmConfigResponse = {
   group_deliberation_max_groups: number;
   task_budgets: Record<string, number>;
   task_priorities: Record<string, number>;
+  ui_language: string;
 };
 
 export type RuntimeLlmTestResponse = {
@@ -704,6 +706,7 @@ export async function updateRuntimeLlmConfig(body: {
   group_deliberation_max_groups?: number;
   task_budgets?: Record<string, number>;
   task_priorities?: Record<string, number>;
+  ui_language?: string;
 }): Promise<RuntimeLlmConfigResponse> {
   const res = await fetch(`${API_BASE}/runtime/llm-config`, {
     method: "POST",
@@ -711,6 +714,16 @@ export async function updateRuntimeLlmConfig(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`updateRuntimeLlmConfig: ${res.status}`);
+  return res.json();
+}
+
+export async function updateRuntimeUiLanguage(language: "ko" | "en"): Promise<{ language: string }> {
+  const res = await fetch(`${API_BASE}/runtime/ui-language`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language }),
+  });
+  if (!res.ok) throw new Error(`updateRuntimeUiLanguage: ${res.status}`);
   return res.json();
 }
 

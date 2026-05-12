@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import {
+  type CellSnapshot,
   deleteWorld,
   deleteSession,
   getApiBase,
@@ -10,6 +11,7 @@ import {
   listSessions,
   renameSession,
   syncDataPacks,
+  updateRuntimeUiLanguage,
   type ReviewSummaryResponse,
   type LocalRuntimeStatus,
   type SessionSummary,
@@ -30,6 +32,19 @@ const GodView = dynamic(() => import("@/components/GodView"), {
   loading: () => <p className="text-slate-500">Simulation workspace loading…</p>,
 });
 
+type SimulationDockPayload = {
+  controlsContent: ReactNode;
+  runtimeContent: ReactNode;
+  thoughtCells: CellSnapshot[];
+  currentT: number;
+  connectionState: {
+    key: string;
+    label: string;
+    tone: "green" | "amber" | "red";
+    detail: string;
+  };
+};
+
 export default function HomeWithCanvas() {
   const [locale, setLocale] = useState<UiLocale>("ko");
   const [runtime, setRuntime] = useState<LocalRuntimeStatus | null>(null);
@@ -44,6 +59,7 @@ export default function HomeWithCanvas() {
   const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
   const [dockWidth, setDockWidth] = useState(380);
   const [resizingDock, setResizingDock] = useState(false);
+  const [simulationDock, setSimulationDock] = useState<SimulationDockPayload | null>(null);
 
   const isKo = locale === "ko";
 
@@ -84,6 +100,9 @@ export default function HomeWithCanvas() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("end4d-ui-locale", locale);
     }
+    updateRuntimeUiLanguage(locale).catch(() => {
+      /* best-effort sync for backend thought language */
+    });
   }, [locale]);
 
   useEffect(() => {
@@ -133,6 +152,12 @@ export default function HomeWithCanvas() {
       }) as CSSProperties,
     [dockWidth]
   );
+
+  useEffect(() => {
+    if (activeView !== "simulation") {
+      setSimulationDock(null);
+    }
+  }, [activeView]);
 
   const handleOpenWorld = useCallback((worldId: string, snapshotT: number | null = null) => {
     setSelectedWorldId(worldId);
@@ -224,6 +249,7 @@ export default function HomeWithCanvas() {
                 runtimeStatusExternal={runtime}
                 runtimeErrorExternal={runtimeError}
                 onRefreshRuntimeExternal={refreshRuntime}
+                onDockPayloadChange={setSimulationDock}
               />
             ) : null}
 
@@ -300,6 +326,7 @@ export default function HomeWithCanvas() {
                 runtimeError={runtimeError}
                 apiBase={getApiBase()}
                 activeWorldId={selectedWorldId}
+                simulationDock={simulationDock}
               />
             </div>
           </aside>
