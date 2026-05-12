@@ -5,6 +5,7 @@ import pytest
 from app.api.run import _build_live_observer_cells
 from app.core.snapshot import SnapshotStore
 from app.graph.time_flow import create_time_flow_graph
+from app.llm import thought as thought_module
 from app.models.cell import Cell
 
 
@@ -221,3 +222,44 @@ def test_live_observer_sampling_balances_focus_and_zone_coverage():
     assert "zone" in focuses or len(zones) >= 3
     assert len(zones) >= 2
     assert all("observer_score" in cell["action_state"] for cell in observer_cells)
+
+
+def test_thought_continuity_prefers_semantic_similarity(monkeypatch):
+    def fake_embed_texts(texts, dim):
+        vectors = []
+        for text in texts:
+            if "food crisis" in text:
+                vec = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+            elif "supply collapse" in text:
+                vec = np.array([0.92, 0.08, 0.0], dtype=np.float32)
+            else:
+                vec = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+            padded = np.zeros(dim, dtype=np.float32)
+            padded[: len(vec)] = vec
+            padded /= np.linalg.norm(padded) + 1e-8
+            vectors.append(padded)
+        return np.stack(vectors, axis=0)
+
+    monkeypatch.setattr(thought_module, "embed_texts", fake_embed_texts)
+    thought_module._CONTINUITY_EMBED_CACHE.clear()
+
+    score = thought_module._thought_continuity_score(
+        "The food crisis is escalating, so rationing may be necessary.",
+        "A supply collapse is spreading, so rationing still looks necessary.",
+    )
+    assert score >= 0.8
+    assert thought_module._continuity_state_label(score) == "stable"
+
+
+def test_thought_continuity_falls_back_to_token_overlap(monkeypatch):
+    def broken_embed_texts(texts, dim):
+        raise RuntimeError("embedding unavailable")
+
+    monkeypatch.setattr(thought_module, "embed_texts", broken_embed_texts)
+    thought_module._CONTINUITY_EMBED_CACHE.clear()
+
+    score = thought_module._thought_continuity_score(
+        "Local transport pressure keeps rising around the zone boundary.",
+        "Local transport pressure keeps rising around the zone boundary tonight.",
+    )
+    assert score > 0.7

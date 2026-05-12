@@ -18,6 +18,9 @@ from app.llm.embeddings import embed_texts
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
 
+_CONTINUITY_EMBED_DIM = 64
+_CONTINUITY_EMBED_CACHE: dict[str, np.ndarray] = {}
+
 def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     t_int = int(current_t)
     interval = get_thought_refresh_interval()
@@ -100,6 +103,36 @@ def _summarize_thought_text(text: str, cell: Cell) -> str:
 
 
 def _thought_continuity_score(previous: str, current: str) -> float:
+    semantic_score = _semantic_continuity_score(previous, current)
+    if semantic_score is not None:
+        return semantic_score
+    return _token_overlap_continuity_score(previous, current)
+
+
+def _semantic_continuity_score(previous: str, current: str) -> float | None:
+    previous = str(previous or "").strip()
+    current = str(current or "").strip()
+    if not previous or not current:
+        return None
+    try:
+        prev_vec = _continuity_embedding(previous)
+        current_vec = _continuity_embedding(current)
+        score = float(np.dot(prev_vec, current_vec))
+        return round(max(0.0, min(1.0, (score + 1.0) * 0.5)), 3)
+    except Exception:
+        return None
+
+
+def _continuity_embedding(text: str) -> np.ndarray:
+    cached = _CONTINUITY_EMBED_CACHE.get(text)
+    if cached is not None:
+        return cached
+    vec = embed_texts([text], _CONTINUITY_EMBED_DIM)[0]
+    _CONTINUITY_EMBED_CACHE[text] = vec
+    return vec
+
+
+def _token_overlap_continuity_score(previous: str, current: str) -> float:
     prev_tokens = _normalize_tokens(previous)
     current_tokens = _normalize_tokens(current)
     if not prev_tokens or not current_tokens:
@@ -112,9 +145,9 @@ def _thought_continuity_score(previous: str, current: str) -> float:
 
 
 def _continuity_state_label(score: float) -> str:
-    if score >= 0.55:
+    if score >= 0.82:
         return "stable"
-    if score >= 0.22:
+    if score >= 0.62:
         return "evolving"
     return "volatile"
 
