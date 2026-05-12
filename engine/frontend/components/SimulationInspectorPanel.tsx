@@ -345,6 +345,8 @@ function AgentCard({
     typeof agent.action_state?.observer_score === "number"
       ? Number(agent.action_state.observer_score)
       : null;
+  const personaPriorSummary = String(agent.action_state?.persona_prior_summary ?? "").trim();
+  const personaPriorFactors = extractPersonaPriorFactors(agent);
   const [question, setQuestion] = useState(
     "지금 상황을 너의 입장에서 어떻게 보고 있어?"
   );
@@ -414,6 +416,37 @@ function AgentCard({
         <MetricRow label="short mem" value={String(shortCount)} />
         <MetricRow label="long mem" value={String(longCount)} />
       </div>
+      {personaPriorSummary || personaPriorFactors.length ? (
+        <div className="space-y-3 rounded-[18px] border border-sky-200 bg-sky-50/70 px-4 py-4">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
+              {isKo ? "Persona Priors" : "Persona Priors"}
+            </p>
+            <p className="text-xs text-sky-700/80">
+              {isKo
+                ? "데이터팩 속성이 이 에이전트의 초기 행동 성향을 어떻게 seed했는지 보여줍니다"
+                : "Shows how data-pack attributes seeded this agent's initial behavioral priors"}
+            </p>
+          </div>
+          {personaPriorSummary ? (
+            <p className="rounded-2xl border border-sky-200 bg-white px-3 py-3 text-sm leading-6 text-slate-800 shadow-sm">
+              {personaPriorSummary}
+            </p>
+          ) : null}
+          {personaPriorFactors.length ? (
+            <div className="flex flex-wrap gap-2">
+              {personaPriorFactors.map((factor) => (
+                <span
+                  key={factor}
+                  className="rounded-full border border-sky-200 bg-white px-3 py-1.5 text-[11px] font-semibold tracking-[0.08em] text-sky-700 shadow-sm"
+                >
+                  {factor}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {agent.persona_text ? <p className="inspector-body">{agent.persona_text}</p> : null}
       <p className="inspector-note">strategy: {strategy}</p>
       <ThoughtStreamCard locale={locale} agent={agent} thoughtSummary={thoughtSummary} thoughtAt={thoughtAt} />
@@ -675,6 +708,15 @@ function extractThoughtEntries(agent: CellSnapshot): ThoughtEntry[] {
   }
 
   return entries.slice(0, 4);
+}
+
+function extractPersonaPriorFactors(agent: CellSnapshot): string[] {
+  const raw = agent.action_state?.persona_prior_factors;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => String(item ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function InterviewResponseCard({
