@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { CellSnapshot, CollectiveDynamicsSummary, LocalRuntimeStatus } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
+import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
 
 type SimulationDockPayload = {
@@ -25,6 +26,7 @@ type RuntimeDockProps = {
   runtime: LocalRuntimeStatus | null;
   runtimeError: string | null;
   apiBase: string;
+  activeView: WorkbenchView;
   activeWorldId?: string | null;
   simulationDock?: SimulationDockPayload | null;
 };
@@ -34,40 +36,45 @@ export function RuntimeDock({
   runtime,
   runtimeError,
   apiBase,
+  activeView,
   activeWorldId = null,
   simulationDock = null,
 }: RuntimeDockProps) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
-  const [dockView, setDockView] = useState<"controls" | "runtime" | "calls" | "thoughts">(
-    simulationDock ? "controls" : "runtime"
-  );
-
-  useEffect(() => {
-    if (simulationDock) {
-      setDockView((current) => (current === "runtime" ? "controls" : current));
-    }
-  }, [simulationDock]);
+  const [dockView, setDockView] = useState<"controls" | "runtime" | "calls" | "thoughts">("runtime");
+  const simulationAvailable = Boolean(simulationDock && activeWorldId);
+  const simulationActive = activeView === "simulation";
+  const controlsAvailable = simulationAvailable && simulationActive;
 
   const thoughtCards = useMemo(
     () =>
       (simulationDock?.thoughtCells ?? [])
         .map((agent) => ({
           agent,
-          preview: getThoughtPreview(agent),
+          preview: getAgentStreamPreview(agent),
         }))
-        .filter((item) => Boolean(item.preview?.summary))
+        .filter((item) => Boolean(item.preview?.thought || item.preview?.action))
         .sort((a, b) => Number(b.preview?.t ?? -1) - Number(a.preview?.t ?? -1))
         .slice(0, 10),
     [simulationDock]
   );
 
-  const connectionState = simulationDock?.connectionState ?? {
-    key: "disconnect",
-    label: "disconnect",
-    tone: "red" as const,
-    detail: isKo ? "연결 테스트 전" : "not tested yet",
-  };
+  const connectionState =
+    simulationDock?.connectionState ??
+    (runtime?.llm?.enabled
+      ? {
+          key: "configured",
+          label: isKo ? "configured" : "configured",
+          tone: "amber" as const,
+          detail: isKo ? "저장된 연결 설정이 있습니다" : "saved runtime connection is configured",
+        }
+      : {
+          key: "disconnect",
+          label: "disconnect",
+          tone: "red" as const,
+          detail: isKo ? "연결 테스트 전" : "not tested yet",
+        });
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
@@ -111,16 +118,20 @@ export function RuntimeDock({
           <p className="mt-2 text-xs text-slate-500">{connectionState.detail}</p>
         </div>
 
-        <div className={`grid gap-2 ${simulationDock ? "grid-cols-4" : "grid-cols-3"}`}>
-          {simulationDock ? (
-            <button
-              type="button"
-              className={`app-button ${dockView === "controls" ? "app-button--primary" : "app-button--ghost"}`}
-              onClick={() => setDockView("controls")}
-            >
-              {isKo ? "실행" : "Controls"}
-            </button>
-          ) : null}
+        <div className="grid grid-cols-4 gap-2">
+          <button
+            type="button"
+            className={`app-button ${dockView === "controls" ? "app-button--primary" : "app-button--ghost"} ${
+              controlsAvailable ? "" : "cursor-not-allowed opacity-50"
+            }`}
+            onClick={() => {
+              if (controlsAvailable) setDockView("controls");
+            }}
+            aria-disabled={!controlsAvailable}
+            disabled={!controlsAvailable}
+          >
+            {isKo ? "실행" : "Controls"}
+          </button>
           <button
             type="button"
             className={`app-button ${dockView === "runtime" ? "app-button--primary" : "app-button--ghost"}`}
@@ -140,21 +151,31 @@ export function RuntimeDock({
             className={`app-button ${dockView === "thoughts" ? "app-button--primary" : "app-button--ghost"}`}
             onClick={() => setDockView("thoughts")}
           >
-            {isKo ? "에이전트 생각" : "Agent Thoughts"}
+            {isKo ? "에이전트 스트림" : "Agent Stream"}
           </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {dockView === "controls" ? (
-            simulationDock ? (
+            simulationDock && simulationActive ? (
               <div className="space-y-3">{simulationDock.controlsContent}</div>
             ) : (
-              <EmptyState text={isKo ? "실행 중인 시뮬레이션을 열면 제어 메뉴가 여기에 표시됩니다." : "Open a simulation world to show controls here."} />
+              <EmptyState
+                text={
+                  simulationAvailable
+                    ? isKo
+                      ? "실행 제어는 시뮬레이션 탭에서만 활성화됩니다."
+                      : "Simulation controls are enabled only in the simulation tab."
+                    : isKo
+                      ? "시뮬레이션 world를 열면 제어 메뉴가 여기에 표시됩니다."
+                      : "Open a simulation world to show controls here."
+                }
+              />
             )
           ) : null}
 
           {dockView === "runtime" ? (
-            simulationDock?.runtimeContent ? (
+            simulationDock?.runtimeContent && simulationActive ? (
               <div className="space-y-3">{simulationDock.runtimeContent}</div>
             ) : (
               <div className="space-y-3">
@@ -323,7 +344,7 @@ export function RuntimeDock({
                   </div>
                   {thoughtCards.map(({ agent, preview }) => (
                     <article
-                      key={`dock-thought-${agent.cell_id}`}
+                      key={`dock-stream-${agent.cell_id}`}
                       className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -344,7 +365,22 @@ export function RuntimeDock({
                           </span>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs leading-6 text-slate-700">{preview?.summary ?? ""}</p>
+                      {preview?.thought ? (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            {isKo ? "생각" : "Thought"}
+                          </p>
+                          <p className="mt-1 text-xs leading-6 text-slate-700">{preview.thought}</p>
+                        </div>
+                      ) : null}
+                      {preview?.action ? (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                            {isKo ? "액션" : "Action"}
+                          </p>
+                          <p className="mt-1 text-xs leading-6 text-slate-700">{preview.action}</p>
+                        </div>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                         <span className={continuityPillClass(preview?.continuityState)}>
                           {formatContinuity(preview, isKo)}
@@ -359,7 +395,7 @@ export function RuntimeDock({
                   ))}
                 </>
               ) : (
-                <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각 흔적이 없습니다." : "No thought traces are available for the current t yet."} />
+                <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각/액션 흔적이 없습니다." : "No thought or action traces are available for the current t yet."} />
               )}
             </div>
           ) : null}
@@ -386,11 +422,19 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function getThoughtPreview(agent: CellSnapshot): { summary: string; t?: number; continuityScore?: number; continuityState?: string } | null {
-  const summary = String(agent.action_state?.last_thought_summary ?? "").trim();
-  if (summary) {
+function getAgentStreamPreview(agent: CellSnapshot): {
+  thought?: string;
+  action?: string;
+  t?: number;
+  continuityScore?: number;
+  continuityState?: string;
+} | null {
+  const thought = String(agent.action_state?.last_thought_summary ?? "").trim();
+  const action = getActionPreview(agent);
+  if (thought || action) {
     return {
-      summary,
+      thought: thought || undefined,
+      action: action || undefined,
       t: typeof agent.action_state?.last_thought_t === "number" ? Number(agent.action_state.last_thought_t) : agent.t,
       continuityScore:
         typeof agent.action_state?.thought_continuity_score === "number"
@@ -403,9 +447,10 @@ function getThoughtPreview(agent: CellSnapshot): { summary: string; t?: number; 
   for (const item of [...behaviorLog].reverse()) {
     const eventType = String(item?.event_type ?? "");
     const itemSummary = String(item?.summary ?? "").trim();
-    if (eventType === "thought_update" && itemSummary) {
+    if ((eventType === "thought_update" || eventType === "action_plan" || eventType === "action_update") && itemSummary) {
       return {
-        summary: itemSummary,
+        thought: eventType === "thought_update" ? itemSummary : undefined,
+        action: eventType !== "thought_update" ? itemSummary : action || undefined,
         t: typeof item?.t === "number" ? Number(item.t) : undefined,
         continuityScore:
           typeof agent.action_state?.thought_continuity_score === "number"
@@ -416,6 +461,27 @@ function getThoughtPreview(agent: CellSnapshot): { summary: string; t?: number; 
     }
   }
   return null;
+}
+
+function getActionPreview(agent: CellSnapshot): string {
+  const directSummary = String(
+    agent.action_state?.last_action_summary ??
+      agent.action_state?.strategy_summary ??
+      agent.action_state?.planned_action ??
+      ""
+  ).trim();
+  if (directSummary) {
+    return directSummary;
+  }
+  const behaviorLog = Array.isArray(agent.behavior_log) ? agent.behavior_log : [];
+  for (const item of [...behaviorLog].reverse()) {
+    const eventType = String(item?.event_type ?? "");
+    const itemSummary = String(item?.summary ?? "").trim();
+    if ((eventType === "action_plan" || eventType === "action_update") && itemSummary) {
+      return itemSummary;
+    }
+  }
+  return "";
 }
 
 function formatObserverFocus(agent: CellSnapshot, isKo: boolean): string {

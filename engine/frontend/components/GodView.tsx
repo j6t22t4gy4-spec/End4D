@@ -516,7 +516,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [availableKey, chartRefreshKey, worldId]);
+  }, [chartRefreshKey, worldId]);
 
   const handleCreateWorld = useCallback(async () => {
     setCreateError(null);
@@ -919,7 +919,7 @@ export default function GodView({
             />
           </div>
         </div>
-        <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey + currentT} />
+        <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
       </div>
     ),
     [
@@ -1188,8 +1188,6 @@ export default function GodView({
       connectionState: llmConnectionState,
     });
   }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent]);
-
-  useEffect(() => () => onDockPayloadChange?.(null), [onDockPayloadChange]);
 
 
   useEffect(() => {

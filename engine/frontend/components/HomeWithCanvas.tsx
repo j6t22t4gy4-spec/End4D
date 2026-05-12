@@ -156,12 +156,6 @@ export default function HomeWithCanvas() {
     [dockWidth]
   );
 
-  useEffect(() => {
-    if (activeView !== "simulation") {
-      setSimulationDock(null);
-    }
-  }, [activeView]);
-
   const handleOpenWorld = useCallback((worldId: string, snapshotT: number | null = null) => {
     setSelectedWorldId(worldId);
     setSelectedSnapshotT(snapshotT);
@@ -328,6 +322,7 @@ export default function HomeWithCanvas() {
                 runtime={runtime}
                 runtimeError={runtimeError}
                 apiBase={getApiBase()}
+                activeView={activeView}
                 activeWorldId={selectedWorldId}
                 simulationDock={simulationDock}
               />
