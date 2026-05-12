@@ -8,6 +8,7 @@ import {
   postAgentInterviewDiff,
   type AgentInterviewResponse,
   type CellSnapshot,
+  type CollectiveDynamicsSummary,
 } from "@/lib/api";
 import { type UiLocale } from "@/lib/ui-language";
 
@@ -42,6 +43,8 @@ type SimulationInspectorPanelProps = {
     visibleCount: number;
     totalCount: number;
     sampled: boolean;
+    collectiveSummary?: CollectiveDynamicsSummary | null;
+    collectiveSignal?: string;
   };
   agentRoster: CellSnapshot[];
   onSelectAgent: (agent: CellSnapshot) => void;
@@ -92,6 +95,51 @@ export function SimulationInspectorPanel({
           value={worldSummary.sampled ? "sampled view" : "full view"}
         />
       </div>
+
+      {worldSummary.collectiveSummary ? (
+        <section className="inspector-card">
+          <InspectorHeading
+            title={isKo ? "Collective Dynamics" : "Collective Dynamics"}
+            subtitle={
+              isKo
+                ? `현재 시점 집단 상태 · ${worldSummary.collectiveSignal ?? "stable"}`
+                : `Current collective state · ${worldSummary.collectiveSignal ?? "stable"}`
+            }
+          />
+          <div className="inspector-grid">
+            <MetricRow
+              label={isKo ? "역할 응집" : "role cohesion"}
+              value={String(Math.round((worldSummary.collectiveSummary.role?.avg_cohesion ?? 0) * 100))}
+            />
+            <MetricRow
+              label={isKo ? "역할 균열" : "role fracture"}
+              value={String(Math.round((worldSummary.collectiveSummary.role?.avg_fracture_risk ?? 0) * 100))}
+            />
+            <MetricRow
+              label={isKo ? "구역 긴장" : "zone tension"}
+              value={String(Math.round((worldSummary.collectiveSummary.zone?.avg_tension ?? 0) * 100))}
+            />
+            <MetricRow
+              label={isKo ? "구역 드리프트" : "zone drift"}
+              value={String(Math.round((worldSummary.collectiveSummary.zone?.avg_drift_velocity ?? 0) * 100))}
+            />
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <CollectiveListCard
+              locale={locale}
+              title={isKo ? "Top Fracturing Groups" : "Top Fracturing Groups"}
+              items={worldSummary.collectiveSummary.role?.top_fracturing ?? []}
+              mode="fracture"
+            />
+            <CollectiveListCard
+              locale={locale}
+              title={isKo ? "Top Drifting Zones" : "Top Drifting Zones"}
+              items={worldSummary.collectiveSummary.zone?.top_drifting ?? []}
+              mode="drift"
+            />
+          </div>
+        </section>
+      ) : null}
 
       <div className="space-y-4">
         {!hasSelection ? <EmptyState locale={locale} /> : null}
@@ -717,6 +765,41 @@ function extractPersonaPriorFactors(agent: CellSnapshot): string[] {
     .map((item) => String(item ?? "").trim())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function CollectiveListCard({
+  locale = "ko",
+  title,
+  items,
+  mode,
+}: {
+  locale?: UiLocale;
+  title: string;
+  items: Array<Record<string, unknown>>;
+  mode: "fracture" | "drift";
+}) {
+  const isKo = locale === "ko";
+  return (
+    <div className="space-y-2 rounded-[18px] border border-slate-200 bg-slate-50 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
+      {items.length ? (
+        items.slice(0, 3).map((item, index) => (
+          <div key={`${title}-${index}-${String(item.group_id ?? "group")}`} className="session-thread-card">
+            <div className="session-thread-card__header">
+              <p className="session-thread-card__title">{String(item.group_label ?? "group")}</p>
+            </div>
+            <p className="session-thread-card__prompt">
+              {mode === "fracture"
+                ? `${isKo ? "균열" : "fracture"} ${Number(item.fracture_risk ?? 0).toFixed(2)} · ${isKo ? "긴장" : "tension"} ${Number(item.tension ?? 0).toFixed(2)}`
+                : `${isKo ? "드리프트" : "drift"} ${Number(item.drift_velocity ?? 0).toFixed(2)} · ${isKo ? "응집" : "cohesion"} ${Number(item.cohesion ?? 0).toFixed(2)}`}
+            </p>
+          </div>
+        ))
+      ) : (
+        <p className="text-sm text-slate-500">{isKo ? "아직 집단 신호가 없습니다." : "No collective signal yet."}</p>
+      )}
+    </div>
+  );
 }
 
 function InterviewResponseCard({

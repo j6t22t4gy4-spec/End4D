@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { CellSnapshot, LocalRuntimeStatus } from "@/lib/api";
+import type { CellSnapshot, CollectiveDynamicsSummary, LocalRuntimeStatus } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
 
@@ -10,6 +10,8 @@ type SimulationDockPayload = {
   runtimeContent: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
+  collectiveSummary: CollectiveDynamicsSummary | null;
+  collectiveSignal: string;
   connectionState: {
     key: string;
     label: string;
@@ -259,6 +261,63 @@ export function RuntimeDock({
                 <EmptyState text={isKo ? "시뮬레이션 world를 열면 현재 t 기준 thought stream이 여기에 표시됩니다." : "Open a simulation world to show current-t thought traces here."} />
               ) : thoughtCards.length ? (
                 <>
+                  {simulationDock?.collectiveSummary ? (
+                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-900">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">{isKo ? "Collective Dynamics" : "Collective Dynamics"}</p>
+                          <p className="mt-1 text-sky-800/80">
+                            {isKo ? "현재 observer 시점의 집단 응집·균열·드리프트 요약" : "Collective cohesion, fracture, and drift at the current observer step"}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                          {simulationDock.collectiveSignal}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <InfoRow
+                          label={isKo ? "역할 응집" : "Role Cohesion"}
+                          value={String(Math.round((simulationDock.collectiveSummary.role?.avg_cohesion ?? 0) * 100))}
+                        />
+                        <InfoRow
+                          label={isKo ? "역할 균열" : "Role Fracture"}
+                          value={String(Math.round((simulationDock.collectiveSummary.role?.avg_fracture_risk ?? 0) * 100))}
+                        />
+                        <InfoRow
+                          label={isKo ? "구역 긴장" : "Zone Tension"}
+                          value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_tension ?? 0) * 100))}
+                        />
+                        <InfoRow
+                          label={isKo ? "구역 드리프트" : "Zone Drift"}
+                          value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_drift_velocity ?? 0) * 100))}
+                        />
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {simulationDock.collectiveSummary.role?.top_fracturing?.slice(0, 2).map((item) => (
+                          <div key={`role-fracture-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                              {isKo ? "Top Fracturing Group" : "Top Fracturing Group"}
+                            </p>
+                            <p className="mt-1 text-sm">{item.group_label}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              fracture {Number(item.fracture_risk ?? 0).toFixed(2)} · tension {Number(item.tension ?? 0).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                        {simulationDock.collectiveSummary.zone?.top_drifting?.slice(0, 2).map((item) => (
+                          <div key={`zone-drift-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                              {isKo ? "Top Drifting Zone" : "Top Drifting Zone"}
+                            </p>
+                            <p className="mt-1 text-sm">{item.group_label}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              drift {Number(item.drift_velocity ?? 0).toFixed(2)} · cohesion {Number(item.cohesion ?? 0).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
                     {isKo ? "현재 관측 시점" : "Current observed t"} · t={Number(simulationDock?.currentT ?? 0).toFixed(0)}
                   </div>

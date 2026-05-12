@@ -36,6 +36,8 @@ import {
   updateRuntimeLlmConfig,
   type CreateWorldResult,
   type CellSnapshot,
+  type CollectiveDynamicsListItem,
+  type CollectiveDynamicsSummary,
   type DataPackDiffResponse,
   type GodModePayload,
   type LocalRuntimeStatus,
@@ -143,6 +145,8 @@ export default function GodView({
     runtimeContent: ReactNode;
     thoughtCells: CellSnapshot[];
     currentT: number;
+    collectiveSummary: CollectiveDynamicsSummary | null;
+    collectiveSignal: string;
     connectionState: {
       key: string;
       label: string;
@@ -190,6 +194,8 @@ export default function GodView({
   const [selectedAgent, setSelectedAgent] = useState<CellSnapshot | null>(null);
   const [selectedZone, setSelectedZone] = useState<SelectedZone | null>(null);
   const [selectedBand, setSelectedBand] = useState<SelectedBand | null>(null);
+  const [collectiveSummary, setCollectiveSummary] = useState<CollectiveDynamicsSummary | null>(null);
+  const [collectiveSignal, setCollectiveSignal] = useState("stable");
   const [bookmarks, setBookmarks] = useState<TimelineMarker[]>([]);
   const [eventMarkers, setEventMarkers] = useState<TimelineMarker[]>([]);
   const [layoutMode, setLayoutMode] = useState<"balanced" | "focus" | "wide-left">("balanced");
@@ -560,6 +566,8 @@ export default function GodView({
       setVisibleCells([]);
       setSnapshotCells([]);
       setVisualStats(null);
+      setCollectiveSummary(null);
+      setCollectiveSignal("stable");
       setSelectedAgent(null);
       setSelectedZone(null);
       setSelectedBand(null);
@@ -695,15 +703,36 @@ export default function GodView({
       }
     : visualStats;
 
+  const renderedCollectiveSummary = useMemo(() => {
+    if (shouldUseLiveObserver && liveObserver?.groupSummary) {
+      return liveObserver.groupSummary;
+    }
+    const derived = buildCollectiveSummaryFromCells(renderedSnapshotCells);
+    return derived ?? collectiveSummary;
+  }, [collectiveSummary, liveObserver, renderedSnapshotCells, shouldUseLiveObserver]);
+
+  const renderedCollectiveSignal = useMemo(() => {
+    if (shouldUseLiveObserver && liveObserver?.groupSummary) {
+      return inferCollectiveSignal(liveObserver.groupSummary);
+    }
+    if (renderedSnapshotCells.length) {
+      return inferCollectiveSignalFromCells(renderedSnapshotCells);
+    }
+    return collectiveSignal;
+  }, [collectiveSignal, liveObserver, renderedSnapshotCells, shouldUseLiveObserver]);
+
   useEffect(() => {
     if (!selectedAgent) return;
     const refreshed = renderedSnapshotCells.find((cell) => cell.cell_id === selectedAgent.cell_id);
     if (
-      refreshed &&
-      (
-        refreshed.t !== selectedAgent.t ||
-        refreshed.action_state?.last_thought_t !== selectedAgent.action_state?.last_thought_t ||
-        refreshed.action_state?.last_thought_summary !== selectedAgent.action_state?.last_thought_summary
+        refreshed &&
+        (
+          refreshed.t !== selectedAgent.t ||
+          refreshed.action_state?.last_thought_t !== selectedAgent.action_state?.last_thought_t ||
+          refreshed.action_state?.last_thought_summary !== selectedAgent.action_state?.last_thought_summary ||
+          refreshed.action_state?.role_group_cohesion !== selectedAgent.action_state?.role_group_cohesion ||
+          refreshed.action_state?.zone_group_tension !== selectedAgent.action_state?.zone_group_tension ||
+          refreshed.action_state?.collective_pressure !== selectedAgent.action_state?.collective_pressure
       )
     ) {
       setSelectedAgent(refreshed);
@@ -1154,9 +1183,11 @@ export default function GodView({
       runtimeContent: runtimeDockContent,
       thoughtCells: renderedSnapshotCells,
       currentT,
+      collectiveSummary: renderedCollectiveSummary,
+      collectiveSignal: renderedCollectiveSignal,
       connectionState: llmConnectionState,
     });
-  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedSnapshotCells, runtimeDockContent]);
+  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent]);
 
   useEffect(() => () => onDockPayloadChange?.(null), [onDockPayloadChange]);
 
@@ -1188,6 +1219,8 @@ export default function GodView({
         hydratedInitialWorldKeyRef.current = hydrateKey;
         setWorldId(meta.world_id);
         onWorldSelected?.(meta.world_id);
+        setCollectiveSummary(normalizeCollectiveSummary(meta.group_state));
+        setCollectiveSignal(inferCollectiveSignalFromGroupState(meta.group_state));
         setGenesisPrompt(meta.genesis_prompt ?? "");
         setAvailableT(snapshots.available_t);
         const firstT = snapshots.available_t[0] ?? 0;
@@ -1848,6 +1881,8 @@ export default function GodView({
                   visibleCount: renderedVisibleCells.length,
                   totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
                   sampled: renderedVisualStats?.sampled ?? false,
+                  collectiveSummary: renderedCollectiveSummary,
+                  collectiveSignal: renderedCollectiveSignal,
                 }}
                 agentRoster={renderedSnapshotCells}
                 onSelectAgent={setSelectedAgent}
@@ -2119,4 +2154,87 @@ function SetupItem({
       <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
     </div>
   );
+}
+
+function normalizeCollectiveSummary(groupState: unknown): CollectiveDynamicsSummary | null {
+  const summary = (groupState as { summary?: CollectiveDynamicsSummary } | null | undefined)?.summary;
+  if (!summary || typeof summary !== "object") return null;
+  return summary;
+}
+
+function inferCollectiveSignalFromGroupState(groupState: unknown): string {
+  const signal = (groupState as { collective_signal?: string } | null | undefined)?.collective_signal;
+  return typeof signal === "string" && signal ? signal : "stable";
+}
+
+function inferCollectiveSignal(summary: CollectiveDynamicsSummary | null | undefined): string {
+  if (!summary) return "stable";
+  const roleFracture = Number(summary.role?.avg_fracture_risk ?? 0);
+  const zoneFracture = Number(summary.zone?.avg_fracture_risk ?? 0);
+  const roleDrift = Number(summary.role?.avg_drift_velocity ?? 0);
+  const zoneDrift = Number(summary.zone?.avg_drift_velocity ?? 0);
+  if (roleFracture >= 0.72 || zoneFracture >= 0.72) return "fracturing";
+  if (roleDrift >= 0.42 || zoneDrift >= 0.42) return "realigning";
+  return "stable";
+}
+
+function inferCollectiveSignalFromCells(cells: CellSnapshot[]): string {
+  const first = cells.find((cell) => String(cell.action_state?.collective_signal ?? "").trim());
+  return String(first?.action_state?.collective_signal ?? "stable");
+}
+
+function buildCollectiveSummaryFromCells(cells: CellSnapshot[]): CollectiveDynamicsSummary | null {
+  if (!cells.length) return null;
+  const roleMap = new Map<string, CollectiveDynamicsListItem>();
+  const zoneMap = new Map<string, CollectiveDynamicsListItem>();
+
+  for (const cell of cells) {
+    const actionState = cell.action_state ?? {};
+    const roleId = String(actionState.role_group_id ?? cell.role_key ?? "agent");
+    if (!roleMap.has(roleId)) {
+      roleMap.set(roleId, {
+        group_id: roleId,
+        group_label: String(actionState.role_group_label ?? cell.role_label ?? roleId),
+        fracture_risk: Number(actionState.role_group_fracture_risk ?? 0),
+        tension: Number(actionState.role_group_tension ?? 0),
+        drift_velocity: Number(actionState.role_group_drift_velocity ?? 0),
+        cohesion: Number(actionState.role_group_cohesion ?? 0),
+      });
+    }
+    const zoneId = String(actionState.zone_group_id ?? cell.zone_id ?? "zone");
+    if (!zoneMap.has(zoneId)) {
+      zoneMap.set(zoneId, {
+        group_id: zoneId,
+        group_label: String(actionState.zone_group_label ?? cell.zone_label ?? zoneId),
+        fracture_risk: Number(actionState.zone_group_fracture_risk ?? 0),
+        tension: Number(actionState.zone_group_tension ?? 0),
+        drift_velocity: Number(actionState.zone_group_drift_velocity ?? 0),
+        cohesion: Number(actionState.zone_group_cohesion ?? 0),
+      });
+    }
+  }
+
+  const summarizeAxis = (items: CollectiveDynamicsListItem[]) => {
+    const count = items.length;
+    const avg = (key: keyof CollectiveDynamicsListItem) =>
+      count ? items.reduce((sum, item) => sum + Number(item[key] ?? 0), 0) / count : 0;
+    return {
+      count,
+      avg_cohesion: avg("cohesion"),
+      avg_tension: avg("tension"),
+      avg_fracture_risk: avg("fracture_risk"),
+      avg_drift_velocity: avg("drift_velocity"),
+      top_fracturing: [...items]
+        .sort((left, right) => Number(right.fracture_risk ?? 0) - Number(left.fracture_risk ?? 0))
+        .slice(0, 4),
+      top_drifting: [...items]
+        .sort((left, right) => Number(right.drift_velocity ?? 0) - Number(left.drift_velocity ?? 0))
+        .slice(0, 4),
+    };
+  };
+
+  return {
+    role: summarizeAxis(Array.from(roleMap.values())),
+    zone: summarizeAxis(Array.from(zoneMap.values())),
+  };
 }

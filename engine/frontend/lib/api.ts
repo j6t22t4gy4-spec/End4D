@@ -74,6 +74,31 @@ export type WorldMeta = {
   persona_count?: number;
   persona_distribution_summary?: Record<string, unknown>;
   simulation_config?: Record<string, unknown>;
+  group_state?: Record<string, unknown>;
+};
+
+export type CollectiveDynamicsListItem = {
+  group_id: string;
+  group_label: string;
+  fracture_risk?: number;
+  tension?: number;
+  drift_velocity?: number;
+  cohesion?: number;
+};
+
+export type CollectiveDynamicsAxisSummary = {
+  count: number;
+  avg_cohesion: number;
+  avg_tension: number;
+  avg_fracture_risk: number;
+  avg_drift_velocity: number;
+  top_fracturing: CollectiveDynamicsListItem[];
+  top_drifting: CollectiveDynamicsListItem[];
+};
+
+export type CollectiveDynamicsSummary = {
+  role: CollectiveDynamicsAxisSummary;
+  zone: CollectiveDynamicsAxisSummary;
 };
 
 export type PersonaPreviewItem = {

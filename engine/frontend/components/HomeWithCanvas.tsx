@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import dynamic from "next/dynamic";
 import {
   type CellSnapshot,
+  type CollectiveDynamicsSummary,
   deleteWorld,
   deleteSession,
   getApiBase,
@@ -37,6 +38,8 @@ type SimulationDockPayload = {
   runtimeContent: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
+  collectiveSummary: CollectiveDynamicsSummary | null;
+  collectiveSignal: string;
   connectionState: {
     key: string;
     label: string;

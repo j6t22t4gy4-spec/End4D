@@ -7,6 +7,7 @@
 import { useCallback, useRef, useState } from "react";
 import {
   type CellSnapshot,
+  type CollectiveDynamicsSummary,
   getWorldWebSocketUrl,
   runSimulation,
 } from "@/lib/api";
@@ -19,6 +20,7 @@ export type StreamMessage =
       observer_cells?: CellSnapshot[];
       observer_total_cells?: number;
       observer_sampled?: boolean;
+      group_state_summary?: CollectiveDynamicsSummary;
     }
   | { type: "done" }
   | { type: "error"; message?: string }
@@ -29,6 +31,7 @@ export type LiveObserverState = {
   totalCells: number;
   sampled: boolean;
   t: number;
+  groupSummary?: CollectiveDynamicsSummary | null;
 } | null;
 
 export function useSimulation() {
@@ -74,6 +77,7 @@ export function useSimulation() {
                 totalCells: msg.observer_total_cells ?? msg.cell_count,
                 sampled: Boolean(msg.observer_sampled),
                 t: msg.t,
+                groupSummary: msg.group_state_summary ?? null,
               });
             } else if (msg.type === "done") {
               setIsRunning(false);
