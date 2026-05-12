@@ -196,7 +196,7 @@ export default function HomeWithCanvas() {
         />
 
         <div className="app-shell__workspace" style={workspaceStyle}>
-          <section className="min-h-0 pr-1">
+          <section className="app-shell__content-scroll min-h-0 pr-1">
             {activeView === "overview" ? (
               <OverviewWorkspace
                 locale={locale}

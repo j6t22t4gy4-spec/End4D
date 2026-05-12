@@ -15,7 +15,7 @@
 html,
 body {
   min-height: 100vh;
-  overflow: auto;
+  overflow: hidden;
   background:
     radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 24%),
     radial-gradient(circle at top right, rgba(251, 191, 36, 0.08), transparent 18%),
@@ -45,9 +45,10 @@ textarea {
 
 .app-shell {
   display: flex;
-  min-height: 100dvh;
+  height: 100dvh;
   padding: 12px;
   justify-content: center;
+  overflow: hidden;
 }
 
 .app-shell__frame {
@@ -56,8 +57,9 @@ textarea {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   width: min(100%, 1880px);
-  min-height: calc(100dvh - 24px);
+  height: calc(100dvh - 24px);
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .app-shell__workspace {
@@ -73,6 +75,7 @@ textarea {
   gap: 0;
   min-height: 0;
   align-items: stretch;
+  z-index: 20;
 }
 
 .runtime-dock-shell__resize {
@@ -109,6 +112,7 @@ textarea {
 .runtime-dock-shell__panel {
   min-height: 0;
   max-height: inherit;
+  overflow: hidden;
 }
 
 .simulation-map__detail-collapse {
@@ -155,6 +159,16 @@ textarea {
   background: rgba(255, 255, 255, 0.84);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.app-shell__content-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .app-brand-mark {
@@ -941,12 +955,14 @@ textarea {
 
 @media (max-width: 1279px) {
   .app-shell {
-    min-height: auto;
+    height: auto;
     padding: 10px;
+    overflow: auto;
   }
 
   .app-shell__frame {
-    min-height: auto;
+    height: auto;
+    overflow: visible;
   }
 
   .app-shell__workspace {
@@ -968,6 +984,15 @@ textarea {
   .godview-main,
   .godview-setup {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  html,
+  body {
+    overflow: auto;
+  }
+
+  .app-shell__content-scroll {
+    overflow: visible;
   }
 }
 
