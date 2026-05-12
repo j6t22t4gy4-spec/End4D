@@ -94,7 +94,7 @@ def _openai_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     api_key = get_llm_api_key()
     model = get_llm_model()
     temperature = get_llm_temperature()
-    timeout = get_llm_timeout_s()
+    timeout = get_llm_timeout_s(task)
     retries = 0 if get_llm_strict_mode() == "adaptive" else 1
     out: List[str] = []
     for prompt in prompts:
@@ -129,7 +129,7 @@ def _ollama_chat_batch(prompts: List[str], *, task: str) -> List[str]:
     base_url = get_llm_base_url() or "http://127.0.0.1:11434"
     model = get_llm_model()
     temperature = get_llm_temperature()
-    timeout = get_llm_timeout_s()
+    timeout = get_llm_timeout_s(task)
     retries = 0 if get_llm_strict_mode() == "adaptive" else 1
     out: List[str] = []
     for prompt in prompts:

@@ -172,6 +172,7 @@ export default function GodView({
   const [runtimeStatus, setRuntimeStatus] = useState<LocalRuntimeStatus | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [selectedPackId, setSelectedPackId] = useState("nemotron-kr-core");
   const [installSourcePath, setInstallSourcePath] = useState("");
   const [pinVersion, setPinVersion] = useState("2026.05");
@@ -327,56 +328,62 @@ export default function GodView({
 
   useEffect(() => {
     let cancelled = false;
-    setRuntimeLoading(true);
-    setRuntimeError(null);
-    getLocalRuntimeStatus()
-      .then((payload) => {
-        if (!cancelled) {
-          setRuntimeStatus(payload);
-          setLlmEnabled(Boolean(payload.llm?.enabled));
-          setLlmProvider(String(payload.llm?.provider || "openai"));
-          setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
-          setLlmBaseUrl(String(payload.llm?.base_url || ""));
-          const matchedPreset =
-            LLM_PROVIDER_PRESETS.find((item) => item.provider === String(payload.llm?.provider || "openai")) ?? null;
-          const matchedPresetModels: string[] = matchedPreset ? [...matchedPreset.models] : [];
-          setLlmProviderPreset(matchedPreset?.id ?? "custom");
-          setLlmModelPreset(
-            matchedPresetModels.includes(String(payload.llm?.model || "gpt-4.1-mini"))
-              ? String(payload.llm?.model || "gpt-4.1-mini")
-              : "custom"
-          );
-          setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
-          setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
-          setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
-          setLlmAgentSampleSize(String(payload.llm_runtime?.agent_sample_size || 256));
-          setLlmDialoguePairs(String(payload.llm_runtime?.dialogue_max_pairs || 64));
-          setLlmDeliberationGroups(String(payload.llm_runtime?.group_deliberation_max_groups || 12));
-          setTaskBudgetDraft(
-            Object.fromEntries(
-              Object.entries(payload.llm_runtime?.task_budgets ?? {}).map(([key, value]) => [key, String(value)])
-            )
-          );
-          setTaskPriorityDraft(
-            Object.fromEntries(
-              Object.entries(payload.llm_runtime?.task_priorities ?? {}).map(([key, value]) => [key, String(value)])
-            )
-          );
-          if (!selectedPackId && payload.packs[0]?.pack_id) {
-            setSelectedPackId(payload.packs[0].pack_id);
-          }
+    const refreshRuntime = async (firstLoad: boolean) => {
+      if (firstLoad) {
+        setRuntimeLoading(true);
+        setRuntimeError(null);
+      }
+      try {
+        const payload = await getLocalRuntimeStatus();
+        if (cancelled) return;
+        setRuntimeStatus(payload);
+        setLlmEnabled(Boolean(payload.llm?.enabled));
+        setLlmProvider(String(payload.llm?.provider || "openai"));
+        setLlmModel(String(payload.llm?.model || "gpt-4.1-mini"));
+        setLlmBaseUrl(String(payload.llm?.base_url || ""));
+        const matchedPreset =
+          LLM_PROVIDER_PRESETS.find((item) => item.provider === String(payload.llm?.provider || "openai")) ?? null;
+        const matchedPresetModels: string[] = matchedPreset ? [...matchedPreset.models] : [];
+        setLlmProviderPreset(matchedPreset?.id ?? "custom");
+        setLlmModelPreset(
+          matchedPresetModels.includes(String(payload.llm?.model || "gpt-4.1-mini"))
+            ? String(payload.llm?.model || "gpt-4.1-mini")
+            : "custom"
+        );
+        setLlmRuntimeProfile(String(payload.llm?.runtime_profile || "balanced"));
+        setLlmStrictMode(String(payload.llm?.strict_mode || payload.llm_runtime?.strict_mode || "adaptive"));
+        setLlmCycleBudget(String(payload.llm_runtime?.cycle_prompt_budget || 160));
+        setLlmAgentSampleSize(String(payload.llm_runtime?.agent_sample_size || 256));
+        setLlmDialoguePairs(String(payload.llm_runtime?.dialogue_max_pairs || 64));
+        setLlmDeliberationGroups(String(payload.llm_runtime?.group_deliberation_max_groups || 12));
+        setTaskBudgetDraft(
+          Object.fromEntries(
+            Object.entries(payload.llm_runtime?.task_budgets ?? {}).map(([key, value]) => [key, String(value)])
+          )
+        );
+        setTaskPriorityDraft(
+          Object.fromEntries(
+            Object.entries(payload.llm_runtime?.task_priorities ?? {}).map(([key, value]) => [key, String(value)])
+          )
+        );
+        if (!selectedPackId && payload.packs[0]?.pack_id) {
+          setSelectedPackId(payload.packs[0].pack_id);
         }
-      })
-      .catch((reason) => {
+      } catch (reason) {
         if (!cancelled) {
           setRuntimeError(reason instanceof Error ? reason.message : "runtime status error");
         }
-      })
-      .finally(() => {
-        if (!cancelled) setRuntimeLoading(false);
-      });
+      } finally {
+        if (!cancelled && firstLoad) setRuntimeLoading(false);
+      }
+    };
+    refreshRuntime(true);
+    const timer = window.setInterval(() => {
+      refreshRuntime(false);
+    }, 5000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [personaRefreshKey]);
 
@@ -389,19 +396,22 @@ export default function GodView({
     if (!worldId) {
       setReviewSummary(null);
       setReviewLoading(false);
+      setReviewError(null);
       return;
     }
     let cancelled = false;
     setReviewLoading(true);
+    setReviewError(null);
     getReviewSummary(worldId)
       .then((payload) => {
         if (!cancelled) {
           setReviewSummary(payload);
         }
       })
-      .catch(() => {
+      .catch((reason) => {
         if (!cancelled) {
           setReviewSummary(null);
+          setReviewError(reason instanceof Error ? reason.message : "review summary error");
         }
       })
       .finally(() => {
@@ -1251,6 +1261,17 @@ export default function GodView({
                       <p className="session-thread-card__prompt">{run.fallback_reason || (isKo ? "폴백" : "fallback")}</p>
                     </div>
                   ))}
+                </div>
+              ) : null}
+              {reviewError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-700">
+                  <p className="font-semibold">{isKo ? "리뷰 실행 오류" : "Review Runtime Error"}</p>
+                  <p className="mt-1">{reviewError}</p>
+                  <p className="mt-1">
+                    {isKo
+                      ? "연결 테스트보다 review 프롬프트가 훨씬 크기 때문에 timeout이 더 쉽게 발생할 수 있습니다."
+                      : "Review prompts are much heavier than the connection test, so timeouts can appear there first."}
+                  </p>
                 </div>
               ) : null}
               {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}

@@ -146,7 +146,10 @@ def get_session_review(
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    summary = llm_facade.summarize_session_review(payload)
+    try:
+        summary = llm_facade.summarize_session_review(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     return SessionReviewResponse(
         session_id=str(session.get("session_id") or ""),
         title=str(session.get("title") or "Session"),
@@ -204,7 +207,10 @@ def post_session_review_query(session_id: str, body: SessionReviewQueryRequest):
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    query = llm_facade.query_session_review(payload, question=body.question)
+    try:
+        query = llm_facade.query_session_review(payload, question=body.question)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     answer = dict(query.get("query") or {})
     return SessionReviewQueryResponse(
         session_id=str(session.get("session_id") or ""),

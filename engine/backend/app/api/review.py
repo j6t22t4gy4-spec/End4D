@@ -129,9 +129,11 @@ def get_review_summary(world_id: str):
         payload = build_cached_world_review_payload(entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-
-    summary = llm_facade.summarize_review(payload)
-    annotations = llm_facade.annotate_timeline(payload)
+    try:
+        summary = llm_facade.summarize_review(payload)
+        annotations = llm_facade.annotate_timeline(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     return ReviewSummaryResponse(
         world_id=world_id,
         headline=str(summary["summary"].get("headline") or ""),
@@ -230,9 +232,11 @@ def get_review_diff(world_id: str, base_world_id: str):
         base_payload = build_cached_world_review_payload(base_entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-
     diff_payload = build_review_diff_payload(base_payload=base_payload, target_payload=target_payload)
-    diff = llm_facade.compare_reviews(diff_payload=diff_payload)
+    try:
+        diff = llm_facade.compare_reviews(diff_payload=diff_payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     base_stats = dict(diff_payload.get("base_summary_stats") or {})
     target_stats = dict(diff_payload.get("target_summary_stats") or {})
     compared_metrics = {
@@ -301,7 +305,10 @@ def post_review_query(world_id: str, body: ReviewQueryRequest):
         payload = build_cached_world_review_payload(entry)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    query = llm_facade.query_review(payload, question=body.question)
+    try:
+        query = llm_facade.query_review(payload, question=body.question)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     answer = dict(query.get("query") or {})
     return ReviewQueryResponse(
         world_id=world_id,
@@ -358,7 +365,10 @@ def post_review_diff_query(world_id: str, base_world_id: str, body: ReviewDiffQu
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     diff_payload = build_review_diff_payload(base_payload=base_payload, target_payload=target_payload)
-    query = llm_facade.query_review_diff(diff_payload, question=body.question)
+    try:
+        query = llm_facade.query_review_diff(diff_payload, question=body.question)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
     answer = dict(query.get("query") or {})
     return ReviewDiffQueryResponse(
         base_world_id=base_world_id,

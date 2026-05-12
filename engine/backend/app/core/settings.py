@@ -202,12 +202,18 @@ def get_llm_api_key() -> Optional[str]:
     return raw or None
 
 
-def get_llm_timeout_s() -> float:
+def get_llm_timeout_s(task: str | None = None) -> float:
     raw = _get_runtime_llm_value("ORGANIC4D_LLM_TIMEOUT_S", "20")
     try:
-        return max(1.0, min(120.0, float(raw)))
+        base = max(1.0, min(120.0, float(raw)))
     except ValueError:
-        return 20.0
+        base = 20.0
+    task_name = str(task or "").strip()
+    if task_name in {"review_summary", "review_diff", "session_review"}:
+        return min(120.0, max(base, 45.0))
+    if task_name in {"review_query", "review_diff_query", "session_review_query", "agent_interview", "agent_interview_diff"}:
+        return min(120.0, max(base, 30.0))
+    return base
 
 
 def get_llm_temperature() -> float:

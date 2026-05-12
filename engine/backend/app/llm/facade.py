@@ -720,7 +720,30 @@ class LLMFacade:
         active_budget = int(scheduler["allowed"])
         active_items = items[:active_budget]
         skipped_by_scheduler = items[active_budget:]
-        batch = generate_reasoning_batch(active_items, task=task)
+        try:
+            batch = generate_reasoning_batch(active_items, task=task)
+        except Exception as exc:
+            meta = {
+                "task": task,
+                "prompt_version": get_prompt_version(task),
+                "prompt_meta": dict(get_prompt_meta(task)),
+                "provider": str(get_llm_provider() or ""),
+                "model": str(get_llm_model() or ""),
+                "task_budget": int(task_budget),
+                "task_priority": int(get_llm_task_priority(task)),
+                "prompt_count_in": len(items),
+                "prompt_count_sent": len(active_items),
+                "prompt_count_skipped_by_task_budget": int(scheduler["skipped_by_task_budget"]),
+                "prompt_count_skipped_by_cycle_budget": int(scheduler["skipped_by_cycle_budget"]),
+                "cycle_key": str(scheduler["cycle_key"]),
+                "cycle_budget_total": int(scheduler["cycle_budget_total"]),
+                "cycle_budget_remaining_before": int(scheduler["cycle_budget_remaining_before"]),
+                "cycle_budget_remaining_after": int(scheduler["cycle_budget_remaining_after"]),
+                "used_fallback": True,
+                "fallback_reason": str(exc),
+            }
+            self._record_run(meta)
+            raise
         texts = list(batch.get("texts") or []) + skipped_by_scheduler
         meta = dict(batch.get("meta") or {})
         meta.update(
