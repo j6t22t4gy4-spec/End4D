@@ -9,9 +9,10 @@ import { UI_STRINGS, type UiLocale, getWorkbenchLabels } from "@/lib/ui-language
 type AppToolbarProps = {
   locale: UiLocale;
   onChangeLocale: (locale: UiLocale) => void;
-  runtimeProfile: string;
-  installedPackCount: number;
-  countriesLabel: string;
+  llmProvider: string;
+  llmModel: string;
+  llmStatusTone: "green" | "amber" | "red";
+  llmStatusLabel: string;
   activeView: WorkbenchView;
   onChangeView: (view: WorkbenchView) => void;
 };
@@ -19,9 +20,10 @@ type AppToolbarProps = {
 export function AppToolbar({
   locale,
   onChangeLocale,
-  runtimeProfile,
-  installedPackCount,
-  countriesLabel,
+  llmProvider,
+  llmModel,
+  llmStatusTone,
+  llmStatusLabel,
   activeView,
   onChangeView,
 }: AppToolbarProps) {
@@ -53,36 +55,26 @@ export function AppToolbar({
       </nav>
 
       <div className="app-toolbar__meta app-toolbar__meta--split">
-        <div className="app-toolbar__language">
-          <span>{strings.language}</span>
-          <div className="app-toolbar__language-switch">
-            {(["ko", "en"] as UiLocale[]).map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`app-toolbar__language-button ${item === locale ? "is-active" : ""}`}
-                onClick={() => onChangeLocale(item)}
-              >
-                {item.toUpperCase()}
-              </button>
-            ))}
+        <div className="app-toolbar__status-row">
+          <div className="app-status-pill">
+            <span>LLM</span>
+            <strong>{llmProvider} · {llmModel}</strong>
+            <em className={`app-status-pill__dot tone-${llmStatusTone}`} />
+            <small>{llmStatusLabel}</small>
           </div>
         </div>
-        <div className="app-toolbar__status-row">
-          <StatusPill label={strings.runtime} value={runtimeProfile} />
-          <StatusPill label={strings.packs} value={String(installedPackCount)} />
-          <StatusPill label={strings.regions} value={countriesLabel} />
+        <div className="app-toolbar__language">
+          <span>{strings.language}</span>
+          <select
+            className="app-toolbar__language-select"
+            value={locale}
+            onChange={(event) => onChangeLocale(event.target.value as UiLocale)}
+          >
+            <option value="ko">한국어</option>
+            <option value="en">English</option>
+          </select>
         </div>
       </div>
     </header>
-  );
-}
-
-function StatusPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="app-status-pill">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

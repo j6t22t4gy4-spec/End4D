@@ -9,6 +9,7 @@ import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline
 import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
+import type { SessionSummary } from "@/lib/api";
 import {
   AgentDirectoryPanel,
   SimulationInspectorPanel,
@@ -121,6 +122,7 @@ export default function GodView({
   locale = "ko",
   initialWorldId = null,
   initialT = null,
+  sessions = [],
   initialInjectPreset = null,
   onOpenWorkbenchView,
   onWorldSelected,
@@ -133,6 +135,7 @@ export default function GodView({
   locale?: UiLocale;
   initialWorldId?: string | null;
   initialT?: number | null;
+  sessions?: SessionSummary[];
   initialInjectPreset?: ReviewSummaryResponse["inject_presets"][number] | null;
   onOpenWorkbenchView?: (view: WorkbenchView) => void;
   onWorldSelected?: (worldId: string) => void;
@@ -157,7 +160,7 @@ export default function GodView({
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
-  const [stage, setStage] = useState<"setup" | "run">("setup");
+  const [stage, setStage] = useState<"setup" | "run" | "review">("setup");
   const [genesisPrompt, setGenesisPrompt] = useState("");
   const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -1244,7 +1247,7 @@ export default function GodView({
     <div className="godview-staged">
       <AppPanel
         title={strings.simulationWorkspace}
-        subtitle={strings.twoStepFlow}
+        subtitle={isKo ? "설정 · 실행 · 리뷰를 한 흐름으로 엽니다" : "Open setup, run, and review in one flow"}
         bodyClassName="flex flex-wrap items-center justify-between gap-3"
       >
         <div className="godview-stage-switch">
@@ -1263,6 +1266,14 @@ export default function GodView({
           >
             02 {strings.run}
           </button>
+          <button
+            type="button"
+            className={`godview-stage-switch__button ${stage === "review" ? "is-active" : ""}`}
+            onClick={() => setStage("review")}
+            disabled={!worldId}
+          >
+            03 {isKo ? "리뷰" : "Review"}
+          </button>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -1272,19 +1283,13 @@ export default function GodView({
           >
             {strings.openDataPacks}
           </button>
-          <button
-            type="button"
-            className="app-button app-button--secondary"
-            onClick={() => onOpenWorkbenchView?.("review-lab")}
-          >
-            {strings.openReviewLab}
-          </button>
         </div>
       </AppPanel>
 
-      {stage === "setup" ? (
+      {stage === "setup" && (
         <div className="godview-setup">
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+            <div className="grid gap-4 xl:grid-cols-2">
             <AppPanel
               title={isKo ? "시나리오 생성" : "Scenario Genesis"}
               subtitle={isKo ? "프롬프트, 페르소나 팩, 월드 시드 구성을 먼저 정합니다" : "Prompt, persona packs, and world seed configuration"}
@@ -1443,8 +1448,6 @@ export default function GodView({
                 </div>
               )}
             </AppPanel>
-
-            <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
 
             <AppPanel
               title={isKo ? "데이터 팩 라이프사이클" : "Data Pack Lifecycle"}
@@ -1728,13 +1731,15 @@ export default function GodView({
                 </>
               ) : null}
             </AppPanel>
-          </div>
+            </div>
 
-          <div className="grid min-h-0 gap-4">
+            <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
+
+          <div className="grid gap-4 xl:grid-cols-2">
             <AppPanel
               title={isKo ? "설정 체크리스트" : "Setup Checklist"}
-              subtitle={isKo ? "실시간 시뮬레이션에 들어가기 전에 월드를 준비합니다" : "Prepare the world before entering live simulation"}
-              bodyClassName="grid gap-3 md:grid-cols-2"
+              subtitle={isKo ? "짧게 확인하고 바로 실행으로 넘어갑니다" : "Quick checks before moving into run"}
+              bodyClassName="grid gap-2 md:grid-cols-2"
             >
               <SetupItem index="01" title={isKo ? "시나리오 프롬프트" : "Scenario Prompt"} body={isKo ? "장기 정책/시장/사회 시나리오를 먼저 정의합니다." : "Define the long-run policy, market, and social scenario first."} />
               <SetupItem index="02" title={isKo ? "페르소나와 데이터 팩" : "Persona & Data Packs"} body={isKo ? "국가별 persona pack과 source attribution을 확인합니다." : "Check country packs and source attribution before genesis."} />
@@ -1747,23 +1752,101 @@ export default function GodView({
             ) : (
               <AppPanel
                 title={isKo ? "다음 단계" : "Next Stage"}
-                subtitle={isKo ? "월드를 만든 뒤 열리는 기능" : "What unlocks after world creation"}
-                bodyClassName="space-y-3"
+                subtitle={isKo ? "실행과 리뷰가 같은 흐름 안에 있습니다" : "Run and review now stay in the same flow"}
+                bodyClassName="grid gap-2 md:grid-cols-3"
               >
-                <p className="text-sm leading-7 text-slate-600">
-                  {isKo
-                    ? "world를 만든 뒤에는 실행 패널, 시뮬레이션 맵, 선택 상세 패널, 시간축 북마크, 정책 주입 패널이 모두 `Run` 단계에서 열립니다. 지금은 설정에 집중하고, 실행 중 분석은 다음 단계에서 분리해서 보게 됩니다."
-                    : "After world creation, execution controls, the simulation map, the selection inspector, timeline bookmarks, and policy injection all open in Run. Stay focused on setup first, then move into live analysis."}
-                </p>
-                <div className="grid gap-2 md:grid-cols-2">
-                  <MetricChip label={isKo ? "실행 단계" : "Run stage"} value={isKo ? "실행 + 맵 + 타임라인" : "Execution + Map + Timeline"} />
-                  <MetricChip label={isKo ? "리뷰 단계" : "Review stage"} value={isKo ? "향후 LLM 분석 워크스페이스" : "Future LLM analysis workspace"} />
-                </div>
+                <MetricChip label={isKo ? "02 실행" : "02 Run"} value={isKo ? "제어 · 필드 · 시간축" : "Controls · Field · Timeline"} />
+                <MetricChip label={isKo ? "03 리뷰" : "03 Review"} value={isKo ? "요약 · 원인 · 프리셋" : "Summary · Causality · Presets"} />
+                <MetricChip label={isKo ? "데이터 관리" : "Data Mgmt"} value={isKo ? "데이터팩 · 월드 · 세션" : "Packs · Worlds · Sessions"} />
               </AppPanel>
             )}
           </div>
         </div>
-      ) : (
+      </div>
+      )}
+      {stage === "review" && (
+        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
+          {reviewSummary ? (
+            <AppPanel
+              title={isKo ? "리뷰" : "Review"}
+              subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
+              bodyClassName="space-y-4"
+              action={
+                <button
+                  type="button"
+                  className="app-button app-button--ghost"
+                  onClick={() => setStage("run")}
+                >
+                  {isKo ? "실행으로 돌아가기" : "Back to Run"}
+                </button>
+              }
+            >
+              <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
+              <div className="grid gap-3 xl:grid-cols-2">
+                {reviewSummary.causal_analysis.map((item, index) => (
+                  <div key={`${index}-${item}`} className="session-thread-card">
+                    <p className="session-thread-card__prompt">{item}</p>
+                  </div>
+                ))}
+              </div>
+              {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
+                <div className="grid gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {isKo ? "리뷰 기반 정책 프리셋" : "Review-driven Policy Presets"}
+                  </p>
+                  {reviewSummary.inject_presets.map((item, index) => (
+                    <div
+                      key={`${index}-${String(item.label ?? "preset")}`}
+                      className="session-thread-card"
+                    >
+                      <div className="session-thread-card__header">
+                        <p className="session-thread-card__title">{String(item.label ?? "Policy preset")}</p>
+                        <span className="session-thread-card__meta">
+                          t={Number(item.t ?? currentT).toFixed(0)}
+                        </span>
+                      </div>
+                      <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
+                      <div className="session-thread-card__actions">
+                        <button
+                          type="button"
+                          className="app-button app-button--ghost"
+                          onClick={() => {
+                            setReviewInjectPreset({
+                              label: String(item.label ?? "Policy preset"),
+                              t: Number(item.t ?? currentT),
+                              eventType: String(item.event_type ?? "policy_shift"),
+                              payload: (item.payload as Record<string, unknown>) ?? {},
+                            });
+                            setCurrentT(Number(item.t ?? currentT));
+                            setStage("run");
+                          }}
+                        >
+                          {isKo ? "주입 패널로 사용" : "Use in Injection Panel"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </AppPanel>
+          ) : (
+            <AppPanel
+              title={isKo ? "리뷰" : "Review"}
+              subtitle={isKo ? "리뷰를 준비 중입니다" : "Review is preparing"}
+              bodyClassName="space-y-3"
+            >
+              <p className="text-sm leading-6 text-slate-600">
+                {reviewError
+                  ? reviewError
+                  : isKo
+                    ? "월드를 실행하면 여기서 LLM 기반 리뷰를 바로 확인할 수 있습니다."
+                    : "Run the world to unlock the LLM-backed review here."}
+              </p>
+            </AppPanel>
+          )}
+        </div>
+      )}
+      {stage === "run" && (
         <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
           <AppPanel
             title={isKo ? "시뮬레이션 워크스페이스" : "Simulation Workspace"}
@@ -1969,9 +2052,9 @@ export default function GodView({
               <button
                 type="button"
                 className="app-button app-button--ghost"
-                onClick={() => onOpenWorkbenchView?.("review-lab")}
+                onClick={() => setStage("review")}
               >
-                {isKo ? "전체 리뷰 열기" : "Open Full Review"}
+                {isKo ? "리뷰 단계 열기" : "Open Review Stage"}
               </button>
             </AppPanel>
           ) : null}

@@ -15,8 +15,7 @@ export const WORKBENCH_ITEMS: Array<{
 }> = [
   { id: "overview", label: "Overview", shortLabel: "OV" },
   { id: "simulation", label: "Simulation", shortLabel: "SIM" },
-  { id: "review-lab", label: "Review", shortLabel: "RV" },
-  { id: "data-packs", label: "Data Packs", shortLabel: "PK" },
+  { id: "data-packs", label: "Data Management", shortLabel: "DM" },
   { id: "snapshots", label: "Snapshots", shortLabel: "SS" },
   { id: "policy-lab", label: "Policy Lab", shortLabel: "PL" },
 ];

@@ -15,6 +15,8 @@ type DataPacksWorkspaceProps = {
   onSync: () => void;
   onOpenWorld: (worldId: string) => void;
   onDeleteWorld: (worldId: string) => Promise<unknown>;
+  onRenameSession: (sessionId: string, title: string) => Promise<unknown>;
+  onDeleteSession: (sessionId: string) => Promise<unknown>;
 };
 
 export function DataPacksWorkspace({
@@ -26,10 +28,16 @@ export function DataPacksWorkspace({
   onSync,
   onOpenWorld,
   onDeleteWorld,
+  onRenameSession,
+  onDeleteSession,
 }: DataPacksWorkspaceProps) {
   const isKo = locale === "ko";
   const [pendingWorldId, setPendingWorldId] = useState<string | null>(null);
   const [worldActionError, setWorldActionError] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
+  const [sessionActionError, setSessionActionError] = useState<string | null>(null);
 
   const removeWorld = async (worldId: string) => {
     if (typeof window !== "undefined") {
@@ -51,11 +59,53 @@ export function DataPacksWorkspace({
     }
   };
 
+  const startRename = (session: SessionSummary) => {
+    setEditingSessionId(session.session_id);
+    setDraftTitle(session.title);
+    setSessionActionError(null);
+  };
+
+  const submitRename = async (sessionId: string) => {
+    setPendingSessionId(sessionId);
+    setSessionActionError(null);
+    try {
+      await onRenameSession(sessionId, draftTitle);
+      setEditingSessionId(null);
+    } catch (error) {
+      setSessionActionError(error instanceof Error ? error.message : "Rename failed");
+    } finally {
+      setPendingSessionId(null);
+    }
+  };
+
+  const removeSession = async (sessionId: string) => {
+    if (typeof window !== "undefined") {
+      const allowed = window.confirm(
+        isKo
+          ? "이 세션 스레드를 목록에서 삭제할까요? 연결된 world 데이터는 그대로 남습니다."
+          : "Delete this session thread from the list? Linked world data will remain."
+      );
+      if (!allowed) return;
+    }
+    setPendingSessionId(sessionId);
+    setSessionActionError(null);
+    try {
+      await onDeleteSession(sessionId);
+      if (editingSessionId === sessionId) {
+        setEditingSessionId(null);
+      }
+    } catch (error) {
+      setSessionActionError(error instanceof Error ? error.message : "Delete failed");
+    } finally {
+      setPendingSessionId(null);
+    }
+  };
+
   return (
     <div className="workspace-grid">
       <AppPanel
-        title={isKo ? "데이터 팩" : "Data Packs"}
-        subtitle={isKo ? "클라우드에서 내려온 페르소나 팩의 로컬 캐시" : "Cloud-delivered persona packs cached on this machine"}
+        title={isKo ? "데이터 관리" : "Data Management"}
+        subtitle={isKo ? "데이터팩, 월드, 세션 스레드를 한 곳에서 관리합니다" : "Manage data packs, worlds, and session threads in one place"}
         bodyClassName="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
       >
         <div className="xl:col-span-2 flex items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
@@ -134,89 +184,177 @@ export function DataPacksWorkspace({
         </div>
       </AppPanel>
 
-      <AppPanel
-        title={isKo ? "월드 관리" : "World Management"}
-        subtitle={
-          isKo
-            ? "세션별로 저장된 world를 열고 삭제합니다"
-            : "Open or delete stored worlds grouped by session"
-        }
-        bodyClassName="space-y-3"
-      >
-        {worldActionError ? (
-          <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-            {worldActionError}
-          </p>
-        ) : null}
-        {sessions.length === 0 ? (
-          <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-5 py-6 text-sm text-slate-500">
-            {isKo ? "저장된 세션과 world가 아직 없습니다." : "No saved sessions or worlds yet."}
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {sessions.map((session) => (
-              <section
-                key={session.session_id}
-                className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-sm"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{session.title}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {isKo ? "월드" : "Worlds"} {session.world_count} · {session.session_id.slice(0, 8)}
-                    </p>
+      <div className="grid gap-4">
+        <AppPanel
+          title={isKo ? "월드 관리" : "World Management"}
+          subtitle={
+            isKo
+              ? "세션별로 저장된 world를 열고 삭제합니다"
+              : "Open or delete stored worlds grouped by session"
+          }
+          bodyClassName="space-y-3"
+        >
+          {worldActionError ? (
+            <p className="rounded-[12px] border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {worldActionError}
+            </p>
+          ) : null}
+          {sessions.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-5 py-6 text-sm text-slate-500">
+              {isKo ? "저장된 세션과 world가 아직 없습니다." : "No saved sessions or worlds yet."}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {sessions.map((session) => (
+                <section
+                  key={session.session_id}
+                  className="rounded-[22px] border border-slate-200 bg-white px-4 py-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{session.title}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {isKo ? "월드" : "Worlds"} {session.world_count} · {session.session_id.slice(0, 8)}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                      {session.latest_world_id ? session.latest_world_id.slice(0, 8) : (isKo ? "비어 있음" : "Empty")}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
-                    {session.latest_world_id ? session.latest_world_id.slice(0, 8) : (isKo ? "비어 있음" : "Empty")}
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-2">
-                  {session.worlds.length ? (
-                    session.worlds.map((world) => (
-                      <article
-                        key={world.world_id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {world.genesis_prompt?.trim() || `${isKo ? "월드" : "World"} ${world.world_id.slice(0, 8)}`}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {world.world_id.slice(0, 8)} · {(world.persona_country || (isKo ? "국가 없음" : "No country")).toUpperCase()} · {world.status}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
+                  <div className="mt-4 grid gap-2">
+                    {session.worlds.length ? (
+                      session.worlds.map((world) => (
+                        <article
+                          key={world.world_id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-900">
+                              {world.genesis_prompt?.trim() || `${isKo ? "월드" : "World"} ${world.world_id.slice(0, 8)}`}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {world.world_id.slice(0, 8)} · {(world.persona_country || (isKo ? "국가 없음" : "No country")).toUpperCase()} · {world.status}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              className="app-button app-button--secondary"
+                              onClick={() => onOpenWorld(world.world_id)}
+                            >
+                              {isKo ? "열기" : "Open"}
+                            </button>
+                            <button
+                              type="button"
+                              className="app-button app-button--ghost"
+                              disabled={pendingWorldId === world.world_id}
+                              onClick={() => void removeWorld(world.world_id)}
+                            >
+                              {pendingWorldId === world.world_id
+                                ? (isKo ? "삭제 중" : "Deleting")
+                                : (isKo ? "삭제" : "Delete")}
+                            </button>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="rounded-[16px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                        {isKo ? "이 세션에는 아직 저장된 world가 없습니다." : "No saved worlds in this session yet."}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title={isKo ? "세션 스레드 관리" : "Session Thread Management"}
+          subtitle={isKo ? "세션 이름 변경과 목록 정리를 여기서 수행합니다" : "Rename or prune saved session threads here"}
+          bodyClassName="space-y-3"
+        >
+          {sessionActionError ? (
+            <p className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {sessionActionError}
+            </p>
+          ) : null}
+          {sessions.length === 0 ? (
+            <div className="rounded-[22px] border border-dashed border-slate-300 bg-white px-5 py-6 text-sm text-slate-500">
+              {isKo ? "저장된 실행 세션이 아직 없습니다." : "No saved session threads yet."}
+            </div>
+          ) : (
+            <div className="session-thread-list">
+              {sessions.map((session) => (
+                <div key={session.session_id} className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    {editingSessionId === session.session_id ? (
+                      <input
+                        value={draftTitle}
+                        onChange={(event) => setDraftTitle(event.target.value)}
+                        className="app-input"
+                        placeholder={isKo ? "세션 제목" : "Session title"}
+                      />
+                    ) : (
+                      <p className="session-thread-card__title">{session.title}</p>
+                    )}
+                    <div className="session-thread-card__actions">
+                      {editingSessionId === session.session_id ? (
+                        <>
                           <button
                             type="button"
                             className="app-button app-button--secondary"
-                            onClick={() => onOpenWorld(world.world_id)}
+                            disabled={pendingSessionId === session.session_id}
+                            onClick={() => submitRename(session.session_id)}
                           >
-                            {isKo ? "열기" : "Open"}
+                            {isKo ? "저장" : "Save"}
                           </button>
                           <button
                             type="button"
                             className="app-button app-button--ghost"
-                            disabled={pendingWorldId === world.world_id}
-                            onClick={() => void removeWorld(world.world_id)}
+                            disabled={pendingSessionId === session.session_id}
+                            onClick={() => {
+                              setEditingSessionId(null);
+                              setSessionActionError(null);
+                            }}
                           >
-                            {pendingWorldId === world.world_id
-                              ? (isKo ? "삭제 중" : "Deleting")
-                              : (isKo ? "삭제" : "Delete")}
+                            {isKo ? "취소" : "Cancel"}
                           </button>
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="rounded-[16px] border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                      {isKo ? "이 세션에는 아직 저장된 world가 없습니다." : "No saved worlds in this session yet."}
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="app-button app-button--ghost"
+                            disabled={pendingSessionId === session.session_id}
+                            onClick={() => startRename(session)}
+                          >
+                            {isKo ? "이름 변경" : "Rename"}
+                          </button>
+                          <button
+                            type="button"
+                            className="app-button app-button--ghost-danger"
+                            disabled={pendingSessionId === session.session_id}
+                            onClick={() => removeSession(session.session_id)}
+                          >
+                            {isKo ? "삭제" : "Delete"}
+                          </button>
+                        </>
+                      )}
                     </div>
-                  )}
+                  </div>
+                  <p className="session-thread-card__meta">
+                    {session.world_count} {isKo ? "월드" : "worlds"} · {isKo ? "최신" : "latest"} {session.latest_world_id || "—"}
+                  </p>
+                  {session.worlds[0]?.genesis_prompt ? (
+                    <p className="session-thread-card__prompt">{session.worlds[0].genesis_prompt}</p>
+                  ) : null}
                 </div>
-              </section>
-            ))}
-          </div>
-        )}
-      </AppPanel>
+              ))}
+            </div>
+          )}
+        </AppPanel>
+      </div>
     </div>
   );
 }

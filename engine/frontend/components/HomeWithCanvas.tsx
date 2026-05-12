@@ -24,7 +24,6 @@ import {
 } from "@/components/app-shell/workbench-types";
 import { OverviewWorkspace } from "@/components/workbench/OverviewWorkspace";
 import { DataPacksWorkspace } from "@/components/workbench/DataPacksWorkspace";
-import { ReviewLabWorkspace } from "@/components/workbench/ReviewLabWorkspace";
 import { FocusedWorkspace } from "@/components/workbench/FocusedWorkspace";
 import { type UiLocale } from "@/lib/ui-language";
 
@@ -133,6 +132,22 @@ export default function HomeWithCanvas() {
     return runtime.available_countries.join(" · ").toUpperCase();
   }, [isKo, runtime]);
 
+  const toolbarLlmTone = useMemo<"green" | "amber" | "red">(() => {
+    if (!runtime?.llm?.enabled || runtime.llm.provider === "stub") return "red";
+    if (runtime.llm.has_api_key) return "green";
+    return "amber";
+  }, [runtime]);
+
+  const toolbarLlmLabel = useMemo(() => {
+    if (!runtime?.llm?.enabled || runtime.llm.provider === "stub") {
+      return isKo ? "disconnect" : "disconnect";
+    }
+    if (runtime.llm.has_api_key) {
+      return "ready";
+    }
+    return isKo ? "configured" : "configured";
+  }, [isKo, runtime]);
+
   useEffect(() => {
     if (!resizingDock) return;
     const handleMove = (event: MouseEvent) => {
@@ -210,9 +225,10 @@ export default function HomeWithCanvas() {
         <AppToolbar
           locale={locale}
           onChangeLocale={setLocale}
-          runtimeProfile={runtime?.runtime_profile ?? (isKo ? "부팅 중" : "Booting")}
-          installedPackCount={runtime?.installed_pack_count ?? 0}
-          countriesLabel={countriesLabel}
+          llmProvider={runtime?.llm?.provider ?? "stub"}
+          llmModel={runtime?.llm?.model ?? "stub"}
+          llmStatusTone={toolbarLlmTone}
+          llmStatusLabel={toolbarLlmLabel}
           activeView={activeView}
           onChangeView={setActiveView}
         />
@@ -224,13 +240,8 @@ export default function HomeWithCanvas() {
                 locale={locale}
                 runtime={runtime}
                 runtimeError={runtimeError}
-                sessions={sessions}
-                sessionsError={sessionsError}
                 apiBase={getApiBase()}
                 onOpenView={setActiveView}
-                onOpenWorld={(worldId) => handleOpenWorld(worldId, null)}
-                onRenameSession={(sessionId, title) => renameSession(sessionId, title).then(() => refreshSessions())}
-                onDeleteSession={(sessionId) => deleteSession(sessionId).then(() => refreshSessions())}
               />
             ) : null}
 
@@ -239,6 +250,7 @@ export default function HomeWithCanvas() {
                 locale={locale}
                 initialWorldId={selectedWorldId}
                 initialT={selectedSnapshotT}
+                sessions={sessions}
                 onOpenWorkbenchView={setActiveView}
                 onWorldSelected={handleSimulationWorldSelected}
                 initialInjectPreset={pendingInjectPreset}
@@ -247,17 +259,6 @@ export default function HomeWithCanvas() {
                 runtimeErrorExternal={runtimeError}
                 onRefreshRuntimeExternal={refreshRuntime}
                 onDockPayloadChange={setSimulationDock}
-              />
-            ) : null}
-
-            {activeView === "review-lab" ? (
-              <ReviewLabWorkspace
-                locale={locale}
-                worldId={selectedWorldId ?? sessions[0]?.latest_world_id ?? null}
-                sessions={sessions}
-                onOpenView={setActiveView}
-                onOpenWorldAt={(worldId, t) => handleOpenWorld(worldId, typeof t === "number" ? t : null)}
-                onQueueInjectPreset={handleQueueInjectPreset}
               />
             ) : null}
 
@@ -271,6 +272,8 @@ export default function HomeWithCanvas() {
                 onSync={handleSyncDataPacks}
                 onOpenWorld={handleOpenWorld}
                 onDeleteWorld={handleDeleteWorld}
+                onRenameSession={(sessionId, title) => renameSession(sessionId, title).then(() => refreshSessions())}
+                onDeleteSession={(sessionId) => deleteSession(sessionId).then(() => refreshSessions())}
               />
             ) : null}
 
