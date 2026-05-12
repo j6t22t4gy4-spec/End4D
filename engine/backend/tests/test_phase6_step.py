@@ -139,3 +139,39 @@ def test_graph_writes_agent_social_memory_before_thought_refresh():
         str(cell.action_state.get("last_thought_summary", "")).strip()
         for cell in snap21.cells
     )
+
+
+def test_graph_updates_xy_positions_from_social_field_dynamics():
+    store = SnapshotStore()
+    graph = create_time_flow_graph()
+    initial_cells = [
+        Cell(
+            cell_id=f"mover-{i}",
+            x=float(i * 1.2),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=50.0 + i,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.full(256, 0.1 * (i + 1)),
+            worldview_vec=np.full(384, 0.05 * (i + 1)),
+            role_key="citizen",
+            role_label="citizen",
+            action_state={"mobility_bias": 0.8},
+        )
+        for i in range(4)
+    ]
+    out = graph.invoke(
+        {
+            "initial_cells": initial_cells,
+            "t_max": 5,
+            "snapshot_store": store,
+        }
+    )
+    moved = [
+        abs(cell.x - initial_cells[idx].x) + abs(cell.y - initial_cells[idx].y)
+        for idx, cell in enumerate(out["cells"])
+    ]
+    assert any(delta > 0.05 for delta in moved)
+    assert any(float(cell.action_state.get("last_spatial_shift", 0.0)) > 0.0 for cell in out["cells"])

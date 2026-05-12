@@ -88,6 +88,17 @@ class SessionStore:
         entry["updated_at"] = _now_iso()
         self._persist()
 
+    def detach_world(self, session_id: str, world_id: str) -> Optional[Dict[str, Any]]:
+        entry = self._sessions.get(session_id)
+        if entry is None:
+            return None
+        world_ids = [wid for wid in list(entry.get("world_ids") or []) if wid != world_id]
+        entry["world_ids"] = world_ids
+        entry["latest_world_id"] = world_ids[-1] if world_ids else ""
+        entry["updated_at"] = _now_iso()
+        self._persist()
+        return dict(entry)
+
     def rename(self, session_id: str, title: str) -> Optional[Dict[str, Any]]:
         entry = self._sessions.get(session_id)
         if entry is None:

@@ -117,6 +117,11 @@ class PersonaPreviewResponse(BaseModel):
     items: List[PersonaPreviewItem]
 
 
+class DeleteWorldResponse(BaseModel):
+    world_id: str
+    deleted: bool
+
+
 @router.post("", response_model=CreateWorldResponse)
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
@@ -263,3 +268,11 @@ def get_world_personas(
         ),
         items=items,
     )
+
+
+@router.delete("/{world_id}", response_model=DeleteWorldResponse)
+def delete_world(world_id: str):
+    deleted = world_store.delete(world_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="World not found")
+    return DeleteWorldResponse(world_id=world_id, deleted=True)

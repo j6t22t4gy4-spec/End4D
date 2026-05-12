@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
 import {
+  deleteWorld,
   deleteSession,
   getApiBase,
   getLocalRuntimeStatus,
@@ -143,6 +144,21 @@ export default function HomeWithCanvas() {
     setSelectedWorldId((prev) => (prev === worldId ? prev : worldId));
   }, []);
 
+  const handleDeleteWorld = useCallback(
+    async (worldId: string) => {
+      await deleteWorld(worldId);
+      if (selectedWorldId === worldId) {
+        setSelectedWorldId(null);
+        setSelectedSnapshotT(null);
+        if (activeView === "simulation") {
+          setActiveView("overview");
+        }
+      }
+      await refreshSessions();
+    },
+    [activeView, refreshSessions, selectedWorldId]
+  );
+
   const handleConsumeInitialInjectPreset = useCallback(() => {
     setPendingInjectPreset(null);
   }, []);
@@ -226,9 +242,12 @@ export default function HomeWithCanvas() {
               <DataPacksWorkspace
                 locale={locale}
                 runtime={runtime}
+                sessions={sessions}
                 syncing={dataPackSyncing}
                 syncError={dataPackSyncError}
                 onSync={handleSyncDataPacks}
+                onOpenWorld={handleOpenWorld}
+                onDeleteWorld={handleDeleteWorld}
               />
             ) : null}
 

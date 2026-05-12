@@ -19,6 +19,9 @@ class WorldPersistenceBackend(Protocol):
     def load(self, world_id: str) -> Optional[Dict]:
         ...
 
+    def delete(self, world_id: str) -> None:
+        ...
+
 
 class DiskWorldPersistence:
     def __init__(self, base_dir: Path):
@@ -71,3 +74,8 @@ class DiskWorldPersistence:
             "snapshot_archive": dict(payload.get("snapshot_archive") or {}),
             "snapshots": [snapshot_from_dict(item) for item in payload.get("snapshots") or []],
         }
+
+    def delete(self, world_id: str) -> None:
+        path = self._path(world_id)
+        if path.exists():
+            path.unlink()

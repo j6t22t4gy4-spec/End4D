@@ -67,6 +67,32 @@ def test_rename_and_delete_session():
     assert missing.status_code == 404
 
 
+def test_delete_world_detaches_it_from_session():
+    created = client.post("/sessions", json={"title": "World detach thread"})
+    assert created.status_code == 200
+    session_id = created.json()["session_id"]
+
+    world_res = client.post(
+        "/worlds",
+        json={
+            "prompt": "위치 기반 영향력을 가진 world를 지우는 테스트",
+            "session_id": session_id,
+        },
+    )
+    assert world_res.status_code == 200
+    world_id = world_res.json()["world_id"]
+
+    deleted = client.delete(f"/worlds/{world_id}")
+    assert deleted.status_code == 200
+
+    session_res = client.get(f"/sessions/{session_id}")
+    assert session_res.status_code == 200
+    payload = session_res.json()
+    assert payload["world_count"] == 0
+    assert payload["latest_world_id"] == ""
+    assert payload["worlds"] == []
+
+
 def test_session_review_returns_multi_world_summary():
     created = client.post("/sessions", json={"title": "Long horizon thread"})
     assert created.status_code == 200

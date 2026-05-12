@@ -12,6 +12,7 @@ from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
 from app.core.policy_events import apply_active_policies
 from app.core.social_elevation import refresh_social_elevation
+from app.core.spatial_dynamics import update_spatial_positions
 from app.core.settings import get_snapshot_interval
 from app.core.rules import (
     apply_growth,
@@ -56,6 +57,11 @@ def step_loop_node(state: "SimulationState") -> dict:
 
     cells = append_step_memory(cells, next_t)
     cells = apply_agent_interactions(cells, next_t)
+    cells = update_spatial_positions(
+        cells,
+        current_t=next_t,
+        engine_params=state.get("engine_params"),
+    )
     cells = update_emotions(cells, current_t)
     cells = update_thoughts_if_due(cells, current_t)
     cells = update_worldviews_if_due(cells, current_t)

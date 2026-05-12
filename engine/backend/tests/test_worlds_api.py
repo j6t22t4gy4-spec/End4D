@@ -1,12 +1,18 @@
 """POST /worlds 프롬프트 계약."""
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
 from app.core.store import world_store
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def disable_live_llm(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "0")
 
 
 def test_create_world_requires_prompt():
@@ -207,3 +213,19 @@ def test_create_world_includes_persona_distribution_summary_from_pack(tmp_path, 
     assert summary["persona_count"] >= 1
     assert data["simulation_config"]["engine_params"]["genesis_mode"] == "persona-aware"
     assert data["simulation_config"]["engine_params"]["zone_count"] >= 1
+
+
+def test_delete_world_removes_it_from_store():
+    created = client.post(
+        "/worlds",
+        json={"prompt": "삭제 가능한 world인지 확인하는 시나리오"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+
+    deleted = client.delete(f"/worlds/{world_id}")
+    assert deleted.status_code == 200
+    assert deleted.json()["deleted"] is True
+
+    missing = client.get(f"/worlds/{world_id}")
+    assert missing.status_code == 404

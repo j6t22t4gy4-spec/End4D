@@ -142,6 +142,19 @@ class WorldStore:
             self._load_from_persistence(world_id)
         return self._worlds.get(world_id)
 
+    def delete(self, world_id: str) -> bool:
+        """월드를 메모리/디스크/세션 참조에서 제거한다."""
+        entry = self.get(world_id)
+        if entry is None:
+            return False
+        session_id = str(entry.get("session_id") or "")
+        if session_id:
+            session_store.detach_world(session_id, world_id)
+        self._worlds.pop(world_id, None)
+        if self._persistence is not None:
+            self._persistence.delete(world_id)
+        return True
+
     def get_world(self, world_id: str) -> Optional[World]:
         """World 객체 조회."""
         entry = self._worlds.get(world_id)

@@ -543,6 +543,11 @@ export type RestoreWorldResponse = {
   comparison_meta: Record<string, unknown>;
 };
 
+export type DeleteWorldResponse = {
+  world_id: string;
+  deleted: boolean;
+};
+
 export async function createWorld(body: {
   prompt: string;
   session_id?: string | null;
@@ -587,6 +592,14 @@ export async function restoreWorldState(
 export async function getWorld(worldId: string): Promise<WorldMeta> {
   const res = await fetch(`${API_BASE}/worlds/${worldId}`);
   if (!res.ok) throw new Error(`getWorld: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteWorld(worldId: string): Promise<DeleteWorldResponse> {
+  const res = await fetch(`${API_BASE}/worlds/${encodeURIComponent(worldId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`deleteWorld: ${res.status}`);
   return res.json();
 }
 
