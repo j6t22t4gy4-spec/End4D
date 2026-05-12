@@ -158,7 +158,15 @@ class LLMFacade:
 
     def summarize_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         prompt = build_review_summary_prompt(payload)
-        texts, meta = self._run_task_with_meta([prompt], task="review_summary")
+        compact_retry_used = False
+        try:
+            texts, meta = self._run_task_with_meta([prompt], task="review_summary")
+        except RuntimeError as exc:
+            if "provider_error:timeout" not in str(exc):
+                raise
+            compact_retry_used = True
+            compact_prompt = build_review_summary_prompt(payload, compact=True)
+            texts, meta = self._run_task_with_meta([compact_prompt], task="review_summary")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
         repair = {"used": False, "count": 0, "reason": ""}
@@ -183,6 +191,7 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "compact_retry_used": compact_retry_used,
             "repair_used": bool(repair["used"]),
             "repair_count": int(repair["count"]),
             "repair_reason": str(repair["reason"] or ""),
@@ -214,7 +223,15 @@ class LLMFacade:
         diff_payload: Mapping[str, Any],
     ) -> dict[str, Any]:
         prompt = build_review_diff_prompt(diff_payload)
-        texts, meta = self._run_task_with_meta([prompt], task="review_diff")
+        compact_retry_used = False
+        try:
+            texts, meta = self._run_task_with_meta([prompt], task="review_diff")
+        except RuntimeError as exc:
+            if "provider_error:timeout" not in str(exc):
+                raise
+            compact_retry_used = True
+            compact_prompt = build_review_diff_prompt(diff_payload, compact=True)
+            texts, meta = self._run_task_with_meta([compact_prompt], task="review_diff")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
         repair = {"used": False, "count": 0, "reason": ""}
@@ -239,6 +256,7 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "compact_retry_used": compact_retry_used,
             "repair_used": bool(repair["used"]),
             "repair_count": int(repair["count"]),
             "repair_reason": str(repair["reason"] or ""),
@@ -320,7 +338,15 @@ class LLMFacade:
 
     def summarize_session_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         prompt = build_session_review_prompt(payload)
-        texts, meta = self._run_task_with_meta([prompt], task="session_review")
+        compact_retry_used = False
+        try:
+            texts, meta = self._run_task_with_meta([prompt], task="session_review")
+        except RuntimeError as exc:
+            if "provider_error:timeout" not in str(exc):
+                raise
+            compact_retry_used = True
+            compact_prompt = build_session_review_prompt(payload, compact=True)
+            texts, meta = self._run_task_with_meta([compact_prompt], task="session_review")
         text = str(texts[0] if texts else "").strip()
         used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
         repair = {"used": False, "count": 0, "reason": ""}
@@ -345,6 +371,7 @@ class LLMFacade:
             "provider": str(meta.get("provider") or get_llm_provider()),
             "model": str(meta.get("model") or get_llm_model()),
             "fallback_reason": str(meta.get("fallback_reason") or ""),
+            "compact_retry_used": compact_retry_used,
             "repair_used": bool(repair["used"]),
             "repair_count": int(repair["count"]),
             "repair_reason": str(repair["reason"] or ""),

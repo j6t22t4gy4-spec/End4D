@@ -8,7 +8,26 @@ from app.llm.prompt_registry import build_prompt_contract
 from app.models.cell import Cell
 
 
-def build_review_summary_prompt(payload: Mapping[str, Any]) -> str:
+def build_review_summary_prompt(payload: Mapping[str, Any], *, compact: bool = False) -> str:
+    if compact:
+        return build_prompt_contract(
+            "review_summary",
+            [
+                ("world_meta", _compact(payload.get("world_meta") or {})),
+                ("summary_stats", _compact(payload.get("summary_stats") or {})),
+                ("group_analysis", _compact(payload.get("group_analysis") or {})),
+                ("lineage_summary", _compact(_compact_lineage_summary(payload.get("lineage_summary") or {}))),
+                ("mechanism_summary", _compact(_compact_mechanism_summary(payload.get("mechanism_summary") or {}))),
+                ("policy_lineage_bridge", _compact(_compact_policy_lineage_bridge(payload.get("policy_lineage_bridge") or {}))),
+                ("causal_chains", _compact_list(payload.get("causal_chains") or [], limit=2)),
+                ("key_events", _compact_list(payload.get("key_events") or [], limit=3)),
+                ("notable_agents", _compact_list(payload.get("notable_agents") or [], limit=3)),
+                ("zone_z_drift", _compact_list(payload.get("zone_z_drift") or [], limit=3)),
+                ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
+                ("grounding_overview", _compact_grounding_overview(payload.get("grounding") or {})),
+                ("highlights", " | ".join(str(item) for item in list(payload.get("highlights") or [])[:4])),
+            ],
+        )
     return build_prompt_contract(
         "review_summary",
         [
@@ -44,7 +63,25 @@ def build_timeline_annotation_prompt(payload: Mapping[str, Any]) -> str:
     )
 
 
-def build_review_diff_prompt(diff_payload: Mapping[str, Any]) -> str:
+def build_review_diff_prompt(diff_payload: Mapping[str, Any], *, compact: bool = False) -> str:
+    if compact:
+        return build_prompt_contract(
+            "review_diff",
+            [
+                ("base_summary_stats", _compact(diff_payload.get("base_summary_stats") or {})),
+                ("target_summary_stats", _compact(diff_payload.get("target_summary_stats") or {})),
+                ("group_drift_deltas", _compact_list(diff_payload.get("group_drift_deltas") or [], limit=4)),
+                ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=4)),
+                ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
+                ("mechanism_delta", _compact(_compact_mechanism_summary(diff_payload.get("mechanism_delta") or {}))),
+                ("lineage_delta", _compact(_compact_lineage_summary(diff_payload.get("lineage_delta") or {}))),
+                ("policy_lineage_delta", _compact(_compact_policy_lineage_bridge(diff_payload.get("policy_lineage_delta") or {}))),
+                ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
+                ("anchor_candidates", _compact_anchor_candidates(diff_payload.get("grounding") or {})),
+                ("grounding_overview", _compact_grounding_overview(diff_payload.get("grounding") or {})),
+                ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:6])),
+            ],
+        )
     return build_prompt_contract(
         "review_diff",
         [
@@ -107,7 +144,20 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
     )
 
 
-def build_session_review_prompt(payload: Mapping[str, Any]) -> str:
+def build_session_review_prompt(payload: Mapping[str, Any], *, compact: bool = False) -> str:
+    if compact:
+        return build_prompt_contract(
+            "session_review",
+            [
+                ("session_title", str(payload.get("title") or "Session")),
+                ("summary_stats", _compact(payload.get("summary_stats") or {})),
+                ("lineage_summary", _compact(_compact_lineage_summary(payload.get("lineage_summary") or {}))),
+                ("policy_lineage_bridge", _compact(_compact_policy_lineage_bridge(payload.get("policy_lineage_bridge") or {}))),
+                ("strongest_worlds", _compact_list(payload.get("strongest_worlds") or [], limit=3)),
+                ("anchor_candidates", _compact_anchor_candidates(payload.get("grounding") or {})),
+                ("grounding_overview", _compact_grounding_overview(payload.get("grounding") or {})),
+            ],
+        )
     return build_prompt_contract(
         "session_review",
         [
@@ -1084,6 +1134,52 @@ def _compact_anchor_candidates(grounding: Mapping[str, Any]) -> str:
                 snippet += f"::{reason[:80]}"
             candidates.append(snippet)
     return " | ".join(candidates[:18])[:1800]
+
+
+def _compact_grounding_overview(grounding: Mapping[str, Any]) -> str:
+    rows: list[str] = []
+    for section, items in dict(grounding or {}).items():
+        entries = list(items or [])[:2] if isinstance(items, (list, tuple)) else [items] if isinstance(items, Mapping) else []
+        compact_entries: list[str] = []
+        for item in entries:
+            if not isinstance(item, Mapping):
+                continue
+            anchor_id = str(item.get("anchor_id") or "").strip()
+            label = str(item.get("label") or item.get("role_label") or item.get("zone_label") or item.get("name") or "").strip()
+            reason = str(item.get("reason") or item.get("summary") or "").strip()
+            snippet = f"{anchor_id}:{label}" if anchor_id else label
+            if reason:
+                snippet += f" ({reason[:60]})"
+            if snippet.strip():
+                compact_entries.append(snippet)
+        if compact_entries:
+            rows.append(f"{section}=" + " | ".join(compact_entries))
+    return " ; ".join(rows)[:1800]
+
+
+def _compact_lineage_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "dominant_regime_transition": str(summary.get("dominant_regime_transition") or ""),
+        "regime_transition_signal": summary.get("regime_transition_signal"),
+        "tracked_roles": list(summary.get("tracked_roles") or [])[:3],
+        "ideology_migrations": list(summary.get("ideology_migrations") or [])[:3],
+    }
+
+
+def _compact_mechanism_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "primary_chain": dict(summary.get("primary_chain") or {}),
+        "transition_pressure": list(summary.get("transition_pressure") or [])[:3],
+        "causal_hypotheses": list(summary.get("causal_hypotheses") or [])[:2],
+    }
+
+
+def _compact_policy_lineage_bridge(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "dominant_bridge": dict(summary.get("dominant_bridge") or {}),
+        "bridge_gaps": list(summary.get("bridge_gaps") or [])[:3],
+        "tracked_channels": list(summary.get("tracked_channels") or [])[:4],
+    }
 
 
 def _compact_sentence_anchor_hints(

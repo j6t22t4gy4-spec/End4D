@@ -204,6 +204,7 @@ def get_review_summary(world_id: str):
                 "provider": str(summary.get("provider") or ""),
                 "model": str(summary.get("model") or ""),
                 "fallback_reason": str(summary.get("fallback_reason") or ""),
+                "compact_retry_used": bool(summary.get("compact_retry_used")),
                 "repair_used": bool(summary.get("repair_used")),
                 "repair_count": int(summary.get("repair_count") or 0),
                 "repair_reason": str(summary.get("repair_reason") or ""),
@@ -285,12 +286,13 @@ def get_review_diff(world_id: str, base_world_id: str):
             "diff": {
                 "prompt_version": diff["prompt_version"],
                 "prompt_meta": dict(diff["prompt_meta"]),
-                "provider": str(diff.get("provider") or ""),
-                "model": str(diff.get("model") or ""),
-                "fallback_reason": str(diff.get("fallback_reason") or ""),
-                "repair_used": bool(diff.get("repair_used")),
-                "repair_count": int(diff.get("repair_count") or 0),
-                "repair_reason": str(diff.get("repair_reason") or ""),
+            "provider": str(diff.get("provider") or ""),
+            "model": str(diff.get("model") or ""),
+            "fallback_reason": str(diff.get("fallback_reason") or ""),
+            "compact_retry_used": bool(diff.get("compact_retry_used")),
+            "repair_used": bool(diff.get("repair_used")),
+            "repair_count": int(diff.get("repair_count") or 0),
+            "repair_reason": str(diff.get("repair_reason") or ""),
             }
         },
     )

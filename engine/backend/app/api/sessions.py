@@ -183,12 +183,13 @@ def get_session_review(
             "summary": {
                 "prompt_version": str(summary.get("prompt_version") or ""),
                 "prompt_meta": dict(summary.get("prompt_meta") or {}),
-                "provider": str(summary.get("provider") or ""),
-                "model": str(summary.get("model") or ""),
-                "fallback_reason": str(summary.get("fallback_reason") or ""),
-                "repair_used": bool(summary.get("repair_used")),
-                "repair_count": int(summary.get("repair_count") or 0),
-                "repair_reason": str(summary.get("repair_reason") or ""),
+            "provider": str(summary.get("provider") or ""),
+            "model": str(summary.get("model") or ""),
+            "fallback_reason": str(summary.get("fallback_reason") or ""),
+            "compact_retry_used": bool(summary.get("compact_retry_used")),
+            "repair_used": bool(summary.get("repair_used")),
+            "repair_count": int(summary.get("repair_count") or 0),
+            "repair_reason": str(summary.get("repair_reason") or ""),
             }
         },
     )

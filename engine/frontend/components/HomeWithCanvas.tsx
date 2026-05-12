@@ -81,20 +81,24 @@ export default function HomeWithCanvas() {
 
   useEffect(() => {
     let cancelled = false;
-    getLocalRuntimeStatus()
-      .then((status) => {
-        if (!cancelled) {
-          setRuntime(status);
-          setRuntimeError(null);
-        }
-      })
-      .catch((error: Error) => {
-        if (!cancelled) {
-          setRuntimeError(error.message);
-        }
-      });
+    const loadRuntime = () =>
+      getLocalRuntimeStatus()
+        .then((status) => {
+          if (!cancelled) {
+            setRuntime(status);
+            setRuntimeError(null);
+          }
+        })
+        .catch((error: Error) => {
+          if (!cancelled) {
+            setRuntimeError(error.message);
+          }
+        });
+    loadRuntime();
+    const timer = window.setInterval(loadRuntime, 5000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
