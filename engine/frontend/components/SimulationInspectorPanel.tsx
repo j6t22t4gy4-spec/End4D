@@ -107,8 +107,45 @@ export function SimulationInspectorPanel({
         ) : null}
         {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
         {selectedBand ? <BandCard band={selectedBand} /> : null}
-        <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
       </div>
+    </AppPanel>
+  );
+}
+
+export function AgentDirectoryPanel({
+  locale = "ko",
+  agentRoster,
+  onSelectAgent,
+}: {
+  locale?: UiLocale;
+  agentRoster: CellSnapshot[];
+  onSelectAgent: (agent: CellSnapshot) => void;
+}) {
+  const isKo = locale === "ko";
+  return (
+    <AppPanel
+      title={isKo ? "에이전트 디렉터리" : "Agent Directory"}
+      subtitle={
+        isKo
+          ? "필요할 때만 펼쳐서 에이전트를 검색하고 선택합니다"
+          : "Expand only when needed to search and select agents"
+      }
+      bodyClassName="space-y-3"
+    >
+      <details className="group rounded-[22px] border border-slate-200 bg-slate-50" open={false}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-800">
+          <span>{isKo ? "에이전트 목록 열기" : "Open Agent Directory"}</span>
+          <span className="text-xs font-medium text-slate-500 group-open:hidden">
+            {isKo ? "기본 접힘" : "Collapsed"}
+          </span>
+          <span className="hidden text-xs font-medium text-slate-500 group-open:inline">
+            {isKo ? "열림" : "Open"}
+          </span>
+        </summary>
+        <div className="border-t border-slate-200 px-3 py-3">
+          <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
+        </div>
+      </details>
     </AppPanel>
   );
 }
@@ -210,7 +247,7 @@ function AgentDirectory({
   }, [deferredQuery, indexedRoster]);
 
   return (
-    <section className="inspector-card">
+    <section className="space-y-3">
       <InspectorHeading
         title={isKo ? "에이전트 디렉터리" : "Agent Directory"}
         subtitle={isKo ? "이 스냅샷의 어떤 페르소나에게도 질문할 수 있습니다" : "Query any persona agent in this snapshot"}
@@ -221,7 +258,7 @@ function AgentDirectory({
         onChange={(event) => setQuery(event.target.value)}
         placeholder={isKo ? "role, country, zone, id로 검색" : "Search by role, country, zone, or id"}
       />
-      <div className="grid gap-2">
+      <div className="grid max-h-[24rem] gap-2 overflow-y-auto pr-1">
         {filtered.map((agent) => (
           <button
             key={agent.cell_id}

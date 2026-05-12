@@ -10,6 +10,7 @@ import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import {
+  AgentDirectoryPanel,
   SimulationInspectorPanel,
   type SelectedBand,
   type SelectedZone,
@@ -1187,14 +1188,18 @@ export default function GodView({
                   </select>
                 </label>
               </div>
-              <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
-                  <span className="text-xs text-slate-500">
-                    {isKo ? "Mirofish처럼 thought/action/dialogue 비중을 높게 유지합니다" : "Mirofish-like mode: keep thought/action/dialogue high"}
-                  </span>
-                </div>
-                <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isKo ? "평소에는 접어두고, pressure를 조절할 때만 펼칩니다" : "Keep this collapsed until you need to tune pressure"}
+                    </p>
+                  </div>
+                  <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
+                  <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
+                </summary>
+                <div className="grid gap-2 border-t border-slate-200 p-3 md:grid-cols-2 xl:grid-cols-3">
                   {llmTaskRows.map((row) => (
                     <div key={row.task} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                       <div className="flex items-center justify-between gap-2">
@@ -1243,7 +1248,7 @@ export default function GodView({
                     </div>
                   ))}
                 </div>
-              </div>
+              </details>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -2011,14 +2016,18 @@ export default function GodView({
                     </label>
                   </div>
 
-                  <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
-                      <span className="text-xs text-slate-500">
-                        {isKo ? "드롭다운으로 낮춰보면서 pressure를 조절합니다" : "Lower budgets with dropdowns to tune pressure"}
-                      </span>
-                    </div>
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{isKo ? "태스크 예산" : "Task Budgets"}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {isKo ? "평소에는 접어두고, 필요할 때만 펼쳐서 조정합니다" : "Keep this collapsed and expand only when you want to tune it"}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
+                      <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
+                    </summary>
+                    <div className="grid gap-2 border-t border-slate-200 p-3 md:grid-cols-2 xl:grid-cols-3">
                       {llmTaskRows.map((row) => (
                         <div key={`run-task-${row.task}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
                           <div className="flex items-center justify-between gap-2">
@@ -2064,7 +2073,7 @@ export default function GodView({
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </details>
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -2248,29 +2257,29 @@ export default function GodView({
               </div>
             ) : null}
 
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-              <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
-                <SimulationMap2D
-                  cells={visibleCells}
-                  totalCells={visualStats?.totalCells ?? visibleCells.length}
-                  sampled={visualStats?.sampled ?? false}
-                  selectedAgentId={selectedAgent?.cell_id ?? null}
-                  selectedZoneId={selectedZone?.zoneId ?? null}
-                  selectedBandKey={selectedBand?.key ?? null}
-                  onSelectAgent={(cell) => {
-                    setSelectedAgent(cell);
-                    setSelectedZone(null);
-                  }}
-                  onSelectZone={(zone) => {
-                    setSelectedZone(zone);
-                    setSelectedAgent(null);
-                  }}
-                  onSelectBand={(band) => {
-                    setSelectedBand(band);
-                  }}
-                />
-              </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
+              <SimulationMap2D
+                cells={visibleCells}
+                totalCells={visualStats?.totalCells ?? visibleCells.length}
+                sampled={visualStats?.sampled ?? false}
+                selectedAgentId={selectedAgent?.cell_id ?? null}
+                selectedZoneId={selectedZone?.zoneId ?? null}
+                selectedBandKey={selectedBand?.key ?? null}
+                onSelectAgent={(cell) => {
+                  setSelectedAgent(cell);
+                  setSelectedZone(null);
+                }}
+                onSelectZone={(zone) => {
+                  setSelectedZone(zone);
+                  setSelectedAgent(null);
+                }}
+                onSelectBand={(band) => {
+                  setSelectedBand(band);
+                }}
+              />
+            </div>
 
+            <div className="grid min-h-0 gap-4 xl:grid-cols-2">
               <SimulationInspectorPanel
                 locale={locale}
                 selectedAgent={selectedAgent}
@@ -2289,6 +2298,12 @@ export default function GodView({
                   if (typeof t === "number") setCurrentT(t);
                 }}
                 onClearSelection={clearSelection}
+              />
+
+              <AgentDirectoryPanel
+                locale={locale}
+                agentRoster={snapshotCells}
+                onSelectAgent={setSelectedAgent}
               />
             </div>
           </AppPanel>
