@@ -248,6 +248,27 @@ export default function GodView({
   );
   const llmRuntime = runtimeStatus?.llm_runtime ?? null;
   const llmHealth = llmRuntime?.health ?? null;
+  const liveBenchmarkReadiness = useMemo(() => {
+    const provider = runtimeStatus?.llm?.provider ?? "stub";
+    const model = runtimeStatus?.llm?.model ?? "stub";
+    const hasKey = Boolean(runtimeStatus?.llm?.has_api_key);
+    const enabled = Boolean(runtimeStatus?.llm?.enabled);
+    const baseUrl = String(runtimeStatus?.llm?.base_url || "");
+    const isLocalOllama = provider === "ollama";
+    const ready = enabled && provider !== "stub" && (isLocalOllama || hasKey) && Boolean(baseUrl);
+    const reasons: string[] = [];
+    if (!enabled) reasons.push(isKo ? "LLM 런타임이 비활성화됨" : "LLM runtime disabled");
+    if (provider === "stub") reasons.push(isKo ? "provider가 stub 상태" : "provider is still stub");
+    if (!baseUrl) reasons.push(isKo ? "base URL이 비어 있음" : "base URL is missing");
+    if (!isLocalOllama && !hasKey) reasons.push(isKo ? "API 키가 없음" : "API key missing");
+    return {
+      ready,
+      provider,
+      model,
+      reasons,
+      command: `engine/backend/.venv/bin/python engine/backend/scripts/benchmark_simulation.py --cells 1000 --steps 4 --repeat 1 --llm-mode runtime-config --llm-profiles balanced llm-first --llm-strict-mode llm-preferred --include-review-payload --include-review-suite --json`,
+    };
+  }, [isKo, runtimeStatus]);
   const recentFallbackRuns = useMemo(
     () => (llmRuntime?.recent_runs ?? []).filter((item) => item.used_fallback).slice(0, 5),
     [llmRuntime]
@@ -1143,6 +1164,35 @@ export default function GodView({
                   </p>
                 </div>
               ) : null}
+              <div className={`rounded-2xl border px-3 py-3 text-xs ${liveBenchmarkReadiness.ready ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold">{isKo ? "Live Baseline 준비도" : "Live Baseline Readiness"}</p>
+                  <span className="rounded-full border border-current/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                    {liveBenchmarkReadiness.ready ? (isKo ? "준비됨" : "ready") : (isKo ? "미준비" : "not ready")}
+                  </span>
+                </div>
+                <p className="mt-2">
+                  {isKo
+                    ? `현재 설정: ${liveBenchmarkReadiness.provider} · ${liveBenchmarkReadiness.model}`
+                    : `Current config: ${liveBenchmarkReadiness.provider} · ${liveBenchmarkReadiness.model}`}
+                </p>
+                {liveBenchmarkReadiness.reasons.length ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-4">
+                    {liveBenchmarkReadiness.reasons.map((item, index) => (
+                      <li key={`${index}-${item}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2">
+                    {isKo
+                      ? "이제 실제 provider 기준 short baseline을 바로 수집할 수 있습니다."
+                      : "You can now run the short live-provider baseline directly."}
+                  </p>
+                )}
+                <div className="mt-3 rounded-2xl border border-current/10 bg-white/70 px-3 py-2 font-mono text-[11px] break-all">
+                  {liveBenchmarkReadiness.command}
+                </div>
+              </div>
               {llmTestResult && !llmTestResult.ok ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
                   <p className="font-semibold">{isKo ? "연결 진단" : "Connection Diagnosis"}</p>

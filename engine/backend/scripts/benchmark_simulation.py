@@ -39,6 +39,13 @@ from app.core.review_payloads import (  # noqa: E402
     build_world_review_payload,
 )
 from app.core.settings import get_llm_runtime_profile  # noqa: E402
+from app.core.settings import (  # noqa: E402
+    get_llm_api_key,
+    get_llm_base_url,
+    get_llm_chat_enabled,
+    get_llm_model,
+    get_llm_provider,
+)
 from app.core.snapshot import SnapshotStore  # noqa: E402
 from app.graph.time_flow import create_time_flow_graph  # noqa: E402
 from app.llm.facade import llm_facade  # noqa: E402
@@ -52,6 +59,50 @@ PRESETS: dict[str, list[int]] = {
 }
 
 LLM_BENCHMARK_MODES = ("disabled", "runtime-config", "mock-openai")
+
+
+def llm_runtime_preflight(*, llm_mode: str) -> dict[str, Any]:
+    provider = str(get_llm_provider() or "stub")
+    enabled = bool(get_llm_chat_enabled())
+    model = str(get_llm_model() or "stub")
+    base_url = str(get_llm_base_url() or "")
+    has_api_key = bool(get_llm_api_key())
+    reasons: list[str] = []
+    suggestions: list[str] = []
+    ready = True
+    if llm_mode == "disabled":
+        ready = False
+        reasons.append("llm_mode=disabled")
+        suggestions.append("Switch to --llm-mode runtime-config or --llm-mode mock-openai.")
+    elif llm_mode == "runtime-config":
+        if not enabled:
+            ready = False
+            reasons.append("llm_disabled")
+            suggestions.append("Enable LLM runtime in Setup and save the config before running a live baseline.")
+        if provider == "stub":
+            ready = False
+            reasons.append("provider=stub")
+            suggestions.append("Choose OpenAI, OpenAI-compatible, or Ollama instead of stub.")
+        if provider in ("openai", "openai-compatible") and not has_api_key:
+            ready = False
+            reasons.append("api_key_missing")
+            suggestions.append("Add an API key for the selected provider.")
+        if provider != "stub" and not base_url:
+            ready = False
+            reasons.append("base_url_missing")
+            suggestions.append("Provide a provider base URL before running runtime-config benchmarks.")
+    diagnosis = "ready" if ready else ", ".join(reasons) or "not_ready"
+    return {
+        "ready": ready,
+        "mode": llm_mode,
+        "enabled": enabled,
+        "provider": provider,
+        "model": model,
+        "base_url": base_url,
+        "has_api_key": has_api_key,
+        "diagnosis": diagnosis,
+        "suggestions": suggestions,
+    }
 
 
 @dataclass(frozen=True)
@@ -714,6 +765,12 @@ def run_benchmarks(
     llm_mode: str = "disabled",
     llm_strict_mode: str = "adaptive",
 ) -> dict[str, Any]:
+    preflight = llm_runtime_preflight(llm_mode=llm_mode)
+    if llm_mode == "runtime-config" and not preflight["ready"]:
+        suggestion_text = " ".join(str(item) for item in list(preflight.get("suggestions") or []))
+        raise SystemExit(
+            f"runtime-config benchmark is not ready: {preflight['diagnosis']}. {suggestion_text}".strip()
+        )
     all_samples: list[BenchmarkSample] = []
     summaries: list[dict[str, Any]] = []
     for case in cases:
@@ -742,6 +799,7 @@ def run_benchmarks(
             "llm_mode": llm_mode,
             "llm_strict_mode": llm_strict_mode,
             "profiles": sorted({case.llm_profile for case in cases}),
+            "llm_preflight": preflight,
         },
         "summaries": summaries,
         "samples": [asdict(sample) for sample in all_samples],

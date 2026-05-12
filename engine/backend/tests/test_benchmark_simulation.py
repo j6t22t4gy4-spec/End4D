@@ -6,7 +6,14 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from benchmark_simulation import build_cases, summarize_case, BenchmarkCase, BenchmarkSample
+import benchmark_simulation
+from benchmark_simulation import (
+    build_cases,
+    summarize_case,
+    llm_runtime_preflight,
+    BenchmarkCase,
+    BenchmarkSample,
+)
 
 
 def test_build_cases_uses_preset_when_requested():
@@ -96,3 +103,17 @@ def test_summarize_case_aggregates_repeat_samples():
     assert summary["llm_total_repairs_avg"] == 4.0
     assert summary["llm_provider_error_pressure_max"] == 2
     assert summary["llm_top_reasons"][0]["reason"] == "missing_required_key:key_deltas.0"
+
+
+def test_llm_runtime_preflight_reports_runtime_config_not_ready(monkeypatch):
+    monkeypatch.setattr(benchmark_simulation, "get_llm_chat_enabled", lambda: False)
+    monkeypatch.setattr(benchmark_simulation, "get_llm_provider", lambda: "stub")
+    monkeypatch.setattr(benchmark_simulation, "get_llm_model", lambda: "stub")
+    monkeypatch.setattr(benchmark_simulation, "get_llm_api_key", lambda: None)
+    monkeypatch.setattr(benchmark_simulation, "get_llm_base_url", lambda: None)
+
+    preflight = llm_runtime_preflight(llm_mode="runtime-config")
+
+    assert preflight["ready"] is False
+    assert "llm_disabled" in preflight["diagnosis"]
+    assert any("Enable LLM runtime" in item for item in preflight["suggestions"])

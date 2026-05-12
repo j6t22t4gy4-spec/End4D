@@ -96,3 +96,29 @@ engine/backend/.venv/bin/python engine/backend/scripts/benchmark_simulation.py \
 
 - [baseline-2026-05-12-llm-mock-profiles.json](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/engine/backend/benchmarks/baseline-2026-05-12-llm-mock-profiles.json)
 - [baseline-2026-05-12-llm-mock-profiles-2500.json](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/engine/backend/benchmarks/baseline-2026-05-12-llm-mock-profiles-2500.json)
+
+## Live Provider Checklist
+
+When a real provider is configured in Setup, use `runtime-config` mode instead of `mock-openai`.
+
+Command:
+
+```bash
+engine/backend/.venv/bin/python engine/backend/scripts/benchmark_simulation.py \
+  --cells 1000 --steps 4 --repeat 1 \
+  --llm-mode runtime-config \
+  --llm-profiles balanced llm-first \
+  --llm-strict-mode llm-preferred \
+  --include-review-payload \
+  --include-review-suite \
+  --json
+```
+
+Preflight expectations:
+
+- LLM runtime enabled
+- provider is not `stub`
+- base URL is present
+- API key exists for `openai` / `openai-compatible`
+
+If those conditions are not met, the benchmark now exits early with a readiness diagnosis instead of silently collecting another non-live baseline.
