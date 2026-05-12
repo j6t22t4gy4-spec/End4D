@@ -2279,6 +2279,53 @@ export default function GodView({
               />
             </div>
 
+            <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">
+                    {isKo ? "t 시점 조절" : "Time Step Control"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {isKo
+                      ? "필드 바로 아래에서 저장된 시점을 드래그하고 북마크를 남깁니다"
+                      : "Drag through saved time steps directly under the field and leave bookmarks"}
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500">
+                  {availableT.length} {isKo ? "프레임" : "frames"}
+                </span>
+              </div>
+              <div className="space-y-3">
+                <TimeSlider
+                  t={currentT}
+                  tMin={tSliderMin}
+                  tMax={tSliderMax}
+                  step={1}
+                  onChange={setCurrentT}
+                  disabled={sliderDisabled}
+                />
+                <TimelineBookmarks
+                  t={currentT}
+                  tMin={tSliderMin}
+                  tMax={Math.max(tSliderMin + 1, tSliderMax)}
+                  markers={[...timelineMarkers, ...reviewMarkers]}
+                  bookmarks={bookmarks}
+                  onJump={setCurrentT}
+                  onAddBookmark={addBookmark}
+                  onRemoveBookmark={removeBookmark}
+                />
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>
+                    {snapshotLoading
+                      ? "스냅샷 로딩 중"
+                      : availableT.length === 0 && worldId && !isRunning
+                        ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
+                        : "저장된 t 시점을 탐색합니다."}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             <div className="grid min-h-0 gap-4 xl:grid-cols-2">
               <SimulationInspectorPanel
                 locale={locale}
@@ -2305,41 +2352,6 @@ export default function GodView({
                 agentRoster={snapshotCells}
                 onSelectAgent={setSelectedAgent}
               />
-            </div>
-          </AppPanel>
-
-          <AppPanel
-            title={isKo ? "t 시점 조절" : "Time Step Control"}
-            subtitle={isKo ? "드래그로 저장된 시점을 조절하고 북마크를 남깁니다" : "Drag through saved time steps and leave bookmarks"}
-            bodyClassName="space-y-3"
-          >
-            <TimeSlider
-              t={currentT}
-              tMin={tSliderMin}
-              tMax={tSliderMax}
-              step={1}
-              onChange={setCurrentT}
-              disabled={sliderDisabled}
-            />
-            <TimelineBookmarks
-              t={currentT}
-              tMin={tSliderMin}
-              tMax={Math.max(tSliderMin + 1, tSliderMax)}
-              markers={[...timelineMarkers, ...reviewMarkers]}
-              bookmarks={bookmarks}
-              onJump={setCurrentT}
-              onAddBookmark={addBookmark}
-              onRemoveBookmark={removeBookmark}
-            />
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>
-                {snapshotLoading
-                  ? "스냅샷 로딩 중"
-                  : availableT.length === 0 && worldId && !isRunning
-                    ? "시뮬을 실행하면 스냅샷을 탐색할 수 있습니다."
-                    : "저장된 t 시점을 탐색합니다."}
-              </span>
-              <span>{availableT.length} {isKo ? "프레임" : "frames"}</span>
             </div>
           </AppPanel>
 

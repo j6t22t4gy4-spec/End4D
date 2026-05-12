@@ -284,22 +284,24 @@ export default function HomeWithCanvas() {
             ) : null}
           </section>
 
-            <div
-            className="app-shell__splitter hidden xl:block"
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={isKo ? "런타임 도크 너비 조절" : "Resize runtime dock"}
-            onMouseDown={() => setResizingDock(true)}
-          />
-
-          <aside className="hidden min-h-0 xl:block xl:self-start xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)]">
-            <RuntimeDock
-              locale={locale}
-              runtime={runtime}
-              runtimeError={runtimeError}
-              apiBase={getApiBase()}
-              activeWorldId={selectedWorldId}
-            />
+          <aside className="runtime-dock-shell hidden xl:grid xl:self-start xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)]">
+            <button
+              type="button"
+              className="runtime-dock-shell__resize"
+              aria-label={isKo ? "런타임 도크 너비 조절" : "Resize runtime dock"}
+              onMouseDown={() => setResizingDock(true)}
+            >
+              <span className="runtime-dock-shell__resize-pill" />
+            </button>
+            <div className="runtime-dock-shell__panel">
+              <RuntimeDock
+                locale={locale}
+                runtime={runtime}
+                runtimeError={runtimeError}
+                apiBase={getApiBase()}
+                activeWorldId={selectedWorldId}
+              />
+            </div>
           </aside>
         </div>
       </div>

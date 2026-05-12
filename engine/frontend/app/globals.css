@@ -62,33 +62,53 @@ textarea {
 
 .app-shell__workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 10px var(--dock-width, 380px);
+  grid-template-columns: minmax(0, 1fr) calc(var(--dock-width, 380px) + 18px);
   gap: 10px;
   min-height: 0;
   align-items: start;
 }
 
-.app-shell__splitter {
-  position: relative;
+.runtime-dock-shell {
+  grid-template-columns: 18px minmax(0, var(--dock-width, 380px));
+  gap: 0;
   min-height: 0;
-  cursor: col-resize;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(203, 213, 225, 0.1), rgba(148, 163, 184, 0.2), rgba(203, 213, 225, 0.1));
+  align-items: stretch;
 }
 
-.app-shell__splitter::before {
+.runtime-dock-shell__resize {
+  position: relative;
+  min-height: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+}
+
+.runtime-dock-shell__resize::before {
   content: "";
   position: absolute;
   inset: 0;
-  margin: auto;
-  width: 4px;
-  height: 56px;
   border-radius: 999px;
-  background: rgba(100, 116, 139, 0.35);
+  background: linear-gradient(180deg, rgba(203, 213, 225, 0.18), rgba(148, 163, 184, 0.34), rgba(203, 213, 225, 0.18));
 }
 
-.app-shell__splitter:hover::before {
-  background: rgba(15, 23, 42, 0.45);
+.runtime-dock-shell__resize-pill {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 6px;
+  height: 104px;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.45);
+}
+
+.runtime-dock-shell__resize:hover .runtime-dock-shell__resize-pill {
+  background: rgba(15, 23, 42, 0.62);
+}
+
+.runtime-dock-shell__panel {
+  min-height: 0;
+  max-height: inherit;
 }
 
 .app-toolbar {
@@ -901,7 +921,7 @@ textarea {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-shell__splitter {
+  .runtime-dock-shell {
     display: none;
   }
 
@@ -963,7 +983,7 @@ textarea {
   }
 
   .app-shell__workspace {
-    grid-template-columns: minmax(0, 1fr) 12px var(--dock-width, 400px);
+    grid-template-columns: minmax(0, 1fr) calc(var(--dock-width, 400px) + 18px);
   }
 
   .godview-main {
