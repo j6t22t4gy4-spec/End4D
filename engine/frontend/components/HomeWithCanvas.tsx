@@ -265,7 +265,7 @@ export default function HomeWithCanvas() {
             ) : null}
           </section>
 
-          <div
+            <div
             className="app-shell__splitter hidden xl:block"
             role="separator"
             aria-orientation="vertical"
@@ -273,12 +273,13 @@ export default function HomeWithCanvas() {
             onMouseDown={() => setResizingDock(true)}
           />
 
-          <aside className="hidden min-h-0 overflow-y-auto xl:block">
+          <aside className="hidden min-h-0 xl:block xl:self-start xl:sticky xl:top-4 xl:max-h-[calc(100vh-7rem)]">
             <RuntimeDock
               locale={locale}
               runtime={runtime}
               runtimeError={runtimeError}
               apiBase={getApiBase()}
+              activeWorldId={selectedWorldId}
             />
           </aside>
         </div>
