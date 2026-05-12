@@ -7,6 +7,7 @@ LLM runtime이 켜져 있으면 로컬/Ollama 또는 클라우드 API를 통해
 """
 from __future__ import annotations
 
+import re
 from typing import List
 
 import numpy as np
@@ -33,6 +34,8 @@ def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     out: List[Cell] = [c.copy() for c in cells]
     for k, idx in enumerate(selected):
         thought_text = _summarize_thought_text(texts[k], selected_cells[k])
+        previous_thought = str(out[idx].action_state.get("last_thought_summary", "")).strip()
+        continuity_score = _thought_continuity_score(previous_thought, thought_text)
         entry = memory_entry(
             t=float(current_t),
             kind="thought_update",
@@ -51,6 +54,11 @@ def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
             payload={"raw_text": str(texts[k] or "")[:240]},
         )
         current_action_state = dict(out[idx].action_state)
+        if previous_thought:
+            current_action_state["previous_thought_summary"] = previous_thought
+            current_action_state["previous_thought_t"] = current_action_state.get("last_thought_t")
+        current_action_state["thought_continuity_score"] = continuity_score
+        current_action_state["thought_continuity_state"] = _continuity_state_label(continuity_score)
         current_action_state["last_thought_summary"] = thought_text
         current_action_state["last_thought_t"] = float(current_t)
         updated = append_memory(
@@ -89,3 +97,34 @@ def _summarize_thought_text(text: str, cell: Cell) -> str:
     if get_ui_language() == "ko":
         return f"{role}는 당장의 제약과 다음 선택지를 다시 계산하고 있다."
     return f"{role} is reassessing immediate goals and constraints."
+
+
+def _thought_continuity_score(previous: str, current: str) -> float:
+    prev_tokens = _normalize_tokens(previous)
+    current_tokens = _normalize_tokens(current)
+    if not prev_tokens or not current_tokens:
+        return 0.0
+    overlap = len(prev_tokens & current_tokens)
+    union = len(prev_tokens | current_tokens)
+    if union <= 0:
+        return 0.0
+    return round(overlap / union, 3)
+
+
+def _continuity_state_label(score: float) -> str:
+    if score >= 0.55:
+        return "stable"
+    if score >= 0.22:
+        return "evolving"
+    return "volatile"
+
+
+def _normalize_tokens(text: str) -> set[str]:
+    cleaned = re.sub(r"\s+", " ", str(text or "").strip().lower())
+    if not cleaned:
+        return set()
+    return {
+        token
+        for token in re.split(r"[^0-9a-zA-Z가-힣_]+", cleaned)
+        if len(token) >= 2
+    }

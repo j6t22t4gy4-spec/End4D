@@ -191,13 +191,28 @@ function ThoughtPreviewRail({
           >
             <div className="session-thread-card__header">
               <p className="session-thread-card__title">{agent.role_label ?? agent.role_key ?? "agent"}</p>
-              <span className="session-thread-card__meta">
-                t={Number(preview?.t ?? agent.t ?? 0).toFixed(0)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="session-thread-card__meta">
+                  t={Number(preview?.t ?? agent.t ?? 0).toFixed(0)}
+                </span>
+                <span className="session-thread-card__meta">
+                  {formatObserverFocus(agent, isKo)}
+                </span>
+              </div>
             </div>
             <p className="session-thread-card__prompt">
               {preview?.summary ?? ""}
             </p>
+            <div className="mt-2 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+              <span className={continuityPillClass(preview?.continuityState)}>
+                {formatContinuity(preview, isKo)}
+              </span>
+              {typeof agent.action_state?.last_spatial_shift === "number" ? (
+                <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                  move {Number(agent.action_state.last_spatial_shift).toFixed(2)}
+                </span>
+              ) : null}
+            </div>
           </button>
         ))}
       </div>
@@ -512,12 +527,17 @@ type ThoughtEntry = {
   t?: number;
 };
 
-function getAgentThoughtPreview(agent: CellSnapshot): { summary: string; t?: number } | null {
+function getAgentThoughtPreview(agent: CellSnapshot): { summary: string; t?: number; continuityScore?: number; continuityState?: string } | null {
   const summary = String(agent.action_state?.last_thought_summary ?? "").trim();
   if (summary) {
     return {
       summary,
       t: typeof agent.action_state?.last_thought_t === "number" ? Number(agent.action_state.last_thought_t) : agent.t,
+      continuityScore:
+        typeof agent.action_state?.thought_continuity_score === "number"
+          ? Number(agent.action_state.thought_continuity_score)
+          : undefined,
+      continuityState: String(agent.action_state?.thought_continuity_state ?? ""),
     };
   }
   const entries = extractThoughtEntries(agent);
@@ -526,7 +546,45 @@ function getAgentThoughtPreview(agent: CellSnapshot): { summary: string; t?: num
   return {
     summary: thoughtEntry.summary,
     t: thoughtEntry.t,
+    continuityScore:
+      typeof agent.action_state?.thought_continuity_score === "number"
+        ? Number(agent.action_state.thought_continuity_score)
+        : undefined,
+    continuityState: String(agent.action_state?.thought_continuity_state ?? ""),
   };
+}
+
+function formatObserverFocus(agent: CellSnapshot, isKo: boolean): string {
+  const focus = String(agent.action_state?.observer_focus ?? "field");
+  if (focus === "thought") return isKo ? "생각 중심" : "thought";
+  if (focus === "mover") return isKo ? "이동 중심" : "mover";
+  if (focus === "zone") return isKo ? "구역 대표" : "zone";
+  return isKo ? "필드 대표" : "field";
+}
+
+function formatContinuity(
+  preview: { continuityScore?: number; continuityState?: string } | null | undefined,
+  isKo: boolean
+): string {
+  const state = String(preview?.continuityState ?? "");
+  const score = typeof preview?.continuityScore === "number" ? Math.round(preview.continuityScore * 100) : null;
+  if (state === "stable") return isKo ? `연속성 높음${score != null ? ` ${score}` : ""}` : `high continuity${score != null ? ` ${score}` : ""}`;
+  if (state === "evolving") return isKo ? `연속성 변화${score != null ? ` ${score}` : ""}` : `evolving${score != null ? ` ${score}` : ""}`;
+  if (state === "volatile") return isKo ? `급변${score != null ? ` ${score}` : ""}` : `volatile${score != null ? ` ${score}` : ""}`;
+  return isKo ? "연속성 미측정" : "continuity n/a";
+}
+
+function continuityPillClass(state?: string): string {
+  if (state === "stable") {
+    return "rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700";
+  }
+  if (state === "evolving") {
+    return "rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-700";
+  }
+  if (state === "volatile") {
+    return "rounded-full bg-rose-50 px-2 py-1 font-semibold text-rose-700";
+  }
+  return "rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600";
 }
 
 function extractThoughtEntries(agent: CellSnapshot): ThoughtEntry[] {

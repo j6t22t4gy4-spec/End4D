@@ -57,19 +57,79 @@ def _serialize_live_cell(cell: Cell) -> dict:
 def _build_live_observer_cells(cells: list[Cell], limit: int = 72) -> tuple[list[dict], bool]:
     if not cells:
         return [], False
-    ranked = sorted(
+    thought_quota = max(8, int(limit * 0.45))
+    mover_quota = max(6, int(limit * 0.25))
+    representative_quota = max(6, limit - thought_quota - mover_quota)
+
+    selected_ids: set[str] = set()
+    selected: list[Cell] = []
+
+    def append_unique(items: list[Cell], focus: str, quota: int) -> None:
+        for cell in items:
+            if len(selected) >= limit or quota <= 0:
+                break
+            if cell.cell_id in selected_ids:
+                continue
+            current_state = dict(cell.action_state)
+            current_state["observer_focus"] = focus
+            selected.append(cell.copy(action_state=current_state))
+            selected_ids.add(cell.cell_id)
+            quota -= 1
+
+    thought_ranked = sorted(
         cells,
         key=lambda cell: (
             -int(bool(dict(cell.action_state).get("last_thought_summary"))),
             -float(dict(cell.action_state).get("last_thought_t", -1.0) or -1.0),
+            -float(dict(cell.action_state).get("thought_continuity_score", 0.0) or 0.0),
             -len(cell.short_memory),
-            -len(cell.behavior_log),
             -float(np.linalg.norm(cell.thought_vec)),
             str(cell.cell_id),
         ),
     )
-    sampled = len(ranked) > limit
-    selected = ranked[:limit] if sampled else ranked
+    append_unique(thought_ranked, "thought", thought_quota)
+
+    mover_ranked = sorted(
+        cells,
+        key=lambda cell: (
+            -float(dict(cell.action_state).get("last_spatial_shift", 0.0) or 0.0),
+            -float(dict(cell.action_state).get("mobility_bias", 0.0) or 0.0),
+            -float(cell.energy),
+            str(cell.cell_id),
+        ),
+    )
+    append_unique(mover_ranked, "mover", mover_quota)
+
+    by_zone: dict[str, list[Cell]] = {}
+    for cell in cells:
+        by_zone.setdefault(str(cell.zone_id or "zone-0"), []).append(cell)
+    zone_representatives: list[Cell] = []
+    for zone_cells in by_zone.values():
+        zone_representatives.append(
+            sorted(
+                zone_cells,
+                key=lambda cell: (
+                    -float(cell.energy),
+                    -len(cell.behavior_log),
+                    -float(np.linalg.norm(cell.thought_vec)),
+                    str(cell.cell_id),
+                ),
+            )[0]
+        )
+    append_unique(zone_representatives, "zone", representative_quota)
+
+    if len(selected) < min(limit, len(cells)):
+        fallback_ranked = sorted(
+            cells,
+            key=lambda cell: (
+                -len(cell.behavior_log),
+                -float(cell.energy),
+                str(cell.cell_id),
+            ),
+        )
+        append_unique(fallback_ranked, "field", limit - len(selected))
+
+    sampled = len(cells) > len(selected)
     return [_serialize_live_cell(cell) for cell in selected], sampled
 
 

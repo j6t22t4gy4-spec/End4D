@@ -92,6 +92,8 @@ def test_thought_refresh_at_interval_changes_vector():
     assert snap0 is not None and snap21 is not None
     assert not np.allclose(snap0.cells[0].thought_vec, snap21.cells[0].thought_vec)
     assert str(snap21.cells[0].action_state.get("last_thought_summary", "")).strip()
+    assert "thought_continuity_score" in snap21.cells[0].action_state
+    assert "thought_continuity_state" in snap21.cells[0].action_state
 
 
 def test_graph_writes_agent_social_memory_before_thought_refresh():
@@ -175,3 +177,4 @@ def test_graph_updates_xy_positions_from_social_field_dynamics():
     ]
     assert any(delta > 0.05 for delta in moved)
     assert any(float(cell.action_state.get("last_spatial_shift", 0.0)) > 0.0 for cell in out["cells"])
+    assert any(str(cell.action_state.get("mobility_state", "")) for cell in out["cells"])
