@@ -229,18 +229,27 @@ export default function SimulationMap2D({
       </div>
 
       {activeBand && (
-        <div className="simulation-map__detail-card">
-          <div>
-            <p className="simulation-map__detail-eyebrow">{scene.zSemantics.contourName}</p>
-            <h4 className="simulation-map__detail-title">{activeBand.label}</h4>
+        <details className="simulation-map__detail-collapse group">
+          <summary className="simulation-map__detail-summary">
+            <div>
+              <p className="simulation-map__detail-eyebrow">{scene.zSemantics.contourName}</p>
+              <h4 className="simulation-map__detail-title">
+                {scene.zSemantics.label} · {activeBand.label}
+              </h4>
+            </div>
+            <span className="simulation-map__detail-toggle">
+              open
+            </span>
+          </summary>
+          <div className="simulation-map__detail-card">
+            <div className="simulation-map__detail-grid">
+              <span>{activeBand.agentCount} agents</span>
+              <span>avg z {activeBand.avgZ.toFixed(2)}</span>
+              <span>avg energy {activeBand.avgEnergy.toFixed(1)}</span>
+              <span>dominant role {activeBand.dominantRole}</span>
+            </div>
           </div>
-          <div className="simulation-map__detail-grid">
-            <span>{activeBand.agentCount} agents</span>
-            <span>avg z {activeBand.avgZ.toFixed(2)}</span>
-            <span>avg energy {activeBand.avgEnergy.toFixed(1)}</span>
-            <span>dominant role {activeBand.dominantRole}</span>
-          </div>
-        </div>
+        </details>
       )}
 
       <div className="simulation-map__legend">

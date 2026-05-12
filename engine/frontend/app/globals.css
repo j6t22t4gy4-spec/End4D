@@ -111,6 +111,38 @@ textarea {
   max-height: inherit;
 }
 
+.simulation-map__detail-collapse {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.simulation-map__detail-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+}
+
+.simulation-map__detail-summary::-webkit-details-marker {
+  display: none;
+}
+
+.simulation-map__detail-toggle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.simulation-map__detail-collapse[open] .simulation-map__detail-toggle {
+  color: #0f172a;
+}
+
 .app-toolbar {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) minmax(420px, 1.2fr) minmax(320px, 0.9fr);
