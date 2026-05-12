@@ -96,6 +96,7 @@ export function SimulationInspectorPanel({
       {!hasSelection ? (
         <div className="space-y-4">
           <EmptyState locale={locale} />
+          <ThoughtPreviewRail locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
           <AgentDirectory locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
         </div>
       ) : (
@@ -115,6 +116,57 @@ export function SimulationInspectorPanel({
         </div>
       )}
     </AppPanel>
+  );
+}
+
+function ThoughtPreviewRail({
+  locale = "ko",
+  agentRoster,
+  onSelectAgent,
+}: {
+  locale?: UiLocale;
+  agentRoster: CellSnapshot[];
+  onSelectAgent: (agent: CellSnapshot) => void;
+}) {
+  const isKo = locale === "ko";
+  const previewAgents = useMemo(
+    () =>
+      agentRoster
+        .filter((agent) => String(agent.action_state?.last_thought_summary ?? "").trim())
+        .sort((a, b) => Number(b.action_state?.last_thought_t ?? -1) - Number(a.action_state?.last_thought_t ?? -1))
+        .slice(0, 4),
+    [agentRoster]
+  );
+
+  if (!previewAgents.length) return null;
+
+  return (
+    <section className="inspector-card">
+      <InspectorHeading
+        title={isKo ? "최근 에이전트 생각" : "Recent Agent Thoughts"}
+        subtitle={isKo ? "선택하기 전에도 현재 사고 흔적을 빠르게 봅니다" : "Scan current thought traces before selecting an agent"}
+      />
+      <div className="grid gap-2">
+        {previewAgents.map((agent) => (
+          <button
+            key={`thought-preview-${agent.cell_id}`}
+            type="button"
+            className="session-thread-card text-left"
+            onClick={() => onSelectAgent(agent)}
+          >
+            <div className="session-thread-card__header">
+              <p className="session-thread-card__title">{agent.role_label ?? agent.role_key ?? "agent"}</p>
+              <span className="session-thread-card__meta">
+                t={Number(agent.action_state?.last_thought_t ?? agent.t ?? 0).toFixed(0)}
+              </span>
+            </div>
+            <p className="session-thread-card__prompt">
+              {String(agent.action_state?.last_thought_summary ?? "").trim()}
+            </p>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -227,6 +279,11 @@ function AgentCard({
 }) {
   const isKo = locale === "ko";
   const strategy = String(agent.action_state?.strategy_summary ?? "n/a");
+  const thoughtSummary = String(agent.action_state?.last_thought_summary ?? "").trim();
+  const thoughtAt =
+    typeof agent.action_state?.last_thought_t === "number"
+      ? Number(agent.action_state.last_thought_t)
+      : null;
   const zMode = String(agent.action_state?.z_mode ?? "hybrid");
   const [question, setQuestion] = useState(
     "지금 상황을 너의 입장에서 어떻게 보고 있어?"
@@ -297,6 +354,7 @@ function AgentCard({
       </div>
       {agent.persona_text ? <p className="inspector-body">{agent.persona_text}</p> : null}
       <p className="inspector-note">strategy: {strategy}</p>
+      <ThoughtStreamCard locale={locale} agent={agent} thoughtSummary={thoughtSummary} thoughtAt={thoughtAt} />
       <div className="grid gap-2 pt-2">
         <textarea
           className="app-input min-h-[84px]"
@@ -349,6 +407,123 @@ function AgentCard({
       </div>
     </section>
   );
+}
+
+function ThoughtStreamCard({
+  locale = "ko",
+  agent,
+  thoughtSummary,
+  thoughtAt,
+}: {
+  locale?: UiLocale;
+  agent: CellSnapshot;
+  thoughtSummary: string;
+  thoughtAt: number | null;
+}) {
+  const isKo = locale === "ko";
+  const thoughtMemories = useMemo(() => extractThoughtEntries(agent), [agent]);
+
+  return (
+    <div className="space-y-3 rounded-[18px] border border-violet-200 bg-violet-50/70 px-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-violet-700">
+            {isKo ? "Thought Stream" : "Thought Stream"}
+          </p>
+          <p className="mt-1 text-xs text-violet-700/80">
+            {isKo ? "선택된 에이전트가 최근에 남긴 생각과 전략 맥락" : "Recent thought and strategy traces from the selected agent"}
+          </p>
+        </div>
+        {thoughtAt != null ? (
+          <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-violet-700">
+            t={thoughtAt.toFixed(0)}
+          </span>
+        ) : null}
+      </div>
+      <div className="rounded-2xl border border-violet-200 bg-white px-3 py-3 shadow-sm">
+        <p className="text-[11px] uppercase tracking-[0.16em] text-violet-500">
+          {isKo ? "현재 생각" : "Current Thought"}
+        </p>
+        <p className="mt-2 text-sm leading-6 text-slate-800">
+          {thoughtSummary || (isKo ? "아직 저장된 thought summary가 없습니다. 다음 thought cadence에서 채워집니다." : "No stored thought summary yet. It will appear on the next thought cadence.")}
+        </p>
+      </div>
+      <div className="grid gap-2">
+        {thoughtMemories.length ? (
+          thoughtMemories.map((item, index) => (
+            <div key={`${index}-${item.summary}`} className="session-thread-card">
+              <div className="session-thread-card__header">
+                <p className="session-thread-card__title">{item.label}</p>
+                {typeof item.t === "number" ? (
+                  <span className="session-thread-card__meta">t={item.t.toFixed(0)}</span>
+                ) : null}
+              </div>
+              <p className="session-thread-card__prompt">{item.summary}</p>
+            </div>
+          ))
+        ) : (
+          <p className="text-sm text-violet-700/80">
+            {isKo ? "아직 보여줄 thought trace가 없습니다." : "No thought trace is available yet."}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type ThoughtEntry = {
+  label: string;
+  summary: string;
+  t?: number;
+};
+
+function extractThoughtEntries(agent: CellSnapshot): ThoughtEntry[] {
+  const entries: ThoughtEntry[] = [];
+  const behaviorLog = Array.isArray(agent.behavior_log) ? agent.behavior_log : [];
+  const shortMemory = Array.isArray(agent.short_memory) ? agent.short_memory : [];
+  const longMemory = Array.isArray(agent.long_memory) ? agent.long_memory : [];
+
+  for (const item of [...behaviorLog].reverse()) {
+    const eventType = String(item?.event_type ?? "");
+    const summary = String(item?.summary ?? "").trim();
+    if (!summary) continue;
+    if (eventType === "thought_update") {
+      entries.push({
+        label: "thought",
+        summary,
+        t: typeof item?.t === "number" ? Number(item.t) : undefined,
+      });
+    } else if (eventType === "action_plan" || eventType === "agent_dialogue") {
+      entries.push({
+        label: eventType === "action_plan" ? "action" : "dialogue",
+        summary,
+        t: typeof item?.t === "number" ? Number(item.t) : undefined,
+      });
+    }
+    if (entries.length >= 4) break;
+  }
+
+  if (entries.length < 4) {
+    for (const item of [...shortMemory, ...longMemory].reverse()) {
+      const kind = String(item?.kind ?? "");
+      const summary = String(item?.summary ?? "").trim();
+      if (!summary) continue;
+      if (!["thought_update", "action_plan", "agent_dialogue"].includes(kind)) continue;
+      entries.push({
+        label:
+          kind === "thought_update"
+            ? "thought"
+            : kind === "action_plan"
+              ? "action"
+              : "dialogue",
+        summary,
+        t: typeof item?.t === "number" ? Number(item.t) : undefined,
+      });
+      if (entries.length >= 4) break;
+    }
+  }
+
+  return entries.slice(0, 4);
 }
 
 function InterviewResponseCard({

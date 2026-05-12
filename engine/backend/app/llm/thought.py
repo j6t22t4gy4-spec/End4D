@@ -11,6 +11,7 @@ from typing import List
 
 import numpy as np
 
+from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.settings import get_llm_agent_sample_size, get_thought_refresh_interval
 from app.llm.embeddings import embed_texts
 from app.llm.facade import llm_facade
@@ -28,7 +29,37 @@ def update_thoughts_if_due(cells: List[Cell], current_t: float) -> List[Cell]:
     vecs = embed_texts(texts, 256)
     out: List[Cell] = [c.copy() for c in cells]
     for k, idx in enumerate(selected):
-        out[idx] = out[idx].copy(thought_vec=vecs[k].copy())
+        thought_text = _summarize_thought_text(texts[k], selected_cells[k])
+        entry = memory_entry(
+            t=float(current_t),
+            kind="thought_update",
+            summary=thought_text,
+            importance=0.58,
+            source="llm.thought",
+            payload={"raw_text": str(texts[k] or "")[:400]},
+            tags=["llm", "thought"],
+        )
+        behavior = behavior_event(
+            t=float(current_t),
+            event_type="thought_update",
+            source="llm.thought",
+            summary=thought_text,
+            quality_score=0.6,
+            payload={"raw_text": str(texts[k] or "")[:240]},
+        )
+        current_action_state = dict(out[idx].action_state)
+        current_action_state["last_thought_summary"] = thought_text
+        current_action_state["last_thought_t"] = float(current_t)
+        updated = append_memory(
+            out[idx].copy(
+                thought_vec=vecs[k].copy(),
+                action_state=current_action_state,
+            ),
+            entry,
+            behavior=behavior,
+            promote=False,
+        )
+        out[idx] = updated
     return out
 
 
@@ -45,3 +76,11 @@ def _selected_indices(cells: List[Cell], t_int: int, limit: int) -> List[int]:
         ),
     )
     return ranked[:limit]
+
+
+def _summarize_thought_text(text: str, cell: Cell) -> str:
+    raw = " ".join(str(text or "").strip().split())
+    if raw:
+        return raw[:220]
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    return f"{role} is reassessing immediate goals and constraints."
