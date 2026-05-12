@@ -120,20 +120,23 @@ class ReviewDiffQueryResponse(BaseModel):
     review_meta: Dict[str, Any] = Field(default_factory=dict)
 
 
-@router.get("/{world_id}/review/summary", response_model=ReviewSummaryResponse)
-def get_review_summary(world_id: str):
-    entry = world_store.get(world_id)
-    if entry is None:
-        raise HTTPException(status_code=404, detail="World not found")
-    try:
-        payload = build_cached_world_review_payload(entry)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
-    try:
-        summary = llm_facade.summarize_review(payload)
-        annotations = llm_facade.annotate_timeline(payload)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
+def _current_review_revision(entry: Dict[str, Any]) -> Dict[str, int]:
+    snapshot_store = entry.get("snapshot_store")
+    available_t = snapshot_store.list_t() if snapshot_store is not None else []
+    latest_t = int(available_t[-1]) if available_t else 0
+    return {
+        "latest_t": latest_t,
+        "snapshot_count": len(available_t),
+    }
+
+
+def _build_review_summary_response(
+    *,
+    world_id: str,
+    payload: Dict[str, Any],
+    summary: Dict[str, Any],
+    annotations: Dict[str, Any],
+) -> ReviewSummaryResponse:
     return ReviewSummaryResponse(
         world_id=world_id,
         headline=str(summary["summary"].get("headline") or ""),
@@ -218,6 +221,40 @@ def get_review_summary(world_id: str):
             },
         },
     )
+
+
+@router.get("/{world_id}/review/summary", response_model=ReviewSummaryResponse)
+def get_review_summary(world_id: str):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    revision = _current_review_revision(entry)
+    cached = dict(entry.get("review_cache") or {})
+    if cached.get("revision") == revision and cached.get("summary_response"):
+        return ReviewSummaryResponse(**dict(cached.get("summary_response") or {}))
+    try:
+        payload = build_cached_world_review_payload(entry)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    try:
+        summary = llm_facade.summarize_review(payload)
+        annotations = llm_facade.annotate_timeline(payload)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"review_runtime_error:{exc}") from exc
+    response = _build_review_summary_response(
+        world_id=world_id,
+        payload=payload,
+        summary=summary,
+        annotations=annotations,
+    )
+    world_store.update_review_cache(
+        world_id,
+        review_cache={
+            "revision": revision,
+            "summary_response": response.model_dump(),
+        },
+    )
+    return response
 
 
 @router.get("/{world_id}/review/diff", response_model=ReviewDiffResponse)

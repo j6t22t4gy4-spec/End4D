@@ -36,6 +36,16 @@ export function OverviewWorkspace({
             워크벤치의 시작 화면입니다. 먼저 시뮬레이션 탭에서 세계를 만들고,
             데이터팩과 정책 실험실을 오가며 비교하는 흐름을 염두에 두고 구성했습니다.
           </p>
+          <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              {isKo ? "이 앱은 무엇을 하나요?" : "What does this app do?"}
+            </p>
+            <p className="mt-2 text-sm leading-7 text-slate-600">
+              {isKo
+                ? "End4D는 정책, 시장, 지역, 집단 신념의 변화를 장기 시뮬레이션으로 관찰하는 사회 동역학 워크벤치입니다. 세계를 생성하고, 실행 중 집단·개인 신호를 추적하고, 마지막에는 LLM 기반 리뷰로 원인과 정책 함의를 읽도록 설계되어 있습니다."
+                : "End4D is a social dynamics workbench for long-horizon simulations across policy, markets, regions, and collective belief shifts. It is designed to generate worlds, track group and agent signals during execution, and finish with an LLM-backed review of causal patterns and policy implications."}
+            </p>
+          </div>
           <div className="flex flex-wrap gap-3">
             <button
               type="button"

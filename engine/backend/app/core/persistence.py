@@ -71,6 +71,7 @@ class DiskWorldPersistence:
             },
             "coalition_history": [dict(item) for item in list(payload.get("coalition_history") or [])],
             "group_state": dict(payload.get("group_state") or {}),
+            "review_cache": dict(payload.get("review_cache") or {}),
             "snapshot_index": list(payload.get("snapshot_index") or []),
             "snapshot_archive": dict(payload.get("snapshot_archive") or {}),
             "snapshots": [snapshot_from_dict(item) for item in payload.get("snapshots") or []],

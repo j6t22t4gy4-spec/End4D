@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.llm.facade import llm_facade
 
 client = TestClient(app)
 
@@ -52,6 +53,43 @@ def test_review_summary_returns_summary_and_annotations():
     assert "next_actions" in payload
     assert "inject_presets" in payload
     assert "causal_chains" in payload
+
+
+def test_review_summary_uses_cached_response(monkeypatch):
+    created = client.post(
+        "/worlds",
+        json={"prompt": "장기 집단 동역학 리뷰 캐시가 반복 호출 없이 재사용되는지 본다"},
+    )
+    assert created.status_code == 200
+    world_id = created.json()["world_id"]
+
+    ran = client.post(f"/worlds/{world_id}/run", json={"stream": False})
+    assert ran.status_code == 200
+
+    summary_calls = {"count": 0}
+    annotation_calls = {"count": 0}
+    original_summary = llm_facade.summarize_review
+    original_annotations = llm_facade.annotate_timeline
+
+    def wrapped_summary(payload):
+        summary_calls["count"] += 1
+        return original_summary(payload)
+
+    def wrapped_annotations(payload):
+        annotation_calls["count"] += 1
+        return original_annotations(payload)
+
+    monkeypatch.setattr(llm_facade, "summarize_review", wrapped_summary)
+    monkeypatch.setattr(llm_facade, "annotate_timeline", wrapped_annotations)
+
+    first = client.get(f"/worlds/{world_id}/review/summary")
+    second = client.get(f"/worlds/{world_id}/review/summary")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert summary_calls["count"] == 1
+    assert annotation_calls["count"] == 1
+    assert first.json()["summary"] == second.json()["summary"]
 
 
 def test_review_diff_returns_comparison():

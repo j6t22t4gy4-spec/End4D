@@ -205,6 +205,7 @@ export default function GodView({
   const [autoFitLayout, setAutoFitLayout] = useState(true);
   const [reviewSummary, setReviewSummary] = useState<ReviewSummaryResponse | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewRevisionKey, setReviewRevisionKey] = useState<string | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<LocalRuntimeStatus | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -489,11 +490,20 @@ export default function GodView({
     setPackDiffPreview(null);
   }, [selectedPackId]);
 
+  const currentReviewRevisionKey = useMemo(() => {
+    if (!worldId || availableT.length === 0) return null;
+    return `${worldId}:${availableT[availableT.length - 1] ?? 0}`;
+  }, [availableT, worldId]);
+
   useEffect(() => {
     if (!worldId || availableT.length === 0) {
       setReviewSummary(null);
+      setReviewRevisionKey(null);
       setReviewLoading(false);
       setReviewError(null);
+      return;
+    }
+    if (reviewRevisionKey === currentReviewRevisionKey && reviewSummary) {
       return;
     }
     let cancelled = false;
@@ -503,11 +513,13 @@ export default function GodView({
       .then((payload) => {
         if (!cancelled) {
           setReviewSummary(payload);
+          setReviewRevisionKey(currentReviewRevisionKey);
         }
       })
       .catch((reason) => {
         if (!cancelled) {
           setReviewSummary(null);
+          setReviewRevisionKey(null);
           setReviewError(reason instanceof Error ? reason.message : "review summary error");
         }
       })
@@ -519,7 +531,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [chartRefreshKey, worldId]);
+  }, [availableT.length, currentReviewRevisionKey, reviewRevisionKey, reviewSummary, worldId]);
 
   const handleCreateWorld = useCallback(async () => {
     setCreateError(null);
@@ -571,6 +583,8 @@ export default function GodView({
       setVisualStats(null);
       setCollectiveSummary(null);
       setCollectiveSignal("stable");
+      setReviewSummary(null);
+      setReviewRevisionKey(null);
       setSelectedAgent(null);
       setSelectedZone(null);
       setSelectedBand(null);
@@ -1224,6 +1238,13 @@ export default function GodView({
         setCollectiveSignal(inferCollectiveSignalFromGroupState(meta.group_state));
         setGenesisPrompt(meta.genesis_prompt ?? "");
         setAvailableT(snapshots.available_t);
+        const hydratedReviewRevisionKey =
+          snapshots.available_t.length > 0
+            ? `${meta.world_id}:${snapshots.available_t[snapshots.available_t.length - 1] ?? 0}`
+            : null;
+        setReviewSummary(meta.cached_review_summary ?? null);
+        setReviewRevisionKey(meta.cached_review_summary ? hydratedReviewRevisionKey : null);
+        setReviewError(null);
         const firstT = snapshots.available_t[0] ?? 0;
         if (typeof initialT === "number" && snapshots.available_t.length > 0) {
           const nearest = snapshots.available_t.reduce((best, value) =>

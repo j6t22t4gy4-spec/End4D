@@ -75,6 +75,7 @@ export type WorldMeta = {
   persona_distribution_summary?: Record<string, unknown>;
   simulation_config?: Record<string, unknown>;
   group_state?: Record<string, unknown>;
+  cached_review_summary?: ReviewSummaryResponse | null;
 };
 
 export type CollectiveDynamicsListItem = {

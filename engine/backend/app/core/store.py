@@ -132,6 +132,7 @@ class WorldStore:
             "coalition_state": {},
             "coalition_history": [],
             "group_state": {},
+            "review_cache": {},
         }
         session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
@@ -194,6 +195,18 @@ class WorldStore:
         if world_id not in self._worlds or group_state is None:
             return
         self._worlds[world_id]["group_state"] = dict(group_state)
+        self._persist(world_id)
+
+    def get_review_cache(self, world_id: str) -> dict:
+        entry = self.get(world_id)
+        if entry is None:
+            return {}
+        return dict(entry.get("review_cache") or {})
+
+    def update_review_cache(self, world_id: str, *, review_cache: Optional[dict] = None) -> None:
+        if world_id not in self._worlds or review_cache is None:
+            return
+        self._worlds[world_id]["review_cache"] = dict(review_cache)
         self._persist(world_id)
 
     def get_initial_cell_count(self, world_id: str) -> int:

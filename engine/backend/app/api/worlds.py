@@ -87,6 +87,7 @@ class WorldResponse(BaseModel):
     comparison_meta: Dict[str, Any] = Field(default_factory=dict)
     coalition_state: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     group_state: Dict[str, Any] = Field(default_factory=dict)
+    cached_review_summary: Optional[Dict[str, Any]] = None
     session_id: str = ""
 
 
@@ -244,6 +245,7 @@ def get_world(world_id: str):
             for role, payload in dict(entry.get("coalition_state") or {}).items()
         },
         group_state=dict(entry.get("group_state") or {}),
+        cached_review_summary=dict((entry.get("review_cache") or {}).get("summary_response") or {}) or None,
         session_id=str(entry.get("session_id") or ""),
     )
 
