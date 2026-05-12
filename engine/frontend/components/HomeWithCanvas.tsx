@@ -125,28 +125,27 @@ export default function HomeWithCanvas() {
     refreshSessions();
   }, [refreshSessions]);
 
-  const countriesLabel = useMemo(() => {
-    if (!runtime || runtime.available_countries.length === 0) {
-      return isKo ? "지역 없음" : "No regions";
+  const toolbarConnectionState = useMemo(() => {
+    if (simulationDock?.connectionState) {
+      return simulationDock.connectionState;
     }
-    return runtime.available_countries.join(" · ").toUpperCase();
-  }, [isKo, runtime]);
-
-  const toolbarLlmTone = useMemo<"green" | "amber" | "red">(() => {
-    if (!runtime?.llm?.enabled || runtime.llm.provider === "stub") return "red";
-    if (runtime.llm.has_api_key) return "green";
-    return "amber";
-  }, [runtime]);
-
-  const toolbarLlmLabel = useMemo(() => {
     if (!runtime?.llm?.enabled || runtime.llm.provider === "stub") {
-      return isKo ? "disconnect" : "disconnect";
+      return {
+        tone: "red" as const,
+        label: "disconnect",
+      };
     }
     if (runtime.llm.has_api_key) {
-      return "ready";
+      return {
+        tone: "amber" as const,
+        label: isKo ? "configured" : "configured",
+      };
     }
-    return isKo ? "configured" : "configured";
-  }, [isKo, runtime]);
+    return {
+      tone: "red" as const,
+      label: "disconnect",
+    };
+  }, [isKo, runtime, simulationDock]);
 
   useEffect(() => {
     if (!resizingDock) return;
@@ -227,8 +226,8 @@ export default function HomeWithCanvas() {
           onChangeLocale={setLocale}
           llmProvider={runtime?.llm?.provider ?? "stub"}
           llmModel={runtime?.llm?.model ?? "stub"}
-          llmStatusTone={toolbarLlmTone}
-          llmStatusLabel={toolbarLlmLabel}
+          llmStatusTone={toolbarConnectionState.tone}
+          llmStatusLabel={toolbarConnectionState.label}
           activeView={activeView}
           onChangeView={setActiveView}
         />
