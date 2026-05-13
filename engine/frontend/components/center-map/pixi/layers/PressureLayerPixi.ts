@@ -9,6 +9,7 @@ import type {
 
 type PressureVisual = {
   container: Container;
+  bloom: Graphics;
   outer: Graphics;
   core: Graphics;
   x: number;
@@ -88,19 +89,26 @@ export class PressureLayerPixi {
       );
 
       const outerPulse =
-        0.96 + ((Math.sin(renderTime * (1.2 + visual.phase * 0.2) + visual.phase * 5) + 1) / 2) * 0.24;
+        1 + ((Math.sin(renderTime * (1.2 + visual.phase * 0.2) + visual.phase * 5) + 1) / 2) * 0.34;
+      const bloomPulse =
+        1.04 + ((Math.cos(renderTime * (0.94 + visual.phase * 0.16) + visual.phase * 4) + 1) / 2) * 0.28;
       const corePulse =
-        0.88 + ((Math.cos(renderTime * (1.7 + visual.phase * 0.25) + visual.phase * 6) + 1) / 2) * 0.18;
+        0.92 + ((Math.cos(renderTime * (1.7 + visual.phase * 0.25) + visual.phase * 6) + 1) / 2) * 0.22;
 
+      visual.bloom.scale.set(bloomPulse);
       visual.outer.scale.set(outerPulse);
       visual.core.scale.set(corePulse);
+      visual.bloom.alpha = Math.min(
+        0.28,
+        0.08 + visual.pressure * 0.22 + (visual.fractureSignal ? 0.08 : 0)
+      );
       visual.outer.alpha = Math.min(
-        0.34,
-        0.08 + visual.pressure * 0.24 + (visual.fractureSignal ? 0.08 : 0)
+        0.42,
+        0.12 + visual.pressure * 0.28 + (visual.fractureSignal ? 0.1 : 0)
       );
       visual.core.alpha = Math.min(
-        0.2,
-        0.05 + visual.pressure * 0.12 + (visual.fractureSignal ? 0.04 : 0)
+        0.28,
+        0.08 + visual.pressure * 0.16 + (visual.fractureSignal ? 0.06 : 0)
       );
     }
   }
@@ -112,13 +120,16 @@ export class PressureLayerPixi {
 
   private createVisual(agent: CenterMapSceneAgent) {
     const container = new Container();
+    const bloom = new Graphics();
     const outer = new Graphics();
     const core = new Graphics();
+    container.addChild(bloom);
     container.addChild(outer);
     container.addChild(core);
 
     const visual: PressureVisual = {
       container,
+      bloom,
       outer,
       core,
       x: agent.x,
@@ -138,14 +149,19 @@ export class PressureLayerPixi {
   private redrawVisual(visual: PressureVisual) {
     const fill = pressureColor(visual.pressure, visual.fractureSignal);
 
+    visual.bloom.clear();
+    visual.bloom.beginFill(fill, 0.12);
+    visual.bloom.drawEllipse(0, 0, visual.radius * 1.76, visual.radius * 1.3);
+    visual.bloom.endFill();
+
     visual.outer.clear();
-    visual.outer.beginFill(fill, 0.18);
-    visual.outer.drawEllipse(0, 0, visual.radius * 1.08, visual.radius * 0.82);
+    visual.outer.beginFill(fill, 0.24);
+    visual.outer.drawEllipse(0, 0, visual.radius * 1.26, visual.radius * 0.94);
     visual.outer.endFill();
 
     visual.core.clear();
-    visual.core.beginFill(fill, 0.14);
-    visual.core.drawEllipse(0, 0, visual.radius * 0.54, visual.radius * 0.42);
+    visual.core.beginFill(fill, 0.18);
+    visual.core.drawEllipse(0, 0, visual.radius * 0.64, visual.radius * 0.5);
     visual.core.endFill();
   }
 }
