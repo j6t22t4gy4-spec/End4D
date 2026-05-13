@@ -15,6 +15,9 @@ import { DriftLayer } from "@/components/center-map/layers/DriftLayer";
 import { PressureFieldLayer } from "@/components/center-map/layers/PressureFieldLayer";
 import { ShockLayer } from "@/components/center-map/layers/ShockLayer";
 import { ZoneLayer } from "@/components/center-map/layers/ZoneLayer";
+import { PixiStageHost } from "@/components/center-map/pixi/PixiStageHost";
+import { buildCenterMapScene } from "@/components/center-map/scene/buildCenterMapScene";
+import type { PointerField } from "@/components/center-map/scene/sceneTypes";
 import type {
   SelectedBand,
   SelectedZone,
@@ -34,11 +37,7 @@ type SimulationMap2DProps = {
   currentT?: number;
   renderTime?: number;
   transitionPhase?: number;
-  pointerField?: {
-    x: number;
-    y: number;
-    active: boolean;
-  };
+  pointerField?: PointerField;
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;
@@ -135,6 +134,11 @@ export default function SimulationMap2D({
   onJumpToT,
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
+  const pixiScene = useMemo(
+    () => buildCenterMapScene({ cells, selectedAgentId }),
+    [cells, selectedAgentId]
+  );
+  const usePixiLiveField = true;
   const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
   const pointerX = PADDING + pointerField.x * (SVG_WIDTH - PADDING * 2);
   const pointerY = PADDING + pointerField.y * (SVG_HEIGHT - PADDING * 2);
@@ -177,118 +181,127 @@ export default function SimulationMap2D({
             Run the simulation to populate the social field.
           </div>
         ) : (
-          <svg
-            className="simulation-map__svg"
-            viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-            role="img"
-            aria-label="2D social field simulation map"
-          >
-            <defs>
-              <radialGradient id="map-ambient-glow" cx="50%" cy="42%" r="68%">
-                <stop offset="0%" stopColor="rgba(56, 189, 248, 0.18)" />
-                <stop offset="38%" stopColor="rgba(99, 102, 241, 0.10)" />
-                <stop offset="100%" stopColor="rgba(15, 23, 42, 0)" />
-              </radialGradient>
-              <radialGradient id="map-core-field" cx="50%" cy="50%" r="72%">
-                <stop offset="0%" stopColor="rgba(30, 41, 59, 0.0)" />
-                <stop offset="100%" stopColor="rgba(15, 23, 42, 0.32)" />
-              </radialGradient>
-              <filter id="map-glow-soft" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="8" result="blurred" />
-                <feMerge>
-                  <feMergeNode in="blurred" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-              <pattern
-                id="map-grid"
-                width="48"
-                height="48"
-                patternUnits="userSpaceOnUse"
-              >
-                <path
-                  d="M 48 0 L 0 0 0 48"
-                  fill="none"
-                  stroke="rgba(148,163,184,0.18)"
-                  strokeWidth="1"
-                />
-              </pattern>
-            </defs>
-            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="#07111f" />
-            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-ambient-glow)" />
-            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-core-field)" />
-            <g opacity="0.72">
-              <circle
-                cx={SVG_WIDTH * 0.22 + Math.sin(renderTime * 0.23) * 28 + pointerDriftX * 0.35}
-                cy={SVG_HEIGHT * 0.24 + Math.cos(renderTime * 0.19) * 18 + pointerDriftY * 0.35}
-                r={146 + Math.sin(renderTime * 0.41) * 12}
-                fill="rgba(56, 189, 248, 0.08)"
-                filter="url(#map-glow-soft)"
-              />
-              <circle
-                cx={SVG_WIDTH * 0.78 + Math.cos(renderTime * 0.21) * 22 - pointerDriftX * 0.28}
-                cy={SVG_HEIGHT * 0.68 + Math.sin(renderTime * 0.27) * 16 - pointerDriftY * 0.24}
-                r={128 + Math.cos(renderTime * 0.36) * 10}
-                fill="rgba(99, 102, 241, 0.08)"
-                filter="url(#map-glow-soft)"
-              />
-            </g>
-            <g opacity={pointerField.active ? 0.78 : 0.5}>
-              <ellipse
-                cx={pointerX}
-                cy={pointerY}
-                rx={110 + Math.sin(renderTime * 1.2) * 12}
-                ry={86 + Math.cos(renderTime * 1.05) * 10}
-                fill="rgba(125, 211, 252, 0.08)"
-                filter="url(#map-glow-soft)"
-              />
-              <ellipse
-                cx={pointerX}
-                cy={pointerY}
-                rx={48 + Math.sin(renderTime * 1.8) * 6}
-                ry={36 + Math.cos(renderTime * 1.52) * 5}
-                fill="rgba(255,255,255,0.05)"
-              />
-            </g>
-            <rect
-              x={PADDING}
-              y={PADDING}
-              width={SVG_WIDTH - PADDING * 2}
-              height={SVG_HEIGHT - PADDING * 2}
-              rx="28"
-              fill="url(#map-grid)"
+          <>
+            <PixiStageHost
+              scene={pixiScene}
+              annotations={annotations}
+              currentT={currentT}
+              renderTime={renderTime}
+              transitionPhase={transitionPhase}
+              pointerField={pointerField}
             />
-            <g opacity="0.55" transform={`translate(${Math.sin(renderTime * 0.4) * 10} ${Math.cos(renderTime * 0.33) * 8})`}>
-              <rect
-                x={PADDING - 120 + ((renderTime * 92) % (SVG_WIDTH + 240))}
-                y={PADDING - 30}
-                width="96"
-                height={SVG_HEIGHT - PADDING * 2 + 60}
-                rx="28"
-                fill="rgba(255,255,255,0.035)"
-                transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
-              />
-              <rect
-                x={PADDING - 180 + ((renderTime * 64) % (SVG_WIDTH + 320))}
-                y={PADDING - 20}
-                width="42"
-                height={SVG_HEIGHT - PADDING * 2 + 40}
-                rx="24"
-                fill="rgba(125,211,252,0.028)"
-                transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
-              />
-            </g>
-            {transitionPhase > 0.001 ? (
+            <svg
+              className="simulation-map__svg"
+              viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+              role="img"
+              aria-label="2D social field simulation map"
+            >
+              <defs>
+                <radialGradient id="map-ambient-glow" cx="50%" cy="42%" r="68%">
+                  <stop offset="0%" stopColor="rgba(56, 189, 248, 0.18)" />
+                  <stop offset="38%" stopColor="rgba(99, 102, 241, 0.10)" />
+                  <stop offset="100%" stopColor="rgba(15, 23, 42, 0)" />
+                </radialGradient>
+                <radialGradient id="map-core-field" cx="50%" cy="50%" r="72%">
+                  <stop offset="0%" stopColor="rgba(30, 41, 59, 0.0)" />
+                  <stop offset="100%" stopColor="rgba(15, 23, 42, 0.32)" />
+                </radialGradient>
+                <filter id="map-glow-soft" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="8" result="blurred" />
+                  <feMerge>
+                    <feMergeNode in="blurred" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <pattern
+                  id="map-grid"
+                  width="48"
+                  height="48"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d="M 48 0 L 0 0 0 48"
+                    fill="none"
+                    stroke="rgba(148,163,184,0.18)"
+                    strokeWidth="1"
+                  />
+                </pattern>
+              </defs>
+              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="#07111f" />
+              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-ambient-glow)" />
+              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-core-field)" />
+              <g opacity="0.56">
+                <circle
+                  cx={SVG_WIDTH * 0.22 + Math.sin(renderTime * 0.23) * 28 + pointerDriftX * 0.35}
+                  cy={SVG_HEIGHT * 0.24 + Math.cos(renderTime * 0.19) * 18 + pointerDriftY * 0.35}
+                  r={146 + Math.sin(renderTime * 0.41) * 12}
+                  fill="rgba(56, 189, 248, 0.05)"
+                  filter="url(#map-glow-soft)"
+                />
+                <circle
+                  cx={SVG_WIDTH * 0.78 + Math.cos(renderTime * 0.21) * 22 - pointerDriftX * 0.28}
+                  cy={SVG_HEIGHT * 0.68 + Math.sin(renderTime * 0.27) * 16 - pointerDriftY * 0.24}
+                  r={128 + Math.cos(renderTime * 0.36) * 10}
+                  fill="rgba(99, 102, 241, 0.05)"
+                  filter="url(#map-glow-soft)"
+                />
+              </g>
+              <g opacity={pointerField.active ? 0.48 : 0.32}>
+                <ellipse
+                  cx={pointerX}
+                  cy={pointerY}
+                  rx={110 + Math.sin(renderTime * 1.2) * 12}
+                  ry={86 + Math.cos(renderTime * 1.05) * 10}
+                  fill="rgba(125, 211, 252, 0.05)"
+                  filter="url(#map-glow-soft)"
+                />
+                <ellipse
+                  cx={pointerX}
+                  cy={pointerY}
+                  rx={48 + Math.sin(renderTime * 1.8) * 6}
+                  ry={36 + Math.cos(renderTime * 1.52) * 5}
+                  fill="rgba(255,255,255,0.035)"
+                />
+              </g>
               <rect
                 x={PADDING}
                 y={PADDING}
                 width={SVG_WIDTH - PADDING * 2}
                 height={SVG_HEIGHT - PADDING * 2}
                 rx="28"
-                fill="rgba(255,255,255,0.08)"
-                opacity={transitionPhase * 0.55}
+                fill="url(#map-grid)"
               />
-            ) : null}
+              <g opacity="0.24" transform={`translate(${Math.sin(renderTime * 0.4) * 10} ${Math.cos(renderTime * 0.33) * 8})`}>
+                <rect
+                  x={PADDING - 120 + ((renderTime * 92) % (SVG_WIDTH + 240))}
+                  y={PADDING - 30}
+                  width="96"
+                  height={SVG_HEIGHT - PADDING * 2 + 60}
+                  rx="28"
+                  fill="rgba(255,255,255,0.02)"
+                  transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
+                />
+                <rect
+                  x={PADDING - 180 + ((renderTime * 64) % (SVG_WIDTH + 320))}
+                  y={PADDING - 20}
+                  width="42"
+                  height={SVG_HEIGHT - PADDING * 2 + 40}
+                  rx="24"
+                  fill="rgba(125,211,252,0.015)"
+                  transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
+                />
+              </g>
+              {transitionPhase > 0.001 ? (
+                <rect
+                  x={PADDING}
+                  y={PADDING}
+                  width={SVG_WIDTH - PADDING * 2}
+                  height={SVG_HEIGHT - PADDING * 2}
+                  rx="28"
+                  fill="rgba(255,255,255,0.05)"
+                  opacity={transitionPhase * 0.4}
+                />
+              ) : null}
 
             {scene.elevationBands.map((band, index) => (
               <path
@@ -323,21 +336,21 @@ export default function SimulationMap2D({
               </path>
             ))}
 
-            {showClusterLayer ? (
+            {!usePixiLiveField && showClusterLayer ? (
               <ClusterLayer
                 zones={scene.zoneBoxes}
                 renderTime={renderTime}
                 pointerField={pointerField}
               />
             ) : null}
-            {showPressureField ? (
+            {!usePixiLiveField && showPressureField ? (
               <PressureFieldLayer
                 nodes={scene.nodes}
                 renderTime={renderTime}
                 pointerField={pointerField}
               />
             ) : null}
-            {showShockLayer ? (
+            {!usePixiLiveField && showShockLayer ? (
               <ShockLayer
                 nodes={scene.nodes}
                 annotations={annotations}
@@ -369,13 +382,16 @@ export default function SimulationMap2D({
               />
             ) : null}
 
-            <AgentLayer
-              nodes={scene.nodes}
-              renderTime={renderTime}
-              selectedAgentId={selectedAgentId}
-              onSelectAgent={onSelectAgent}
-            />
+            {!usePixiLiveField ? (
+              <AgentLayer
+                nodes={scene.nodes}
+                renderTime={renderTime}
+                selectedAgentId={selectedAgentId}
+                onSelectAgent={onSelectAgent}
+              />
+            ) : null}
           </svg>
+          </>
         )}
       </div>
 

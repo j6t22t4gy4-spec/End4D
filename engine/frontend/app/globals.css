@@ -657,7 +657,24 @@ textarea {
   overflow: hidden;
 }
 
+.simulation-map__pixi-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.96;
+}
+
+.simulation-map__pixi-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .simulation-map__svg {
+  position: relative;
+  z-index: 2;
   display: block;
   width: 100%;
   height: 100%;
