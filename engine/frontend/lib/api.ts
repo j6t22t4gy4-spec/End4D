@@ -368,6 +368,41 @@ export type AgentSummaryResponse = {
   groups: AgentGroupSummary[];
 };
 
+export type GroupBeliefPoint = {
+  t: number;
+  stance: string;
+  count: number;
+  cohesion: number;
+  tension: number;
+  fracture_risk: number;
+  polarization: number;
+  drift_velocity: number;
+  collective_pressure: number;
+  pressure_bucket: string;
+  stance_signature: Record<string, number>;
+};
+
+export type GroupBeliefTrajectory = {
+  group_kind: "role" | "zone";
+  group_id: string;
+  group_label: string;
+  points: GroupBeliefPoint[];
+  deltas: Record<string, number>;
+  latest_stance: string;
+  latest_pressure: number;
+  member_ids: string[];
+};
+
+export type GroupBeliefTrajectoryResponse = {
+  world_id: string;
+  group_kind: "role" | "zone";
+  t_min: number;
+  t_max: number;
+  point_count: number;
+  group_count: number;
+  groups: GroupBeliefTrajectory[];
+};
+
 export type CreateWorldResult = {
   world_id: string;
   t_max: number;
@@ -465,6 +500,7 @@ export type ReviewSummaryResponse = {
   annotation_mode: string;
   metrics: Record<string, unknown>;
   stance_groups: Array<Record<string, unknown>>;
+  belief_trajectory: Record<string, unknown>;
   group_analysis: Record<string, unknown>;
   group_tables: Record<string, unknown>;
   lineage_summary: Record<string, unknown>;
@@ -655,6 +691,29 @@ export async function getAgentSummary(
     `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/summary${suffix}`
   );
   if (!res.ok) throw new Error(`getAgentSummary: ${res.status}`);
+  return res.json();
+}
+
+export async function getGroupBeliefTrajectory(
+  worldId: string,
+  options?: {
+    groupKind?: "role" | "zone";
+    tMin?: number;
+    tMax?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  }
+): Promise<GroupBeliefTrajectoryResponse> {
+  const q = new URLSearchParams();
+  q.set("group_kind", options?.groupKind ?? "role");
+  if (typeof options?.tMin === "number") q.set("t_min", String(options.tMin));
+  if (typeof options?.tMax === "number") q.set("t_max", String(options.tMax));
+  if (typeof options?.limit === "number") q.set("limit", String(options.limit));
+  const res = await fetch(
+    `${API_BASE}/worlds/${encodeURIComponent(worldId)}/agents/belief-trajectory?${q}`,
+    { signal: options?.signal }
+  );
+  if (!res.ok) throw new Error(`getGroupBeliefTrajectory: ${res.status}`);
   return res.json();
 }
 

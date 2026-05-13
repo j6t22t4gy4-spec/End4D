@@ -51,6 +51,7 @@ class ReviewSummaryResponse(BaseModel):
     annotation_mode: str
     metrics: Dict[str, Any] = Field(default_factory=dict)
     stance_groups: List[Dict[str, Any]] = Field(default_factory=list)
+    belief_trajectory: Dict[str, Any] = Field(default_factory=dict)
     group_analysis: Dict[str, Any] = Field(default_factory=dict)
     group_tables: Dict[str, Any] = Field(default_factory=dict)
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
@@ -156,6 +157,7 @@ def _build_review_summary_response(
         annotation_mode=str(annotations["mode"]),
         metrics=dict(payload.get("summary_stats") or {}),
         stance_groups=[dict(item) for item in list((payload.get("belief_drift") or {}).get("groups") or [])],
+        belief_trajectory=dict(payload.get("belief_trajectory") or {}),
         group_analysis=dict(payload.get("group_analysis") or {}),
         group_tables=dict(payload.get("group_tables") or {}),
         lineage_summary=dict(payload.get("lineage_summary") or {}),
@@ -294,6 +296,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         "policy_mechanism_delta": dict(diff_payload.get("policy_mechanism_delta") or {}),
         "lineage_delta": dict(diff_payload.get("lineage_delta") or {}),
         "policy_lineage_delta": dict(diff_payload.get("policy_lineage_delta") or {}),
+        "belief_trajectory_delta": dict(diff_payload.get("belief_trajectory_delta") or {}),
         "group_table_delta": dict(diff_payload.get("group_table_delta") or {}),
         "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),
         "coalition_shift_delta": dict(diff_payload.get("coalition_shift_delta") or {}),

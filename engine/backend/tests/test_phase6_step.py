@@ -299,6 +299,38 @@ def test_persona_attrs_seed_action_priors():
     assert action_state["persona_prior_factors"]
 
 
+def test_persona_distribution_bias_seeds_initial_cells():
+    persona_catalog = [
+        {
+            "persona_id": "persona-1",
+            "persona_text": "A Seoul public nurse with strong civic engagement.",
+            "role_key": "nurse",
+            "role_label": "public nurse",
+            "country": "KR",
+            "attrs": {"occupation": "public nurse", "province": "Seoul", "age": 45},
+        }
+    ]
+    cells = _create_initial_cells(
+        count=1,
+        t=0.0,
+        role_catalog=["nurse"],
+        persona_catalog=persona_catalog,
+        engine_params={
+            "zone_count": 1,
+            "persona_initial_bias": {
+                "energy_offset": 3.0,
+                "cooperation_delta": 0.08,
+                "policy_sensitivity_delta": 0.07,
+            },
+        },
+    )
+    action_state = cells[0].action_state
+    assert cells[0].energy >= 53.0
+    assert float(action_state["cooperation_bias"]) >= 0.56
+    assert float(action_state["policy_sensitivity"]) >= 0.57
+    assert action_state["persona_distribution_bias"]["energy_offset"] == 3.0
+
+
 def test_graph_emits_collective_group_state_and_feedback():
     store = SnapshotStore()
     graph = create_time_flow_graph()

@@ -16,6 +16,8 @@ MAX_REVIEW_EVENTS = 8
 MAX_REVIEW_HIGHLIGHTS = 6
 MAX_REVIEW_ANNOTATIONS = 8
 MAX_REVIEW_GRAPH_EDGES = 18
+MAX_REVIEW_TRAJECTORY_GROUPS = 6
+MAX_REVIEW_TRAJECTORY_POINTS = 8
 
 
 def _validation_readout(entry: dict[str, Any]) -> dict[str, Any]:
@@ -129,6 +131,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         coalition_state=dict(entry.get("coalition_state") or {}),
     )
     zone_z_drift = _zone_z_drift(first, latest)
+    belief_trajectory = _group_belief_trajectory_summary(store=store, available_t=available_t)
     notable_agents = _notable_agents(first, latest)
     key_events = [_event_summary(event) for event in list(world.nutrients or [])[-MAX_REVIEW_EVENTS:]]
     summary_stats = {
@@ -202,6 +205,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         },
         "summary_stats": summary_stats,
         "belief_drift": belief_drift,
+        "belief_trajectory": belief_trajectory,
         "group_analysis": group_analysis,
         "group_tables": group_tables,
         "lineage_summary": lineage_summary,
@@ -545,6 +549,10 @@ def build_review_diff_payload(
     policy_mechanism_delta = _policy_mechanism_delta(base_payload=base_payload, target_payload=target_payload)
     lineage_delta = _lineage_delta(base_payload=base_payload, target_payload=target_payload)
     policy_lineage_delta = _policy_lineage_delta(base_payload=base_payload, target_payload=target_payload)
+    belief_trajectory_delta = _belief_trajectory_delta(
+        base_payload=base_payload,
+        target_payload=target_payload,
+    )
 
     timeline_turning_point_delta = {
         "base": [dict(item) for item in list(base_payload.get("annotation_candidates") or [])[:4]],
@@ -580,6 +588,7 @@ def build_review_diff_payload(
         "policy_mechanism_delta": policy_mechanism_delta,
         "lineage_delta": lineage_delta,
         "policy_lineage_delta": policy_lineage_delta,
+        "belief_trajectory_delta": belief_trajectory_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
             zone_z_delta=zone_z_delta,
@@ -633,6 +642,120 @@ def build_timeline_annotation_candidates(
         )
     deltas.sort(key=lambda item: (-item["score"], item["t"]))
     return deltas[:6]
+
+
+def _axis_trajectory_index(payload: dict[str, Any], axis: str) -> dict[str, dict[str, Any]]:
+    trajectory = dict(payload.get("belief_trajectory") or {})
+    axis_payload = dict(trajectory.get(axis) or {})
+    return {
+        str(item.get("group_id") or ""): dict(item)
+        for item in list(axis_payload.get("groups") or [])
+        if str(item.get("group_id") or "").strip()
+    }
+
+
+def _trajectory_delta_row(
+    *,
+    axis: str,
+    group_id: str,
+    base_group: dict[str, Any],
+    target_group: dict[str, Any],
+) -> dict[str, Any]:
+    base_deltas = dict(base_group.get("deltas") or {})
+    target_deltas = dict(target_group.get("deltas") or {})
+    pressure_delta_gap = round(
+        float(target_deltas.get("pressure_delta", 0.0)) - float(base_deltas.get("pressure_delta", 0.0)),
+        4,
+    )
+    fracture_delta_gap = round(
+        float(target_deltas.get("fracture_delta", 0.0)) - float(base_deltas.get("fracture_delta", 0.0)),
+        4,
+    )
+    tension_delta_gap = round(
+        float(target_deltas.get("tension_delta", 0.0)) - float(base_deltas.get("tension_delta", 0.0)),
+        4,
+    )
+    drift_delta_gap = round(
+        float(target_deltas.get("drift_delta", 0.0)) - float(base_deltas.get("drift_delta", 0.0)),
+        4,
+    )
+    latest_pressure_gap = round(
+        float(target_group.get("latest_pressure", 0.0)) - float(base_group.get("latest_pressure", 0.0)),
+        4,
+    )
+    stance_base = str(base_group.get("latest_stance") or "not_present")
+    stance_target = str(target_group.get("latest_stance") or "not_present")
+    trajectory_signal = "muted"
+    if stance_base != stance_target:
+        trajectory_signal = "stance-shift"
+    elif pressure_delta_gap >= 0.12 or fracture_delta_gap >= 0.12:
+        trajectory_signal = "amplified"
+    elif pressure_delta_gap <= -0.12 or fracture_delta_gap <= -0.12:
+        trajectory_signal = "damped"
+    return {
+        "axis": axis,
+        "group_id": group_id,
+        "group_label": str(target_group.get("group_label") or base_group.get("group_label") or group_id),
+        "stance_base": stance_base,
+        "stance_target": stance_target,
+        "bucket_base": str(base_group.get("latest_bucket") or "low"),
+        "bucket_target": str(target_group.get("latest_bucket") or "low"),
+        "latest_pressure_gap": latest_pressure_gap,
+        "pressure_delta_gap": pressure_delta_gap,
+        "fracture_delta_gap": fracture_delta_gap,
+        "tension_delta_gap": tension_delta_gap,
+        "drift_delta_gap": drift_delta_gap,
+        "trajectory_signal": trajectory_signal,
+    }
+
+
+def _belief_trajectory_delta(
+    *,
+    base_payload: dict[str, Any],
+    target_payload: dict[str, Any],
+) -> dict[str, Any]:
+    axes: dict[str, list[dict[str, Any]]] = {}
+    all_rows: list[dict[str, Any]] = []
+    for axis in ("role", "persona", "zone"):
+        base_index = _axis_trajectory_index(base_payload, axis)
+        target_index = _axis_trajectory_index(target_payload, axis)
+        rows: list[dict[str, Any]] = []
+        for group_id in sorted(set(base_index.keys()) | set(target_index.keys())):
+            row = _trajectory_delta_row(
+                axis=axis,
+                group_id=group_id,
+                base_group=dict(base_index.get(group_id) or {}),
+                target_group=dict(target_index.get(group_id) or {}),
+            )
+            rows.append(row)
+            all_rows.append(row)
+        rows.sort(key=_trajectory_delta_score, reverse=True)
+        axes[axis] = rows[:MAX_REVIEW_TRAJECTORY_GROUPS]
+    all_rows.sort(key=_trajectory_delta_score, reverse=True)
+    top = all_rows[:MAX_REVIEW_TRAJECTORY_GROUPS]
+    return {
+        "top_diverging": top,
+        "role": axes.get("role", []),
+        "persona": axes.get("persona", []),
+        "zone": axes.get("zone", []),
+        "summary": {
+            "axis_count": len([axis for axis, rows in axes.items() if rows]),
+            "diverging_group_count": len(all_rows),
+            "amplified_count": sum(1 for row in all_rows if row.get("trajectory_signal") == "amplified"),
+            "damped_count": sum(1 for row in all_rows if row.get("trajectory_signal") == "damped"),
+            "stance_shift_count": sum(1 for row in all_rows if row.get("trajectory_signal") == "stance-shift"),
+        },
+    }
+
+
+def _trajectory_delta_score(row: dict[str, Any]) -> float:
+    return (
+        abs(float(row.get("latest_pressure_gap", 0.0)))
+        + abs(float(row.get("pressure_delta_gap", 0.0)))
+        + abs(float(row.get("fracture_delta_gap", 0.0)))
+        + abs(float(row.get("tension_delta_gap", 0.0))) * 0.6
+        + (0.35 if str(row.get("stance_base") or "") != str(row.get("stance_target") or "") else 0.0)
+    )
 
 
 def _timeline_point(snapshot: Snapshot | None) -> dict[str, Any]:
@@ -846,6 +969,170 @@ def _zone_snapshot(snapshot: Snapshot) -> dict[str, dict[str, Any]]:
             "avg_energy": round(float(np.mean(payload["energy"])) if payload["energy"] else 0.0, 3),
         }
     return out
+
+
+def _trajectory_group_key(cell: Cell, group_kind: str) -> tuple[str, str]:
+    if group_kind == "zone":
+        group_id = str(getattr(cell, "zone_id", "") or "zone-0")
+        return group_id, str(getattr(cell, "zone_label", "") or group_id)
+    if group_kind == "persona":
+        persona_id = str(getattr(cell, "persona_id", "") or "")
+        if persona_id:
+            label = str(getattr(cell, "persona_text", "") or persona_id)
+            if len(label) > 72:
+                label = f"{label[:69]}..."
+            return persona_id, label
+        country = str(getattr(cell, "persona_country", "") or "unknown")
+        role = str(getattr(cell, "role_label", "") or getattr(cell, "role_key", "") or "agent")
+        return f"{country}:{role}", f"{country} {role}".strip()
+    role_key = str(getattr(cell, "role_key", "") or "agent")
+    return role_key, str(getattr(cell, "role_label", "") or role_key)
+
+
+def _trajectory_metric(cells: list[Cell], group_kind: str, metric: str, fallback: float = 0.0) -> float:
+    prefix = "zone_group" if group_kind == "zone" else "role_group"
+    key = f"{prefix}_{metric}"
+    values = [float(dict(getattr(cell, "action_state", {}) or {}).get(key, fallback) or fallback) for cell in cells]
+    return float(np.mean(values)) if values else fallback
+
+
+def _trajectory_mean_action(cells: list[Cell], key: str, fallback: float = 0.0) -> float:
+    values = [float(dict(getattr(cell, "action_state", {}) or {}).get(key, fallback) or fallback) for cell in cells]
+    return float(np.mean(values)) if values else fallback
+
+
+def _trajectory_pressure_bucket(value: float) -> str:
+    if value >= 0.72:
+        return "critical"
+    if value >= 0.5:
+        return "elevated"
+    if value >= 0.3:
+        return "watch"
+    return "low"
+
+
+def _trajectory_stance(cohesion: float, tension: float, fracture: float, drift: float, pressure: float) -> str:
+    if fracture >= 0.55 or tension >= 0.45:
+        return "contested"
+    if cohesion >= 0.65 and tension < 0.28:
+        return "cohesive"
+    if pressure >= 0.3 or drift >= 0.25:
+        return "emergent"
+    return "diffuse"
+
+
+def _group_belief_point(snapshot: Snapshot, group_kind: str, cells: list[Cell]) -> dict[str, Any]:
+    cohesion = _trajectory_metric(cells, group_kind, "cohesion")
+    tension = _trajectory_metric(cells, group_kind, "tension")
+    fracture = _trajectory_metric(cells, group_kind, "fracture_risk")
+    drift = _trajectory_metric(cells, group_kind, "drift_velocity")
+    pressure = _trajectory_mean_action(cells, "collective_pressure")
+    policy = _trajectory_mean_action(cells, "policy_sensitivity", 0.5)
+    cooperation = _trajectory_mean_action(cells, "cooperation_bias", 0.5)
+    polarization = float(np.std([float(getattr(cell, "z", 0.0)) for cell in cells])) if len(cells) > 1 else 0.0
+    return {
+        "t": float(snapshot.t),
+        "count": len(cells),
+        "stance": _trajectory_stance(cohesion, tension, fracture, drift, pressure),
+        "cohesion": round(cohesion, 4),
+        "tension": round(tension, 4),
+        "fracture_risk": round(fracture, 4),
+        "drift_velocity": round(drift, 4),
+        "collective_pressure": round(pressure, 4),
+        "pressure_bucket": _trajectory_pressure_bucket(pressure),
+        "polarization": round(polarization, 4),
+        "stance_signature": {
+            "policy": round(policy, 4),
+            "cooperation": round(cooperation, 4),
+        },
+    }
+
+
+def _group_belief_trajectory_axis(
+    *,
+    store: Any,
+    sampled_t: list[float],
+    group_kind: str,
+) -> dict[str, Any]:
+    groups: dict[str, dict[str, Any]] = {}
+    for t_value in sampled_t:
+        snapshot = store.get(t_value) or store.get_nearest(t_value)
+        if snapshot is None:
+            continue
+        buckets: dict[str, list[Cell]] = defaultdict(list)
+        labels: dict[str, str] = {}
+        for cell in snapshot.cells:
+            group_id, label = _trajectory_group_key(cell, group_kind)
+            buckets[group_id].append(cell)
+            labels.setdefault(group_id, label)
+        for group_id, cells in buckets.items():
+            row = groups.setdefault(
+                group_id,
+                {
+                    "group_kind": group_kind,
+                    "group_id": group_id,
+                    "group_label": labels.get(group_id, group_id),
+                    "points": [],
+                    "member_count": 0,
+                },
+            )
+            row["points"].append(_group_belief_point(snapshot, group_kind, cells))
+            row["member_count"] = max(int(row.get("member_count", 0)), len(cells))
+
+    rows: list[dict[str, Any]] = []
+    for row in groups.values():
+        points = sorted([dict(item) for item in list(row.get("points") or [])], key=lambda item: float(item["t"]))
+        if not points:
+            continue
+        first = points[0]
+        latest = points[-1]
+        deltas = {
+            "pressure_delta": round(float(latest["collective_pressure"]) - float(first["collective_pressure"]), 4),
+            "fracture_delta": round(float(latest["fracture_risk"]) - float(first["fracture_risk"]), 4),
+            "tension_delta": round(float(latest["tension"]) - float(first["tension"]), 4),
+            "drift_delta": round(float(latest["drift_velocity"]) - float(first["drift_velocity"]), 4),
+        }
+        rows.append(
+            {
+                "group_kind": group_kind,
+                "group_id": str(row["group_id"]),
+                "group_label": str(row["group_label"]),
+                "member_count": int(row.get("member_count", 0)),
+                "latest_stance": str(latest["stance"]),
+                "latest_pressure": float(latest["collective_pressure"]),
+                "latest_bucket": str(latest["pressure_bucket"]),
+                "deltas": deltas,
+                "points": points,
+            }
+        )
+    rows.sort(
+        key=lambda item: (
+            -abs(float(dict(item.get("deltas") or {}).get("pressure_delta", 0.0))),
+            -float(item.get("latest_pressure", 0.0)),
+            str(item.get("group_label") or ""),
+        )
+    )
+    return {
+        "group_kind": group_kind,
+        "point_count": len(sampled_t),
+        "group_count": len(rows),
+        "groups": rows[:MAX_REVIEW_TRAJECTORY_GROUPS],
+    }
+
+
+def _group_belief_trajectory_summary(*, store: Any, available_t: list[float]) -> dict[str, Any]:
+    selected_t = [float(t) for t in available_t]
+    if len(selected_t) > MAX_REVIEW_TRAJECTORY_POINTS:
+        indices = np.linspace(0, len(selected_t) - 1, num=MAX_REVIEW_TRAJECTORY_POINTS)
+        selected_t = sorted(dict.fromkeys(selected_t[int(round(idx))] for idx in indices))
+    return {
+        "t_min": float(selected_t[0]) if selected_t else 0.0,
+        "t_max": float(selected_t[-1]) if selected_t else 0.0,
+        "point_count": len(selected_t),
+        "role": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="role"),
+        "persona": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="persona"),
+        "zone": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="zone"),
+    }
 
 
 def _notable_agents(first: Snapshot, latest: Snapshot) -> list[dict[str, Any]]:

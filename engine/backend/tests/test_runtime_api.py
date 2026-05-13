@@ -350,6 +350,47 @@ def test_runtime_local_status_includes_llm_runtime_stats(monkeypatch):
     assert "task_insights" in data["llm_runtime"]
     assert isinstance(data["llm_runtime"]["recommended_actions"], list)
     assert "repair_summary" in data["llm_runtime"]
+    diagnostics = data["llm_runtime"]["diagnostics"]
+    assert diagnostics["summary"]["live_dominance_rate"] == 1.0
+    assert diagnostics["summary"]["main_bottleneck"] in {"none", "llm_disabled"}
+    assert diagnostics["task_health_table"]
+    assert diagnostics["task_health_table"][0]["success_rate"] == 1.0
+    assert diagnostics["next_probe"]
+
+
+def test_runtime_local_status_diagnostics_surface_budget_pressure(monkeypatch):
+    llm_facade.reset_stats()
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "1")
+    monkeypatch.setenv("ORGANIC4D_LLM_PROVIDER", "stub")
+    monkeypatch.setenv("ORGANIC4D_LLM_BUDGET_THOUGHT", "1")
+    monkeypatch.setenv("ORGANIC4D_LLM_CYCLE_PROMPT_BUDGET", "12")
+
+    def fake_batch(prompts, *, task):
+        prompt_list = list(prompts)
+        return {
+            "texts": ["ok" for _ in prompt_list],
+            "meta": {
+                "task": task,
+                "provider": "stub",
+                "model": "stub",
+                "prompt_count_in": len(prompt_list),
+                "prompt_count_sent": len(prompt_list),
+                "used_fallback": False,
+                "fallback_reason": "",
+            },
+        }
+
+    monkeypatch.setattr("app.llm.facade.generate_reasoning_batch", fake_batch)
+    llm_facade.think([_cell("citizen"), _cell("worker"), _cell("regulator")])
+
+    response = client.get("/runtime/local-status")
+    assert response.status_code == 200
+    diagnostics = response.json()["llm_runtime"]["diagnostics"]
+    assert diagnostics["summary"]["budget_clip_rate"] > 0.0
+    assert diagnostics["summary"]["main_bottleneck"] == "budget_pressure"
+    thought = next(row for row in diagnostics["task_health_table"] if row["task"] == "thought")
+    assert thought["budget_clip_rate"] > 0.0
+    assert thought["diagnosis"] == "budget_caps_clip_task_prompts"
 
 
 def test_runtime_local_status_includes_repair_summary():

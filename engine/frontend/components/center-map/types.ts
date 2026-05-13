@@ -7,11 +7,13 @@ import type {
   ReviewSummaryResponse,
   TimelineAnnotation,
 } from "@/lib/api";
+import type { UiLocale } from "@/lib/ui-language";
 import type { SelectedBand, SelectedZone } from "@/components/SimulationInspectorPanel";
 
 export type CenterMapMode = "precision" | "swarm";
 
 export type CenterMapVisibleLayers = {
+  zones: boolean;
   agents: boolean;
   heat: boolean;
   shock: boolean;
@@ -31,6 +33,7 @@ export type CenterMapShellProps = {
   groundingItems?: ReviewGroundingItem[];
   collectiveSummary: CollectiveDynamicsSummary | null;
   reviewSummary: ReviewSummaryResponse | null;
+  locale?: UiLocale;
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;

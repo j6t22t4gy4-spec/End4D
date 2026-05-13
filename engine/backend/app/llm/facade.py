@@ -613,6 +613,14 @@ class LLMFacade:
             )
             optimizer = self._recent_runtime_signal()
             repair_summary = self._build_repair_summary()
+            diagnostics = self._build_diagnostics(
+                task_insights=task_insights,
+                recent_runs=recent_runs,
+                fallback_reason_counts=fallback_reason_counts,
+                health_status=health_status,
+                health_reason=health_reason,
+                stability_score=stability_score,
+            )
             return {
                 "provider": provider,
                 "model": get_llm_model(),
@@ -639,6 +647,7 @@ class LLMFacade:
                 "fallback_reason_counts": fallback_reason_counts,
                 "recommended_actions": recommended_actions,
                 "repair_summary": repair_summary,
+                "diagnostics": diagnostics,
                 "optimizer": {
                     "stability_score": round(float(optimizer.get("stability_score", stability_score)), 4),
                     "fallback_streak": int(optimizer.get("fallback_streak", fallback_streak)),
@@ -971,6 +980,174 @@ class LLMFacade:
                 }
             )
         return insights
+
+    def _build_diagnostics(
+        self,
+        *,
+        task_insights: Sequence[Mapping[str, Any]],
+        recent_runs: Sequence[Mapping[str, Any]],
+        fallback_reason_counts: Mapping[str, int],
+        health_status: str,
+        health_reason: str,
+        stability_score: float,
+    ) -> dict[str, Any]:
+        task_rows: list[dict[str, Any]] = []
+        total_calls = 0
+        total_live = 0
+        total_fallback = 0
+        total_prompt_in = 0
+        total_prompt_sent = 0
+        total_task_skips = 0
+        total_cycle_skips = 0
+
+        for insight in task_insights:
+            task = str(insight.get("task") or "unknown")
+            totals = dict(self._task_totals.get(task) or {})
+            calls = int(totals.get("calls") or 0)
+            fallback_calls = int(totals.get("fallback_calls") or 0)
+            live_calls = max(0, calls - fallback_calls)
+            prompt_in = int(totals.get("prompt_count_in") or 0)
+            prompt_sent = int(totals.get("prompt_count_sent") or 0)
+            task_skips = int(totals.get("prompt_count_skipped_by_task_budget") or 0)
+            cycle_skips = int(totals.get("prompt_count_skipped_by_cycle_budget") or 0)
+            success_rate = (live_calls / calls) if calls else 0.0
+            budget_clip_rate = ((task_skips + cycle_skips) / prompt_in) if prompt_in else 0.0
+            top_reasons = [dict(item) for item in list(insight.get("top_fallback_reasons") or [])]
+
+            total_calls += calls
+            total_live += live_calls
+            total_fallback += fallback_calls
+            total_prompt_in += prompt_in
+            total_prompt_sent += prompt_sent
+            total_task_skips += task_skips
+            total_cycle_skips += cycle_skips
+
+            task_rows.append(
+                {
+                    "task": task,
+                    "status": str(insight.get("status") or "idle"),
+                    "success_rate": round(success_rate, 4),
+                    "live_call_rate": round(float(insight.get("live_call_rate") or 0.0), 4),
+                    "prompt_live_rate": round(float(insight.get("prompt_live_rate") or 0.0), 4),
+                    "budget_clip_rate": round(budget_clip_rate, 4),
+                    "calls": calls,
+                    "live_calls": live_calls,
+                    "fallback_calls": fallback_calls,
+                    "prompt_count_in": prompt_in,
+                    "prompt_count_sent": prompt_sent,
+                    "prompt_count_skipped": task_skips + cycle_skips,
+                    "top_failure_reasons": top_reasons,
+                    "diagnosis": self._diagnose_task(
+                        status=str(insight.get("status") or "idle"),
+                        top_reasons=top_reasons,
+                        budget_clip_rate=budget_clip_rate,
+                    ),
+                    "recommendation": str(insight.get("recommendation") or ""),
+                }
+            )
+
+        degraded_rows = [row for row in task_rows if row["status"] in {"warning", "degraded"}]
+        provider_failure_count = sum(
+            int(count)
+            for reason, count in fallback_reason_counts.items()
+            if str(reason).startswith("provider_error:")
+        )
+        live_dominance_rate = (total_live / total_calls) if total_calls else 0.0
+        prompt_delivery_rate = (total_prompt_sent / total_prompt_in) if total_prompt_in else 0.0
+        budget_clip_rate = ((total_task_skips + total_cycle_skips) / total_prompt_in) if total_prompt_in else 0.0
+        main_bottleneck = self._diagnose_runtime_bottleneck(
+            provider_failure_count=provider_failure_count,
+            budget_clip_rate=budget_clip_rate,
+            degraded_rows=degraded_rows,
+            health_status=health_status,
+            health_reason=health_reason,
+        )
+        return {
+            "summary": {
+                "status": health_status,
+                "reason": health_reason,
+                "main_bottleneck": main_bottleneck,
+                "live_dominance_rate": round(live_dominance_rate, 4),
+                "prompt_delivery_rate": round(prompt_delivery_rate, 4),
+                "budget_clip_rate": round(budget_clip_rate, 4),
+                "provider_failure_count": provider_failure_count,
+                "degraded_task_count": len(degraded_rows),
+                "recent_run_count": len(recent_runs),
+                "stability_score": round(stability_score, 4),
+            },
+            "task_health_table": sorted(
+                task_rows,
+                key=lambda row: (
+                    0 if row["status"] == "degraded" else 1 if row["status"] == "warning" else 2,
+                    -float(row["budget_clip_rate"]),
+                    str(row["task"]),
+                ),
+            ),
+            "degraded_task_details": degraded_rows,
+            "top_failure_reasons": [
+                {"reason": str(reason), "count": int(count)}
+                for reason, count in sorted(
+                    fallback_reason_counts.items(),
+                    key=lambda item: (-int(item[1]), str(item[0])),
+                )[:6]
+            ],
+            "next_probe": self._next_probe(main_bottleneck=main_bottleneck, degraded_rows=degraded_rows),
+        }
+
+    def _diagnose_task(
+        self,
+        *,
+        status: str,
+        top_reasons: Sequence[Mapping[str, Any]],
+        budget_clip_rate: float,
+    ) -> str:
+        reasons = [str(item.get("reason") or "") for item in top_reasons]
+        if any(reason.startswith("provider_error:") for reason in reasons):
+            return "provider_errors_block_live_calls"
+        if budget_clip_rate >= 0.35 or any(reason in {"task_budget_cap", "cycle_budget_cap"} for reason in reasons):
+            return "budget_caps_clip_task_prompts"
+        if "adaptive_priority_skip" in reasons:
+            return "adaptive_scheduler_skips_low_priority_work"
+        if status == "degraded":
+            return "fallback_dominates_task"
+        if status == "warning":
+            return "partial_fallback_or_prompt_clipping"
+        if status == "idle":
+            return "no_calls_recorded"
+        return "live_task_healthy"
+
+    def _diagnose_runtime_bottleneck(
+        self,
+        *,
+        provider_failure_count: int,
+        budget_clip_rate: float,
+        degraded_rows: Sequence[Mapping[str, Any]],
+        health_status: str,
+        health_reason: str,
+    ) -> str:
+        if health_status in {"disabled", "auth-missing"}:
+            return health_reason or health_status
+        if provider_failure_count > 0:
+            return "provider_errors"
+        if budget_clip_rate >= 0.3:
+            return "budget_pressure"
+        if degraded_rows:
+            return "task_degradation"
+        if health_status == "ready":
+            return "awaiting_calls"
+        return "none"
+
+    def _next_probe(self, *, main_bottleneck: str, degraded_rows: Sequence[Mapping[str, Any]]) -> str:
+        if main_bottleneck in {"llm_disabled", "api_key_missing", "disabled", "auth-missing"}:
+            return "run_runtime_llm_config_test_after_enabling_provider"
+        if main_bottleneck == "provider_errors":
+            return "test_provider_connection_and_model_name"
+        if main_bottleneck == "budget_pressure":
+            return "raise_cycle_or_task_budget_then_rerun_short_smoke"
+        if degraded_rows:
+            task = str(degraded_rows[0].get("task") or "task")
+            return f"rerun_short_smoke_focusing_{task}"
+        return "run_llm_first_short_smoke_to_confirm_live_dominance"
 
     def _build_recommendations(
         self,

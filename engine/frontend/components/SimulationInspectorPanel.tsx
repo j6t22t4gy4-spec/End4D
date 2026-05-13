@@ -4,11 +4,14 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import {
+  getGroupBeliefTrajectory,
   postAgentInterview,
   postAgentInterviewDiff,
   type AgentInterviewResponse,
   type CellSnapshot,
   type CollectiveDynamicsSummary,
+  type GroupBeliefTrajectory,
+  type GroupBeliefTrajectoryResponse,
 } from "@/lib/api";
 import { type UiLocale } from "@/lib/ui-language";
 
@@ -65,6 +68,42 @@ export function SimulationInspectorPanel({
 }: SimulationInspectorPanelProps) {
   const isKo = locale === "ko";
   const hasSelection = Boolean(selectedAgent || selectedZone || selectedBand);
+  const [beliefTrajectory, setBeliefTrajectory] = useState<{
+    role: GroupBeliefTrajectoryResponse | null;
+    zone: GroupBeliefTrajectoryResponse | null;
+  }>({ role: null, zone: null });
+  const [beliefTrajectoryStatus, setBeliefTrajectoryStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [beliefTrajectoryError, setBeliefTrajectoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const worldId = worldSummary.worldId;
+    if (!worldId) {
+      setBeliefTrajectory({ role: null, zone: null });
+      setBeliefTrajectoryStatus("idle");
+      setBeliefTrajectoryError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setBeliefTrajectoryStatus("loading");
+    setBeliefTrajectoryError(null);
+    const tMax = Number.isFinite(worldSummary.currentT) ? worldSummary.currentT : undefined;
+    Promise.all([
+      getGroupBeliefTrajectory(worldId, { groupKind: "role", tMax, limit: 8, signal: controller.signal }),
+      getGroupBeliefTrajectory(worldId, { groupKind: "zone", tMax, limit: 8, signal: controller.signal }),
+    ])
+      .then(([role, zone]) => {
+        if (controller.signal.aborted) return;
+        setBeliefTrajectory({ role, zone });
+        setBeliefTrajectoryStatus("ready");
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        setBeliefTrajectory({ role: null, zone: null });
+        setBeliefTrajectoryStatus("error");
+        setBeliefTrajectoryError(reason instanceof Error ? reason.message : "belief trajectory error");
+      });
+    return () => controller.abort();
+  }, [worldSummary.currentT, worldSummary.worldId]);
 
   return (
     <AppPanel
@@ -83,6 +122,21 @@ export function SimulationInspectorPanel({
         ) : undefined
       }
     >
+      <div className="space-y-4">
+        {!hasSelection ? <EmptyState locale={locale} /> : null}
+        {selectedAgent ? (
+          <AgentCard
+            locale={locale}
+            agent={selectedAgent}
+            worldId={worldSummary.worldId}
+            currentT={worldSummary.currentT}
+            onOpenWorldAt={onOpenWorldAt}
+          />
+        ) : null}
+        {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
+        {selectedBand ? <BandCard band={selectedBand} /> : null}
+      </div>
+
       <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4">
         <MetricRow label="world" value={worldSummary.worldId ?? "none"} mono />
         <MetricRow label="current t" value={worldSummary.currentT.toFixed(1)} />
@@ -138,23 +192,18 @@ export function SimulationInspectorPanel({
               mode="drift"
             />
           </div>
+          <BeliefTrajectoryPanel
+            locale={locale}
+            role={beliefTrajectory.role}
+            zone={beliefTrajectory.zone}
+            status={beliefTrajectoryStatus}
+            error={beliefTrajectoryError}
+          />
         </section>
       ) : null}
 
       <div className="space-y-4">
-        {!hasSelection ? <EmptyState locale={locale} /> : null}
         <ThoughtPreviewRail locale={locale} agentRoster={agentRoster} onSelectAgent={onSelectAgent} />
-        {selectedAgent ? (
-          <AgentCard
-            locale={locale}
-            agent={selectedAgent}
-            worldId={worldSummary.worldId}
-            currentT={worldSummary.currentT}
-            onOpenWorldAt={onOpenWorldAt}
-          />
-        ) : null}
-        {selectedZone ? <ZoneCard zone={selectedZone} /> : null}
-        {selectedBand ? <BandCard band={selectedBand} /> : null}
       </div>
     </AppPanel>
   );
@@ -765,6 +814,165 @@ function extractPersonaPriorFactors(agent: CellSnapshot): string[] {
     .map((item) => String(item ?? "").trim())
     .filter(Boolean)
     .slice(0, 8);
+}
+
+function BeliefTrajectoryPanel({
+  locale = "ko",
+  role,
+  zone,
+  status,
+  error,
+}: {
+  locale?: UiLocale;
+  role: GroupBeliefTrajectoryResponse | null;
+  zone: GroupBeliefTrajectoryResponse | null;
+  status: "idle" | "loading" | "ready" | "error";
+  error: string | null;
+}) {
+  const isKo = locale === "ko";
+  const roleGroups = role?.groups ?? [];
+  const zoneGroups = zone?.groups ?? [];
+  const hasGroups = roleGroups.length > 0 || zoneGroups.length > 0;
+  return (
+    <div className="mt-3 space-y-2 rounded-[20px] border border-slate-200 bg-white px-3 py-3 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+            {isKo ? "Belief Trajectory" : "Belief Trajectory"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {isKo
+              ? "역할/구역 집단의 압력, 균열, 입장 변화를 저장된 스냅샷 기준으로 추적합니다."
+              : "Tracks role/zone pressure, fracture, and stance changes across stored snapshots."}
+          </p>
+        </div>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          {status}
+        </span>
+      </div>
+      {status === "error" ? (
+        <p className="inspector-note">{error ?? (isKo ? "belief trajectory를 불러오지 못했습니다." : "Could not load belief trajectory.")}</p>
+      ) : null}
+      {status === "loading" && !hasGroups ? (
+        <p className="text-sm text-slate-500">{isKo ? "집단 궤적을 읽는 중입니다..." : "Loading group trajectories..."}</p>
+      ) : null}
+      {status !== "loading" && !hasGroups && status !== "error" ? (
+        <p className="text-sm text-slate-500">{isKo ? "아직 저장된 집단 궤적이 없습니다." : "No stored group trajectory yet."}</p>
+      ) : null}
+      {hasGroups ? (
+        <div className="grid gap-2">
+          <BeliefTrajectoryAxis
+            locale={locale}
+            title={isKo ? "역할 신념 이동" : "Role belief drift"}
+            groups={roleGroups}
+          />
+          <BeliefTrajectoryAxis
+            locale={locale}
+            title={isKo ? "구역 신념 이동" : "Zone belief drift"}
+            groups={zoneGroups}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BeliefTrajectoryAxis({
+  locale = "ko",
+  title,
+  groups,
+}: {
+  locale?: UiLocale;
+  title: string;
+  groups: GroupBeliefTrajectory[];
+}) {
+  const isKo = locale === "ko";
+  const visibleGroups = groups.slice(0, 3);
+  if (!visibleGroups.length) {
+    return null;
+  }
+  return (
+    <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
+      <div className="mt-2 grid gap-2">
+        {visibleGroups.map((group) => (
+          <BeliefTrajectoryRow key={`${group.group_kind}-${group.group_id}`} locale={locale} group={group} />
+        ))}
+      </div>
+      {groups.length > visibleGroups.length ? (
+        <p className="mt-2 text-[11px] text-slate-500">
+          +{groups.length - visibleGroups.length} {isKo ? "개 집단 더 있음" : "more groups"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BeliefTrajectoryRow({
+  locale = "ko",
+  group,
+}: {
+  locale?: UiLocale;
+  group: GroupBeliefTrajectory;
+}) {
+  const isKo = locale === "ko";
+  const latest = group.points[group.points.length - 1];
+  const pressureDelta = Number(group.deltas?.pressure_delta ?? 0);
+  const fractureDelta = Number(group.deltas?.fracture_delta ?? 0);
+  const pressureTone = pressureBucketTone(latest?.pressure_bucket ?? "low");
+  const bars = group.points.slice(-8);
+  return (
+    <div className="rounded-[14px] border border-white bg-white px-3 py-2 shadow-[0_8px_20px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-800">{group.group_label}</p>
+          <p className="mt-0.5 text-[11px] uppercase tracking-[0.12em] text-slate-500">
+            {group.latest_stance} · {latest?.pressure_bucket ?? "low"}
+          </p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${pressureTone}`}>
+          {Math.round(group.latest_pressure * 100)}
+        </span>
+      </div>
+      <div className="mt-2 flex h-9 items-end gap-1" aria-label="belief pressure mini chart">
+        {bars.map((point) => (
+          <div
+            key={`${group.group_id}-${point.t}`}
+            className={`flex-1 rounded-t-[6px] ${pressureBarClass(point.pressure_bucket)}`}
+            style={{ height: `${Math.max(12, Math.min(100, point.collective_pressure * 100))}%` }}
+            title={`t=${point.t} pressure=${point.collective_pressure}`}
+          />
+        ))}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-500">
+        <span>
+          {isKo ? "압력Δ" : "pressureΔ"} {formatSigned(pressureDelta)}
+        </span>
+        <span>
+          {isKo ? "균열Δ" : "fractureΔ"} {formatSigned(fractureDelta)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function pressureBucketTone(bucket: string): string {
+  if (bucket === "critical") return "bg-rose-100 text-rose-700";
+  if (bucket === "elevated") return "bg-orange-100 text-orange-700";
+  if (bucket === "watch") return "bg-amber-100 text-amber-700";
+  return "bg-sky-100 text-sky-700";
+}
+
+function pressureBarClass(bucket: string): string {
+  if (bucket === "critical") return "bg-rose-500";
+  if (bucket === "elevated") return "bg-orange-400";
+  if (bucket === "watch") return "bg-amber-300";
+  return "bg-sky-300";
+}
+
+function formatSigned(value: number): string {
+  if (!Number.isFinite(value)) return "0.00";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
 }
 
 function CollectiveListCard({

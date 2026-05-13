@@ -76,8 +76,13 @@ export class PixiSceneController {
 
   resize(width: number, height: number) {
     if (width <= 0 || height <= 0) return;
+    const centerWorldX = this.screenToWorldX(this.viewportWidth / 2);
+    const centerWorldY = this.screenToWorldY(this.viewportHeight / 2);
     this.viewportWidth = width;
     this.viewportHeight = height;
+    const scale = this.viewportScale();
+    this.offsetX = width / 2 - centerWorldX * scale;
+    this.offsetY = height / 2 - centerWorldY * scale;
     this.applyViewportTransform();
     this.shockFlashOverlay.clear();
     this.shockFlashOverlay.beginFill(0xf8fafc, 0);
@@ -98,6 +103,7 @@ export class PixiSceneController {
   }
 
   setLayerVisibility(layers: PixiLayerVisibility) {
+    this.zoneRegionLayer.container.visible = layers.zones;
     this.agentLayer.container.visible = layers.agents;
     this.clusterLayer.container.visible = layers.clusters;
     this.pressureLayer.container.visible = layers.pressure;
@@ -130,10 +136,17 @@ export class PixiSceneController {
     const worldX = this.screenToWorldX(screenX);
     const worldY = this.screenToWorldY(screenY);
     this.zoom = Math.max(0.75, Math.min(3.2, this.zoom * factor));
-    const scaleX = this.viewportScaleX();
-    const scaleY = this.viewportScaleY();
-    this.offsetX = screenX - worldX * scaleX;
-    this.offsetY = screenY - worldY * scaleY;
+    const scale = this.viewportScale();
+    this.offsetX = screenX - worldX * scale;
+    this.offsetY = screenY - worldY * scale;
+    this.applyViewportTransform();
+  }
+
+  resetCamera() {
+    this.zoom = 1;
+    const scale = this.viewportScale();
+    this.offsetX = (this.viewportWidth - this.sceneWidth * scale) / 2;
+    this.offsetY = (this.viewportHeight - this.sceneHeight * scale) / 2;
     this.applyViewportTransform();
   }
 
@@ -141,8 +154,8 @@ export class PixiSceneController {
     return {
       offsetX: this.offsetX,
       offsetY: this.offsetY,
-      scaleX: this.viewportScaleX(),
-      scaleY: this.viewportScaleY(),
+      scaleX: this.viewportScale(),
+      scaleY: this.viewportScale(),
       zoom: this.zoom,
     };
   }
@@ -168,24 +181,24 @@ export class PixiSceneController {
 
   private applyViewportTransform() {
     this.root.position.set(this.offsetX, this.offsetY);
-    this.root.scale.set(this.viewportScaleX(), this.viewportScaleY());
+    const scale = this.viewportScale();
+    this.root.scale.set(scale, scale);
     this.onCameraStateChange?.(this.getCameraState());
   }
 
-  private viewportScaleX() {
-    return (this.viewportWidth / this.sceneWidth) * this.zoom;
-  }
-
-  private viewportScaleY() {
-    return (this.viewportHeight / this.sceneHeight) * this.zoom;
+  private viewportScale() {
+    return Math.min(
+      this.viewportWidth / this.sceneWidth,
+      this.viewportHeight / this.sceneHeight
+    ) * this.zoom;
   }
 
   private screenToWorldX(screenX: number) {
-    return (screenX - this.offsetX) / this.viewportScaleX();
+    return (screenX - this.offsetX) / this.viewportScale();
   }
 
   private screenToWorldY(screenY: number) {
-    return (screenY - this.offsetY) / this.viewportScaleY();
+    return (screenY - this.offsetY) / this.viewportScale();
   }
 
   private drawField(renderTime: number) {

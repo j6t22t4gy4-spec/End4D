@@ -6,9 +6,21 @@ import { CenterMapToolbar } from "@/components/center-map/CenterMapToolbar";
 import { CenterMapViewport } from "@/components/center-map/CenterMapViewport";
 import type { CenterMapShellProps, CenterMapVisibleLayers } from "@/components/center-map/types";
 
+const LAYER_STATUS_LABELS: Record<keyof CenterMapVisibleLayers, string> = {
+  zones: "zones",
+  agents: "agents",
+  heat: "pressure",
+  shock: "shock",
+  drift: "drift",
+  anchors: "anchors",
+  labels: "labels",
+  clusters: "clusters",
+};
+
 function defaultVisibleLayers(mode: CenterMapShellProps["mode"]): CenterMapVisibleLayers {
   if (mode === "swarm") {
     return {
+      zones: true,
       agents: false,
       heat: true,
       shock: true,
@@ -19,6 +31,7 @@ function defaultVisibleLayers(mode: CenterMapShellProps["mode"]): CenterMapVisib
     };
   }
   return {
+    zones: true,
     agents: true,
     heat: true,
     shock: false,
@@ -39,6 +52,7 @@ export function CenterMapShell({
   groundingItems = [],
   collectiveSummary,
   reviewSummary,
+  locale = "ko",
   selectedAgentId = null,
   selectedZoneId = null,
   selectedBandKey = null,
@@ -49,6 +63,7 @@ export function CenterMapShell({
   onJumpToT,
 }: CenterMapShellProps) {
   const [visibleLayers, setVisibleLayers] = useState<CenterMapVisibleLayers>(() => defaultVisibleLayers(mode));
+  const [cameraResetSignal, setCameraResetSignal] = useState(0);
 
   const focusSummary = useMemo(() => {
     const roleFracture = Math.round((collectiveSummary?.role?.avg_fracture_risk ?? 0) * 100);
@@ -68,10 +83,11 @@ export function CenterMapShell({
   }, [cells, collectiveSummary, reviewSummary]);
 
   return (
-    <div className="grid gap-3">
+    <div className="center-map-shell flex min-h-0 flex-1 flex-col gap-3">
       <CenterMapToolbar
         mode={mode}
         currentT={currentT}
+        locale={locale}
         visibleLayers={visibleLayers}
         onToggleLayer={(key) =>
           setVisibleLayers((prev) => ({
@@ -80,10 +96,11 @@ export function CenterMapShell({
           }))
         }
         onClearSelection={onClearSelection}
+        onResetCamera={() => setCameraResetSignal((signal) => signal + 1)}
       />
 
-      <div className="grid gap-2">
-        <div className="min-h-[640px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
           <CenterMapViewport
             mode={mode}
             cells={cells}
@@ -95,6 +112,7 @@ export function CenterMapShell({
             selectedAgentId={selectedAgentId}
             selectedZoneId={selectedZoneId}
             selectedBandKey={selectedBandKey}
+            cameraResetSignal={cameraResetSignal}
             visibleLayers={visibleLayers}
             onSelectAgent={onSelectAgent}
             onSelectZone={onSelectZone}
@@ -104,7 +122,7 @@ export function CenterMapShell({
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
           <div className="flex flex-wrap items-center gap-3">
             <span>pressure {focusSummary.avgPressure}%</span>
             <span>fracture {focusSummary.roleFracture}%</span>
@@ -119,7 +137,7 @@ export function CenterMapShell({
                     key={key}
                     className="rounded-md bg-sky-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-700"
                   >
-                    {key}
+                    {LAYER_STATUS_LABELS[key as keyof CenterMapVisibleLayers]}
                   </span>
                 ))}
           </div>

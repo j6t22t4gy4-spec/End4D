@@ -26,6 +26,7 @@ type PixiStageHostProps = {
 };
 
 export type PixiLayerVisibility = {
+  zones: boolean;
   agents: boolean;
   clusters: boolean;
   pressure: boolean;
@@ -39,6 +40,7 @@ export type PixiInteractionApi = {
   panByScreen: (dx: number, dy: number) => void;
   zoomAtScreen: (factor: number, x: number, y: number) => void;
   zoomAtNormalized: (factor: number, x: number, y: number) => void;
+  resetCamera: () => void;
 };
 
 export function PixiStageHost({
@@ -102,6 +104,7 @@ export function PixiStageHost({
             host.clientWidth * x,
             host.clientHeight * y
           ),
+        resetCamera: () => controller.resetCamera(),
       });
 
       resizeObserver = new ResizeObserver((entries) => {

@@ -1,8 +1,16 @@
 """프롬프트 기반 세계 제안 (world_genesis 스텁)."""
 import json
 
+import pytest
+
 from app.core.persona_dataset import PersonaSeed
 from app.core.world_genesis import apply_persona_distribution_to_plan, propose_world_from_prompt
+
+
+@pytest.fixture(autouse=True)
+def disable_live_llm(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_CHAT_ENABLED", "0")
+    monkeypatch.setenv("ORGANIC4D_LLM_PROVIDER", "stub")
 
 
 def test_genesis_returns_plan():
@@ -92,3 +100,6 @@ def test_genesis_can_absorb_persona_distribution():
     assert adjusted.role_catalog[0] in {"분석가", "자영업자"}
     assert bias["zone_count"] >= 2
     assert adjusted.nutrient_per_step >= plan.nutrient_per_step
+    assert "initial_bias" in bias
+    assert "energy_offset" in bias["initial_bias"]
+    assert bias["z_scale_multiplier"] >= 1.0

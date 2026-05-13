@@ -153,9 +153,15 @@ def create_world(req: CreateWorldRequest):
         "zone_count": int(persona_bias.get("zone_count", engine_params.get("zone_count", 1) or 1)),
         "zone_layout": str(persona_bias.get("zone_layout", engine_params.get("zone_layout", "grid"))),
         "regional_labels": list(persona_bias.get("regional_labels") or []),
+        "zone_influence_step": float(persona_bias.get("zone_influence_step", engine_params.get("zone_influence_step", 0.08) or 0.08)),
+        "zone_friction_step": float(persona_bias.get("zone_friction_step", engine_params.get("zone_friction_step", 0.1) or 0.1)),
+        "persona_initial_bias": dict(persona_bias.get("initial_bias") or {}),
+        "persona_z_scale_multiplier": float(persona_bias.get("z_scale_multiplier", 1.0) or 1.0),
         "persona_role_catalog": list(persona_bias.get("role_catalog") or []),
         "persona_distribution_summary": persona_distribution_summary,
     }
+    base_z_scale = float(engine_params.get("z_scale", 12.0))
+    persona_z_scale = base_z_scale * float(inferred_engine_params.get("persona_z_scale_multiplier") or 1.0)
     simulation_config = {
         "schema_version": "simulation-config/v3",
         "t_max": float(plan.t_max),
@@ -173,9 +179,9 @@ def create_world(req: CreateWorldRequest):
             "control_mode": "god" if god_enabled else "auto",
             "auto_roles_from_personas": auto_roles_from_personas,
             "genesis_mode": "persona-aware" if persona_catalog else "heuristic",
-            "z_mode": str(engine_params.get("z_mode", "hybrid")),
+            "z_mode": str(engine_params.get("z_mode", persona_bias.get("z_mode", "hybrid"))),
             "z_weight": float(engine_params.get("z_weight", 0.08)),
-            "z_scale": float(engine_params.get("z_scale", 12.0)),
+            "z_scale": float(engine_params.get("z_scale", persona_z_scale)),
         },
         "comparison_meta": {},
     }

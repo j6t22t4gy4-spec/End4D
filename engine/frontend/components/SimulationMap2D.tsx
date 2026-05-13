@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
 
 import {
   emotionToColorAndScale,
@@ -23,6 +23,7 @@ type SimulationMap2DProps = {
   totalCells: number;
   sampled: boolean;
   showPressureField?: boolean;
+  showZoneLayer?: boolean;
   showShockLayer?: boolean;
   showAnchorLayer?: boolean;
   showDriftLayer?: boolean;
@@ -37,11 +38,16 @@ type SimulationMap2DProps = {
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;
+  cameraResetSignal?: number;
   onSelectAgent?: (cell: CellSnapshot) => void;
   onSelectZone?: (zone: SelectedZone) => void;
   onSelectBand?: (band: SelectedBand) => void;
   onClearSelection?: () => void;
   onJumpToT?: (t: number) => void;
+};
+
+type CenterMapWheelEvent = globalThis.WheelEvent & {
+  __centerMapHandled?: boolean;
 };
 
 export type ZoneBox = {
@@ -112,6 +118,7 @@ export default function SimulationMap2D({
   totalCells,
   sampled,
   showPressureField = true,
+  showZoneLayer = true,
   showShockLayer = true,
   showAnchorLayer = true,
   showDriftLayer = false,
@@ -126,6 +133,7 @@ export default function SimulationMap2D({
   selectedAgentId = null,
   selectedZoneId = null,
   selectedBandKey = null,
+  cameraResetSignal = 0,
   onSelectAgent,
   onSelectZone,
   onSelectBand,
@@ -150,7 +158,9 @@ export default function SimulationMap2D({
     scaleY: 1,
     zoom: 1,
   });
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const pixiInteractionRef = useRef<PixiInteractionApi | null>(null);
+  const lastCameraResetSignalRef = useRef(cameraResetSignal);
   const dragRef = useRef<{ active: boolean; moved: boolean; x: number; y: number }>({
     active: false,
     moved: false,
@@ -175,6 +185,48 @@ export default function SimulationMap2D({
     sampled ? "sampled" : "full",
   ];
 
+  useEffect(() => {
+    if (cameraResetSignal === lastCameraResetSignalRef.current) return;
+    lastCameraResetSignalRef.current = cameraResetSignal;
+    pixiInteractionRef.current?.resetCamera();
+  }, [cameraResetSignal]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const handleWheel = (event: globalThis.WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if ((event as CenterMapWheelEvent).__centerMapHandled) return;
+      const rect = stage.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const factor = event.deltaY < 0 ? 1.08 : 0.92;
+      pixiInteractionRef.current?.zoomAtScreen(
+        factor,
+        event.clientX - rect.left,
+        event.clientY - rect.top
+      );
+    };
+
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", handleWheel);
+  }, [cells.length]);
+
+  const handleStageWheel = (event: WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    (event.nativeEvent as CenterMapWheelEvent).__centerMapHandled = true;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const factor = event.deltaY < 0 ? 1.08 : 0.92;
+    pixiInteractionRef.current?.zoomAtScreen(
+      factor,
+      event.clientX - rect.left,
+      event.clientY - rect.top
+    );
+  };
+
   return (
     <div className="simulation-map">
       <div className="simulation-map__viewport">
@@ -187,7 +239,9 @@ export default function SimulationMap2D({
           </div>
         ) : (
           <div
+            ref={stageRef}
             className="simulation-map__stage"
+            onWheelCapture={handleStageWheel}
             onPointerDown={(event) => {
               const target = event.target as Element | null;
               if (target?.closest(".simulation-map__zone-chip, .simulation-map__anchor-pin")) {
@@ -246,17 +300,6 @@ export default function SimulationMap2D({
               setHoveredAgentId(null);
               setHoverPosition(null);
             }}
-            onWheel={(event) => {
-              event.preventDefault();
-              const rect = event.currentTarget.getBoundingClientRect();
-              if (rect.width <= 0 || rect.height <= 0) return;
-              const factor = event.deltaY < 0 ? 1.08 : 0.92;
-              pixiInteractionRef.current?.zoomAtScreen(
-                factor,
-                event.clientX - rect.left,
-                event.clientY - rect.top
-              );
-            }}
             onClick={(event) => {
               const target = event.target as Element | null;
               if (dragRef.current.moved || target?.closest(".simulation-map__zone-chip, .simulation-map__anchor-pin")) {
@@ -301,6 +344,7 @@ export default function SimulationMap2D({
               transitionPhase={transitionPhase}
               pointerField={pointerField}
               layerVisibility={{
+                zones: showZoneLayer,
                 agents: showAgentLayer,
                 clusters: showClusterLayer,
                 pressure: showPressureField,

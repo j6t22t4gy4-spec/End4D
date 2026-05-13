@@ -41,6 +41,7 @@ def _create_initial_cells(
     zone_friction_step = max(0.0, float(params.get("zone_friction_step", 0.1)))
     regional_labels = [str(label).strip() for label in params.get("regional_labels") or [] if str(label).strip()]
     region_zone_map = {label: idx for idx, label in enumerate(regional_labels[:zone_count])}
+    initial_bias = dict(params.get("persona_initial_bias") or {})
 
     cells = []
     grid_width = max(1, math.ceil(count ** 0.5))
@@ -76,8 +77,17 @@ def _create_initial_cells(
             x = float(col * spacing)
             y = float(row * spacing)
         age = _safe_age(attrs.get("age"))
-        initial_energy = 50.0 + _energy_bias_from_persona(label=label, attrs=attrs, age=age)
-        action_state = _seed_action_state_from_persona(label=label, attrs=attrs, zone_index=zone_index)
+        initial_energy = (
+            50.0
+            + float(initial_bias.get("energy_offset", 0.0) or 0.0)
+            + _energy_bias_from_persona(label=label, attrs=attrs, age=age)
+        )
+        action_state = _seed_action_state_from_persona(
+            label=label,
+            attrs=attrs,
+            zone_index=zone_index,
+            initial_bias=initial_bias,
+        )
         cell = Cell(
                 x=x,
                 y=y,
@@ -134,7 +144,14 @@ def _energy_bias_from_persona(*, label: str, attrs: Dict[str, Any], age: int | N
     return bias
 
 
-def _seed_action_state_from_persona(*, label: str, attrs: Dict[str, Any], zone_index: int) -> Dict[str, Any]:
+def _seed_action_state_from_persona(
+    *,
+    label: str,
+    attrs: Dict[str, Any],
+    zone_index: int,
+    initial_bias: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    global_bias = dict(initial_bias or {})
     role_text = label.lower()
     cooperation = 0.54 if any(token in role_text for token in ("시민", "가계", "관측")) else 0.48
     policy = 0.58 if any(token in role_text for token in ("규제", "정부", "공공")) else 0.44
@@ -148,6 +165,10 @@ def _seed_action_state_from_persona(*, label: str, attrs: Dict[str, Any], zone_i
     policy += priors["policy_delta"]
     resource += priors["resource_delta"]
     mobility += priors["mobility_delta"]
+    cooperation += float(global_bias.get("cooperation_delta", 0.0) or 0.0)
+    policy += float(global_bias.get("policy_sensitivity_delta", 0.0) or 0.0)
+    resource += float(global_bias.get("resource_delta", 0.0) or 0.0)
+    mobility += float(global_bias.get("mobility_delta", 0.0) or 0.0)
     return {
         "cooperation_bias": round(max(0.0, min(1.0, cooperation)), 4),
         "policy_sensitivity": round(max(0.0, min(1.0, policy)), 4),
@@ -156,6 +177,11 @@ def _seed_action_state_from_persona(*, label: str, attrs: Dict[str, Any], zone_i
         "strategy_summary": "persona_seeded_initial_state",
         "persona_prior_summary": priors["summary"],
         "persona_prior_factors": priors["factors"],
+        "persona_distribution_bias": {
+            key: round(float(value), 4)
+            for key, value in global_bias.items()
+            if isinstance(value, (int, float))
+        },
     }
 
 

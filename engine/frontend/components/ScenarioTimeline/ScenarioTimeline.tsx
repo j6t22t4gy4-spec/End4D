@@ -27,6 +27,7 @@ type ScenarioTimelineProps = {
   annotations?: TimelineAnnotation[];
   emergentCurve?: Array<{ t: number; avg_z: number; cell_count: number }>;
   onJumpToT?: (t: number) => void;
+  compact?: boolean;
 };
 
 export function ScenarioTimeline({
@@ -36,6 +37,7 @@ export function ScenarioTimeline({
   annotations = [],
   emergentCurve = [],
   onJumpToT,
+  compact = false,
 }: ScenarioTimelineProps) {
   const isKo = locale === "ko";
   const [points, setPoints] = useState<TimelinePoint[]>([]);
@@ -101,8 +103,16 @@ export function ScenarioTimeline({
   return (
     <AppPanel
       title={isKo ? "타임라인" : "Timeline"}
-      subtitle={isKo ? "실행 추세, 에너지 흐름, 주요 이벤트 압력" : "Run trend, energy flow, and key event pressure"}
-      bodyClassName="space-y-2"
+      subtitle={
+        compact
+          ? isKo
+            ? "주요 변화와 이벤트를 빠르게 스크럽합니다"
+            : "Scrub major changes and events quickly"
+          : isKo
+            ? "실행 추세, 에너지 흐름, 주요 이벤트 압력"
+            : "Run trend, energy flow, and key event pressure"
+      }
+      bodyClassName={compact ? "space-y-2 scenario-timeline--compact" : "space-y-2"}
       testId="scenario-timeline"
     >
       <div className="flex flex-wrap gap-2">
@@ -132,8 +142,8 @@ export function ScenarioTimeline({
         <p className="text-xs text-slate-500">시뮬 실행 후 데이터가 표시됩니다.</p>
       )}
       {chartData.length > 0 && (
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <div className="h-72 w-full min-w-0 xl:h-[20rem]">
+        <div className={compact ? "grid gap-3" : "grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]"}>
+          <div className={compact ? "h-40 w-full min-w-0" : "h-72 w-full min-w-0 xl:h-[20rem]"}>
             <ResponsiveContainer width="100%" height="100%">
               {mode === "events" ? (
                 <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -225,8 +235,9 @@ export function ScenarioTimeline({
               )}
             </ResponsiveContainer>
           </div>
-          <div className="grid gap-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className={compact ? "grid max-h-44 gap-2 overflow-y-auto pr-1" : "grid gap-2"}>
+            {!compact ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 {isKo ? "분석 메모" : "Analysis Notes"}
               </p>
@@ -235,7 +246,8 @@ export function ScenarioTimeline({
                   ? "`Overview`는 전체 추세, `Events`는 annotation이 집중된 시점, `Worldview`는 사회적 고도와 장기 emergent dynamics를 따로 읽기 위한 레이어입니다."
                   : "`Overview` shows total trends, `Events` isolates annotation pressure, and `Worldview` tracks long-run social elevation dynamics."}
               </p>
-            </div>
+              </div>
+            ) : null}
             {latestAnnotations.length ? (
               <div className="grid gap-2">
                 {latestAnnotations.map((item) => (

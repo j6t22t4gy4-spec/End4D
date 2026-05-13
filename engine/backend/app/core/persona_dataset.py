@@ -412,6 +412,23 @@ def persona_genesis_bias(personas: List[PersonaSeed]) -> dict:
     top_roles = list(summary["top_roles"])
     youth_share = summary["age_buckets"]["youth"] / persona_count
     senior_share = summary["age_buckets"]["senior"] / persona_count
+    working_share = summary["age_buckets"]["working"] / persona_count
+    market_share = _persona_token_share(
+        personas,
+        ["entrepreneur", "founder", "business", "trader", "investor", "자영업", "사업", "투자", "상인", "시장"],
+    )
+    public_share = _persona_token_share(
+        personas,
+        ["teacher", "nurse", "social worker", "care", "public", "교사", "간호", "복지", "공무", "정부", "공공"],
+    )
+    mobile_share = _persona_token_share(
+        personas,
+        ["driver", "delivery", "field", "sales", "logistics", "운전", "배송", "영업", "물류", "이동"],
+    )
+    urban_share = _persona_token_share(
+        personas,
+        ["capital", "seoul", "metro", "urban", "서울", "수도권", "도심", "부산", "대구", "인천"],
+    )
     zone_count = max(1, min(8, len(top_regions) or 1))
     z_mode = "influence" if len(top_roles) >= 4 else "hybrid"
     nutrient_multiplier = 1.0 + min(0.45, summary["role_diversity"] * 1.2)
@@ -427,7 +444,42 @@ def persona_genesis_bias(personas: List[PersonaSeed]) -> dict:
         "regional_labels": [item["label"] for item in top_regions[:8]],
         "nutrient_multiplier": round(nutrient_multiplier, 4),
         "z_mode": z_mode,
+        "z_scale_multiplier": round(1.0 + min(0.22, summary["regional_diversity"] * 0.8), 4),
+        "zone_influence_step": round(0.06 + min(0.08, public_share * 0.08 + urban_share * 0.04), 4),
+        "zone_friction_step": round(0.06 + min(0.1, mobile_share * 0.05 + summary["regional_diversity"] * 0.08), 4),
+        "initial_bias": {
+            "energy_offset": round((working_share * 1.2) + (senior_share * 2.0) - (youth_share * 1.2) + (market_share * 1.3), 4),
+            "cooperation_delta": round(public_share * 0.08 + senior_share * 0.02, 4),
+            "policy_sensitivity_delta": round(public_share * 0.07 + urban_share * 0.04 + youth_share * 0.02, 4),
+            "resource_delta": round(market_share * 0.1 + working_share * 0.02, 4),
+            "mobility_delta": round(mobile_share * 0.1 + youth_share * 0.04 - senior_share * 0.03, 4),
+        },
     }
+
+
+def _persona_token_share(personas: List[PersonaSeed], tokens: List[str]) -> float:
+    if not personas:
+        return 0.0
+    hits = 0
+    lowered_tokens = [token.lower() for token in tokens]
+    for persona in personas:
+        attrs = dict(persona.attrs or {})
+        text = " ".join(
+            [
+                persona.role_key,
+                persona.role_label,
+                persona.persona_text,
+                str(attrs.get("occupation", "")),
+                str(attrs.get("hobbies_and_interests", "")),
+                str(attrs.get("province", "")),
+                str(attrs.get("district", "")),
+                str(attrs.get("region", "")),
+                str(attrs.get("city", "")),
+            ]
+        ).lower()
+        if any(token in text for token in lowered_tokens):
+            hits += 1
+    return hits / max(1, len(personas))
 
 
 def _persona_region(persona: PersonaSeed) -> str:

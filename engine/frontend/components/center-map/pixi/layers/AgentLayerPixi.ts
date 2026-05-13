@@ -75,8 +75,10 @@ export class AgentLayerPixi {
   }
 
   animate(renderTime: number, pointerField: PointerField) {
-    const pointerPushX = (pointerField.x - 0.5) * (pointerField.active ? 8 : 3);
-    const pointerPushY = (pointerField.y - 0.5) * (pointerField.active ? 7 : 2.5);
+    void renderTime;
+
+    const pointerPushX = pointerField.active ? (pointerField.x - 0.5) * 3.5 : 0;
+    const pointerPushY = pointerField.active ? (pointerField.y - 0.5) * 3 : 0;
     const hoveredVisual = Array.from(this.visuals.values()).find((visual) => visual.hovered);
     const selectedVisual = Array.from(this.visuals.values()).find((visual) => visual.selected);
     const anchorVisual = hoveredVisual ?? selectedVisual;
@@ -98,26 +100,18 @@ export class AgentLayerPixi {
       visual.x += (visual.targetX - visual.x) * lerpGain;
       visual.y += (visual.targetY - visual.y) * lerpGain;
 
-      const driftWeight = 0.04 + visual.pressure * 0.08 + (visual.hovered ? 0.03 : 0);
-      const floatX =
-        Math.sin(renderTime * (0.9 + visual.phase * 0.25) + visual.phase * 6) *
-        (1.1 + visual.pressure * 1.8 + (visual.hovered ? 0.6 : 0) + (visual.selected ? 0.8 : 0));
-      const floatY =
-        Math.cos(renderTime * (1.1 + visual.phase * 0.22) + visual.phase * 7) *
-        (0.9 + visual.pressure * 1.5 + (visual.hovered ? 0.5 : 0) + (visual.selected ? 0.7 : 0));
+      const driftWeight = visual.hovered || visual.selected ? 0.08 : 0.025;
 
       visual.container.position.set(
-        visual.x + floatX + pointerPushX * driftWeight,
-        visual.y + floatY + pointerPushY * driftWeight
+        visual.x + pointerPushX * driftWeight,
+        visual.y + pointerPushY * driftWeight
       );
       visual.container.scale.set(
         1 + (visual.hovered ? 0.1 : 0) + (visual.selected ? 0.08 : 0) + neighborFocus * 0.12
       );
       visual.container.alpha = isolationDim;
 
-      const haloPulse =
-        0.99 + ((Math.sin(renderTime * (1.3 + visual.phase) + visual.phase * 10) + 1) / 2) * 0.12;
-      visual.halo.scale.set(haloPulse);
+      visual.halo.scale.set(1);
       visual.halo.alpha = Math.min(
         0.34,
         0.08 +
@@ -128,36 +122,24 @@ export class AgentLayerPixi {
           (visual.selected ? 0.09 : 0)
       );
 
-      const hoverGlowPulse =
-        1.02 + ((Math.cos(renderTime * (2 + visual.phase * 0.5) + visual.phase * 9) + 1) / 2) * 0.14;
-      visual.hoverGlow.scale.set(hoverGlowPulse);
+      visual.hoverGlow.scale.set(visual.hovered ? 1.08 : 1);
       visual.hoverGlow.alpha = visual.hovered
-        ? 0.34 + ((Math.sin(renderTime * 4.1 + visual.phase * 10) + 1) / 2) * 0.12
+        ? 0.36
         : visual.selected
           ? 0.22
           : 0;
 
-      const fracturePulse =
-        1.01 + ((Math.sin(renderTime * (3.2 + visual.phase * 0.7) + visual.phase * 8) + 1) / 2) * 0.18;
-      visual.fractureAura.scale.set(fracturePulse);
+      visual.fractureAura.scale.set(1.08);
       visual.fractureAura.alpha = visual.fractureSignal
-        ? 0.18 + ((Math.sin(renderTime * 4.6 + visual.phase * 11) + 1) / 2) * 0.12
+        ? 0.22
         : 0;
 
-      const corePulse =
-        1 +
-        ((Math.cos(renderTime * (2.2 + visual.phase * 0.7)) + 1) / 2) *
-          (visual.hovered ? 0.18 : visual.selected ? 0.22 : 0.1);
-      visual.core.scale.set(corePulse);
+      visual.core.scale.set(1 + (visual.hovered ? 0.08 : visual.selected ? 0.1 : 0));
       visual.core.alpha = hoveredVisual && !visual.hovered && !visual.selected
         ? 0.68 + neighborFocus * 0.32
         : isolationDim;
 
-      const ringPulse =
-        1 +
-        ((Math.sin(renderTime * (3.1 + visual.phase * 0.5) + visual.phase * 8) + 1) / 2) *
-          (visual.selected ? 0.28 : visual.hovered ? 0.22 : 0.18);
-      visual.ring.scale.set(ringPulse);
+      visual.ring.scale.set(visual.selected ? 1.12 : visual.hovered ? 1.08 : 1);
       visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal ? 0.78 : 0.0;
     }
   }

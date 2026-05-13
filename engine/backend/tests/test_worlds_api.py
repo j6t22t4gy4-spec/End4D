@@ -213,6 +213,8 @@ def test_create_world_includes_persona_distribution_summary_from_pack(tmp_path, 
     assert summary["persona_count"] >= 1
     assert data["simulation_config"]["engine_params"]["genesis_mode"] == "persona-aware"
     assert data["simulation_config"]["engine_params"]["zone_count"] >= 1
+    assert "persona_initial_bias" in data["simulation_config"]["engine_params"]
+    assert data["simulation_config"]["engine_params"]["z_scale"] >= 12.0
 
 
 def test_delete_world_removes_it_from_store():

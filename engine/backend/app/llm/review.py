@@ -16,6 +16,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any], *, compact: bool = F
                 ("world_meta", _compact(payload.get("world_meta") or {})),
                 ("summary_stats", _compact(payload.get("summary_stats") or {})),
                 ("group_analysis", _compact(payload.get("group_analysis") or {})),
+                ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
                 ("lineage_summary", _compact(_compact_lineage_summary(payload.get("lineage_summary") or {}))),
                 ("mechanism_summary", _compact(_compact_mechanism_summary(payload.get("mechanism_summary") or {}))),
                 ("policy_lineage_bridge", _compact(_compact_policy_lineage_bridge(payload.get("policy_lineage_bridge") or {}))),
@@ -34,6 +35,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any], *, compact: bool = F
             ("world_meta", _compact(payload.get("world_meta") or {})),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
@@ -74,6 +76,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any], *, compact: bool =
                 ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=4)),
                 ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
                 ("mechanism_delta", _compact(_compact_mechanism_summary(diff_payload.get("mechanism_delta") or {}))),
+                ("belief_trajectory_delta", _compact(_compact_belief_trajectory_delta(diff_payload.get("belief_trajectory_delta") or {}))),
                 ("lineage_delta", _compact(_compact_lineage_summary(diff_payload.get("lineage_delta") or {}))),
                 ("policy_lineage_delta", _compact(_compact_policy_lineage_bridge(diff_payload.get("policy_lineage_delta") or {}))),
                 ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
@@ -91,6 +94,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any], *, compact: bool =
             ("zone_z_delta", _compact_list(diff_payload.get("zone_z_delta") or [], limit=6)),
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
             ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
+            ("belief_trajectory_delta", _compact(_compact_belief_trajectory_delta(diff_payload.get("belief_trajectory_delta") or {}))),
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
             ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
@@ -110,6 +114,7 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("question", question),
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
+            ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
@@ -1179,6 +1184,55 @@ def _compact_policy_lineage_bridge(summary: Mapping[str, Any]) -> dict[str, Any]
         "dominant_bridge": dict(summary.get("dominant_bridge") or {}),
         "bridge_gaps": list(summary.get("bridge_gaps") or [])[:3],
         "tracked_channels": list(summary.get("tracked_channels") or [])[:4],
+    }
+
+
+def _compact_belief_trajectory(summary: Mapping[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {
+        "t_min": summary.get("t_min"),
+        "t_max": summary.get("t_max"),
+        "point_count": summary.get("point_count"),
+    }
+    for axis in ("role", "persona", "zone"):
+        payload = dict(summary.get(axis) or {})
+        rows = []
+        for group in list(payload.get("groups") or [])[:3]:
+            if not isinstance(group, Mapping):
+                continue
+            deltas = dict(group.get("deltas") or {})
+            rows.append(
+                {
+                    "label": str(group.get("group_label") or ""),
+                    "stance": str(group.get("latest_stance") or ""),
+                    "bucket": str(group.get("latest_bucket") or ""),
+                    "pressure": group.get("latest_pressure"),
+                    "pressure_delta": deltas.get("pressure_delta"),
+                    "fracture_delta": deltas.get("fracture_delta"),
+                }
+            )
+        compact[axis] = {
+            "group_count": payload.get("group_count"),
+            "groups": rows,
+        }
+    return compact
+
+
+def _compact_belief_trajectory_delta(summary: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "summary": dict(summary.get("summary") or {}),
+        "top_diverging": [
+            {
+                "axis": str(item.get("axis") or ""),
+                "label": str(item.get("group_label") or ""),
+                "stance": f"{item.get('stance_base', 'n/a')}->{item.get('stance_target', 'n/a')}",
+                "pressure_gap": item.get("latest_pressure_gap"),
+                "pressure_delta_gap": item.get("pressure_delta_gap"),
+                "fracture_delta_gap": item.get("fracture_delta_gap"),
+                "signal": str(item.get("trajectory_signal") or ""),
+            }
+            for item in list(summary.get("top_diverging") or [])[:4]
+            if isinstance(item, Mapping)
+        ],
     }
 
 

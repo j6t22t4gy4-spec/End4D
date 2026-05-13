@@ -34,6 +34,13 @@ def test_review_summary_returns_summary_and_annotations():
     assert payload["summary_mode"] in {"heuristic", "llm"}
     assert isinstance(payload["timeline_annotations"], list)
     assert "metrics" in payload
+    assert "belief_trajectory" in payload
+    assert payload["belief_trajectory"]["role"]["group_count"] >= 1
+    assert payload["belief_trajectory"]["zone"]["group_count"] >= 1
+    assert "persona" in payload["belief_trajectory"]
+    first_role = payload["belief_trajectory"]["role"]["groups"][0]
+    assert "points" in first_role
+    assert "deltas" in first_role
     assert "grounding" in payload
     assert "citations" in payload
     assert "causal_analysis.0" in payload["citations"]
@@ -124,6 +131,9 @@ def test_review_diff_returns_comparison():
     assert "policy_mechanism_delta" in payload["compared_metrics"]
     assert "lineage_delta" in payload["compared_metrics"]
     assert "policy_lineage_delta" in payload["compared_metrics"]
+    assert "belief_trajectory_delta" in payload["compared_metrics"]
+    assert "summary" in payload["compared_metrics"]["belief_trajectory_delta"]
+    assert "top_diverging" in payload["compared_metrics"]["belief_trajectory_delta"]
     assert "group_table_delta" in payload["compared_metrics"]
     assert "base_worldview_curve" in payload["compared_metrics"]
     assert "target_worldview_curve" in payload["compared_metrics"]

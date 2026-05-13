@@ -18,6 +18,7 @@ type CenterMapViewportProps = {
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;
+  cameraResetSignal?: number;
   visibleLayers: CenterMapVisibleLayers;
   onSelectAgent?: (cell: CellSnapshot) => void;
   onSelectZone?: (zone: SelectedZone) => void;
@@ -37,6 +38,7 @@ export function CenterMapViewport({
   selectedAgentId = null,
   selectedZoneId = null,
   selectedBandKey = null,
+  cameraResetSignal = 0,
   visibleLayers,
   onSelectAgent,
   onSelectZone,
@@ -106,6 +108,7 @@ export function CenterMapViewport({
           cells={cells}
           totalCells={totalCells}
           sampled={sampled}
+          showZoneLayer={visibleLayers.zones}
           showPressureField={visibleLayers.heat}
           showShockLayer={visibleLayers.shock}
           showAnchorLayer={visibleLayers.anchors}
@@ -121,6 +124,7 @@ export function CenterMapViewport({
           selectedAgentId={selectedAgentId}
           selectedZoneId={selectedZoneId}
           selectedBandKey={selectedBandKey}
+          cameraResetSignal={cameraResetSignal}
           onSelectAgent={onSelectAgent}
           onSelectZone={onSelectZone}
           onSelectBand={onSelectBand}

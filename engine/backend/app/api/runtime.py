@@ -149,6 +149,7 @@ class RuntimeLlmRuntimeResponse(BaseModel):
     fallback_reason_counts: Dict[str, int] = Field(default_factory=dict)
     recommended_actions: List[str] = Field(default_factory=list)
     repair_summary: RuntimeLlmRepairSummaryResponse = Field(default_factory=RuntimeLlmRepairSummaryResponse)
+    diagnostics: Dict[str, Any] = Field(default_factory=dict)
     optimizer: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -386,6 +387,7 @@ def get_local_runtime_status():
                     for item in list(((status.get("llm_runtime") or {}).get("repair_summary") or {}).get("top_reasons") or [])
                 ],
             ),
+            diagnostics=dict((status.get("llm_runtime") or {}).get("diagnostics") or {}),
             optimizer=dict((status.get("llm_runtime") or {}).get("optimizer") or {}),
         ),
         installed_pack_count=int(status.get("installed_pack_count") or 0),

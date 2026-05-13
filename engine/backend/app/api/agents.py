@@ -62,6 +62,41 @@ class AgentStanceSummaryResponse(BaseModel):
     groups: List[AgentStanceGroup]
 
 
+class GroupBeliefPoint(BaseModel):
+    t: float
+    stance: str
+    count: int = 0
+    cohesion: float = 0.0
+    tension: float = 0.0
+    fracture_risk: float = 0.0
+    polarization: float = 0.0
+    drift_velocity: float = 0.0
+    collective_pressure: float = 0.0
+    pressure_bucket: str = "low"
+    stance_signature: Dict[str, float] = Field(default_factory=dict)
+
+
+class GroupBeliefTrajectory(BaseModel):
+    group_kind: str
+    group_id: str
+    group_label: str
+    points: List[GroupBeliefPoint] = Field(default_factory=list)
+    deltas: Dict[str, float] = Field(default_factory=dict)
+    latest_stance: str = "diffuse"
+    latest_pressure: float = 0.0
+    member_ids: List[str] = Field(default_factory=list)
+
+
+class GroupBeliefTrajectoryResponse(BaseModel):
+    world_id: str
+    group_kind: str
+    t_min: float
+    t_max: float
+    point_count: int
+    group_count: int
+    groups: List[GroupBeliefTrajectory] = Field(default_factory=list)
+
+
 class AgentInterviewRequest(BaseModel):
     question: str = Field(min_length=3, max_length=500)
     t: Optional[float] = None
@@ -129,6 +164,93 @@ def _find_cell(snapshot, cell_id: str) -> Cell:
         if cell.cell_id == cell_id:
             return cell
     raise HTTPException(status_code=404, detail="Agent not found")
+
+
+def _pressure_bucket(value: float) -> str:
+    if value >= 0.72:
+        return "critical"
+    if value >= 0.5:
+        return "elevated"
+    if value >= 0.3:
+        return "watch"
+    return "low"
+
+
+def _belief_stance(*, cohesion: float, tension: float, fracture: float, drift: float, pressure: float) -> str:
+    if fracture >= 0.55 or tension >= 0.45:
+        return "contested"
+    if cohesion >= 0.65 and tension < 0.28:
+        return "cohesive"
+    if pressure >= 0.3 or drift >= 0.25:
+        return "emergent"
+    return "diffuse"
+
+
+def _mean_action(cells: list[Cell], key: str, default: float = 0.0) -> float:
+    if not cells:
+        return 0.0
+    values = [float(dict(cell.action_state).get(key, default) or default) for cell in cells]
+    return float(np.mean(values)) if values else 0.0
+
+
+def _belief_group_id(cell: Cell, group_kind: str) -> tuple[str, str]:
+    if group_kind == "zone":
+        group_id = str(cell.zone_id or "zone-0")
+        return group_id, str(cell.zone_label or group_id)
+    group_id = str(cell.role_key or "agent")
+    return group_id, str(cell.role_label or group_id)
+
+
+def _belief_point_from_cells(*, t: float, group_kind: str, cells: list[Cell]) -> GroupBeliefPoint:
+    prefix = "zone_group" if group_kind == "zone" else "role_group"
+    cohesion = _mean_action(cells, f"{prefix}_cohesion", 0.0)
+    tension = _mean_action(cells, f"{prefix}_tension", 0.0)
+    fracture = _mean_action(cells, f"{prefix}_fracture_risk", 0.0)
+    drift = _mean_action(cells, f"{prefix}_drift_velocity", 0.0)
+    pressure = _mean_action(cells, "collective_pressure", 0.0)
+    policy = _mean_action(cells, "policy_sensitivity", 0.5)
+    cooperation = _mean_action(cells, "cooperation_bias", 0.5)
+    resource = _mean_action(cells, "resource_bias", 0.5)
+    mobility = _mean_action(cells, "mobility_bias", 0.5)
+    polarization = float(np.std([float(cell.z) for cell in cells])) if len(cells) > 1 else 0.0
+    return GroupBeliefPoint(
+        t=float(t),
+        stance=_belief_stance(
+            cohesion=cohesion,
+            tension=tension,
+            fracture=fracture,
+            drift=drift,
+            pressure=pressure,
+        ),
+        count=len(cells),
+        cohesion=round(cohesion, 4),
+        tension=round(tension, 4),
+        fracture_risk=round(fracture, 4),
+        polarization=round(float(polarization), 4),
+        drift_velocity=round(drift, 4),
+        collective_pressure=round(pressure, 4),
+        pressure_bucket=_pressure_bucket(pressure),
+        stance_signature={
+            "cooperation": round(cooperation, 4),
+            "policy": round(policy, 4),
+            "resource": round(resource, 4),
+            "mobility": round(mobility, 4),
+        },
+    )
+
+
+def _belief_deltas(points: list[GroupBeliefPoint]) -> dict[str, float]:
+    if len(points) < 2:
+        return {}
+    first = points[0]
+    latest = points[-1]
+    return {
+        "cohesion_delta": round(latest.cohesion - first.cohesion, 4),
+        "tension_delta": round(latest.tension - first.tension, 4),
+        "fracture_delta": round(latest.fracture_risk - first.fracture_risk, 4),
+        "pressure_delta": round(latest.collective_pressure - first.collective_pressure, 4),
+        "drift_delta": round(latest.drift_velocity - first.drift_velocity, 4),
+    }
 
 
 def _find_diff_base_cell(snapshot, current_cell: Cell) -> Cell:
@@ -483,6 +605,94 @@ def get_agent_stance_summary(
         t=float(snap.t),
         overall_signal=overall_signal,
         groups=groups,
+    )
+
+
+@router.get("/{world_id}/agents/belief-trajectory", response_model=GroupBeliefTrajectoryResponse)
+def get_agent_belief_trajectory(
+    world_id: str,
+    group_kind: str = Query("role", pattern="^(role|zone)$"),
+    t_min: Optional[float] = Query(None, description="시작 시점. 미지정 시 저장된 첫 스냅샷"),
+    t_max: Optional[float] = Query(None, description="종료 시점. 미지정 시 저장된 최신 스냅샷"),
+    limit: int = Query(12, ge=2, le=80, description="반환할 최대 시점 수"),
+):
+    """Return role/zone group belief trajectories across stored snapshots."""
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    store = entry["snapshot_store"]
+    if store is None:
+        raise HTTPException(status_code=404, detail="Snapshot store not found")
+    available_t = store.list_t()
+    if not available_t:
+        raise HTTPException(status_code=404, detail="No snapshot available")
+
+    lower = float(t_min) if t_min is not None else float(available_t[0])
+    upper = float(t_max) if t_max is not None else float(available_t[-1])
+    if lower > upper:
+        lower, upper = upper, lower
+    selected_t = [float(t) for t in available_t if lower <= float(t) <= upper]
+    if not selected_t:
+        snap = store.get_nearest(upper)
+        selected_t = [float(snap.t)] if snap is not None else []
+    if len(selected_t) > limit:
+        indices = np.linspace(0, len(selected_t) - 1, num=limit)
+        selected_t = [selected_t[int(round(idx))] for idx in indices]
+        selected_t = sorted(dict.fromkeys(selected_t))
+
+    groups: dict[str, GroupBeliefTrajectory] = {}
+    for value in selected_t:
+        snap = store.get(value) or store.get_nearest(value)
+        if snap is None:
+            continue
+        buckets: dict[str, list[Cell]] = {}
+        labels: dict[str, str] = {}
+        for cell in snap.cells:
+            group_id, group_label = _belief_group_id(cell, group_kind)
+            buckets.setdefault(group_id, []).append(cell)
+            labels.setdefault(group_id, group_label)
+        for group_id, cells in buckets.items():
+            trajectory = groups.setdefault(
+                group_id,
+                GroupBeliefTrajectory(
+                    group_kind=group_kind,
+                    group_id=group_id,
+                    group_label=labels.get(group_id, group_id),
+                    points=[],
+                    member_ids=[],
+                ),
+            )
+            trajectory.points.append(_belief_point_from_cells(t=float(snap.t), group_kind=group_kind, cells=cells))
+            if not trajectory.member_ids:
+                trajectory.member_ids = [str(cell.cell_id) for cell in cells[:8]]
+
+    finalized: list[GroupBeliefTrajectory] = []
+    for trajectory in groups.values():
+        trajectory.points.sort(key=lambda point: point.t)
+        trajectory.deltas = _belief_deltas(trajectory.points)
+        if trajectory.points:
+            latest = trajectory.points[-1]
+            trajectory.latest_stance = latest.stance
+            trajectory.latest_pressure = latest.collective_pressure
+        finalized.append(trajectory)
+    finalized.sort(
+        key=lambda item: (
+            -abs(float(item.deltas.get("pressure_delta", 0.0))),
+            -float(item.latest_pressure),
+            str(item.group_label),
+        )
+    )
+
+    resolved_t_min = float(selected_t[0]) if selected_t else lower
+    resolved_t_max = float(selected_t[-1]) if selected_t else upper
+    return GroupBeliefTrajectoryResponse(
+        world_id=world_id,
+        group_kind=group_kind,
+        t_min=resolved_t_min,
+        t_max=resolved_t_max,
+        point_count=len(selected_t),
+        group_count=len(finalized),
+        groups=finalized,
     )
 
 

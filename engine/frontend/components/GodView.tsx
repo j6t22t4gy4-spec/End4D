@@ -936,6 +936,24 @@ export default function GodView({
             />
           </div>
         </div>
+        <ScenarioTimeline
+          locale={locale}
+          worldId={worldId}
+          refreshKey={chartRefreshKey}
+          annotations={reviewSummary?.timeline_annotations ?? []}
+          compact
+          emergentCurve={
+            ((reviewSummary?.emergent_dynamics?.worldview_curve as
+              | Array<Record<string, unknown>>
+              | undefined) ?? []
+            ).map((item) => ({
+              t: Number(item.t ?? 0),
+              avg_z: Number(item.avg_z ?? 0),
+              cell_count: Number(item.cell_count ?? 0),
+            }))
+          }
+          onJumpToT={setCurrentT}
+        />
         <ScenarioSummary worldId={worldId} refreshKey={chartRefreshKey} />
       </div>
     ),
@@ -954,6 +972,7 @@ export default function GodView({
       liveT,
       locale,
       reviewInjectPreset,
+      reviewSummary,
       reviewMarkers,
       sliderDisabled,
       timelineMarkers,
@@ -966,12 +985,12 @@ export default function GodView({
   const runtimeDockContent = useMemo(
     () => (
       <div className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-2 text-xs text-slate-600">
+        <div className="grid gap-3">
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-700">
             <input type="checkbox" checked={llmEnabled} onChange={(event) => setLlmEnabled(event.target.checked)} />
             {isKo ? "실시간 LLM cognition 사용" : "enable live LLM cognition"}
           </label>
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid grid-cols-2 gap-2">
             <ConnectionMetric
               label={isKo ? "현재 프로바이더" : "current provider"}
               value={runtimeStatus?.llm?.provider ?? "stub"}
@@ -1268,33 +1287,58 @@ export default function GodView({
     <div className="godview-staged">
       <AppPanel
         title={strings.simulationWorkspace}
-        subtitle={isKo ? "설정 · 실행 · 리뷰를 한 흐름으로 엽니다" : "Open setup, run, and review in one flow"}
+        subtitle={
+          stage === "run" && worldId
+            ? `${worldId} · t=${currentT.toFixed(1)} · ${renderedVisibleCells.length.toLocaleString()} agents`
+            : isKo
+              ? "설정 · 실행 · 리뷰를 한 흐름으로 엽니다"
+              : "Open setup, run, and review in one flow"
+        }
         bodyClassName="flex flex-wrap items-center justify-between gap-3"
       >
-        <div className="godview-stage-switch">
-          <button
-            type="button"
-            className={`godview-stage-switch__button ${stage === "setup" ? "is-active" : ""}`}
-            onClick={() => setStage("setup")}
-          >
-            01 {strings.setup}
-          </button>
-          <button
-            type="button"
-            className={`godview-stage-switch__button ${stage === "run" ? "is-active" : ""}`}
-            onClick={() => setStage("run")}
-            disabled={!worldId}
-          >
-            02 {strings.run}
-          </button>
-          <button
-            type="button"
-            className={`godview-stage-switch__button ${stage === "review" ? "is-active" : ""}`}
-            onClick={() => setStage("review")}
-            disabled={!worldId}
-          >
-            03 {isKo ? "리뷰" : "Review"}
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="godview-stage-switch">
+            <button
+              type="button"
+              className={`godview-stage-switch__button ${stage === "setup" ? "is-active" : ""}`}
+              onClick={() => setStage("setup")}
+            >
+              01 {strings.setup}
+            </button>
+            <button
+              type="button"
+              className={`godview-stage-switch__button ${stage === "run" ? "is-active" : ""}`}
+              onClick={() => setStage("run")}
+              disabled={!worldId}
+            >
+              02 {strings.run}
+            </button>
+            <button
+              type="button"
+              className={`godview-stage-switch__button ${stage === "review" ? "is-active" : ""}`}
+              onClick={() => setStage("review")}
+              disabled={!worldId}
+            >
+              03 {isKo ? "리뷰" : "Review"}
+            </button>
+          </div>
+          {stage === "run" ? (
+            <div className="unified-dashboard__mode-toggle" aria-label="simulation mode">
+              <span className="is-active">Precision</span>
+              <span>{isKo ? "Swarm 준비중" : "Swarm soon"}</span>
+            </div>
+          ) : null}
+          {stage === "run" ? (
+            <div className="unified-dashboard__status-strip">
+              <span>{renderedCollectiveSignal}</span>
+              <span>{isKo ? "압력" : "pressure"} {Math.round((renderedCollectiveSummary?.role?.avg_fracture_risk ?? 0) * 100)}</span>
+              {renderedVisualStats?.sampled ? (
+                <span className="is-warn">
+                  {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -1868,87 +1912,28 @@ export default function GodView({
         </div>
       )}
       {stage === "run" && (
-        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
-          <AppPanel
-            title={isKo ? "시뮬레이션 워크스페이스" : "Simulation Workspace"}
-            subtitle={isKo ? "넓은 화면에서는 실행 제어와 시뮬레이션 진입 흐름을 한 덩어리로 봅니다" : "On wider screens, keep execution and simulation entry in one workspace"}
-            bodyClassName="space-y-4"
-            action={
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="app-button app-button--ghost"
-                  onClick={() => setStage("setup")}
-                >
-                  {strings.backToSetup}
-                </button>
-                <span className="rounded-full bg-slate-100 px-3 py-2 text-xs text-slate-600">
-                  {autoFitLayout ? (isKo ? "자동 맞춤 활성" : "Auto-fit enabled") : isKo ? "수동 레이아웃" : "Manual layout"}
-                </span>
+        <div className="unified-dashboard">
+          <main className="unified-dashboard__center">
+            <div className="unified-dashboard__center-header">
+              <div>
+                <p className="unified-dashboard__section-label">{isKo ? "Center Visualization" : "Center Visualization"}</p>
+                <h3>{isKo ? "실시간 소셜 필드" : "Live Social Field"}</h3>
               </div>
-            }
-          >
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                className={`app-button ${autoFitLayout ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => setAutoFitLayout(true)}
-              >
-                {strings.autoFit}
-              </button>
-              <button
-                type="button"
-                className={`app-button ${!autoFitLayout && layoutMode === "balanced" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => {
-                  setAutoFitLayout(false);
-                  setLayoutMode("balanced");
-                }}
-              >
-                {strings.balanced}
-              </button>
-              <button
-                type="button"
-                className={`app-button ${!autoFitLayout && layoutMode === "focus" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => {
-                  setAutoFitLayout(false);
-                  setLayoutMode("focus");
-                }}
-              >
-                {strings.focusViz}
-              </button>
-              <button
-                type="button"
-                className={`app-button ${!autoFitLayout && layoutMode === "wide-left" ? "app-button--primary" : "app-button--secondary"}`}
-                onClick={() => {
-                  setAutoFitLayout(false);
-                  setLayoutMode("wide-left");
-                }}
-              >
-                {strings.wideControls}
-              </button>
+              <div className="unified-dashboard__status-strip">
+                <span>{renderedCollectiveSignal}</span>
+                <span>{isKo ? "압력" : "pressure"} {Math.round((renderedCollectiveSummary?.role?.avg_fracture_risk ?? 0) * 100)}</span>
+                {renderedVisualStats?.sampled ? (
+                  <span className="is-warn">
+                    {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
+                  </span>
+                ) : null}
+              </div>
             </div>
-
-          </AppPanel>
-
-          <AppPanel
-            title={isKo ? "소셜 필드" : "Social Field"}
-            subtitle={isKo ? "2D 소셜 필드와 에이전트 생각 로그를 같은 구역에서 읽습니다" : "Read the 2D social field and agent thought log in the same zone"}
-            className="min-h-0"
-            bodyClassName="flex h-full min-h-0 flex-col gap-4"
-            action={
-              renderedVisualStats?.sampled ? (
-                <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                  {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
-                </span>
-              ) : undefined
-            }
-          >
             {err ? (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                 {err}
               </div>
             ) : null}
-
             <CenterMapShell
               mode="precision"
               cells={renderedVisibleCells}
@@ -1959,6 +1944,7 @@ export default function GodView({
               groundingItems={flattenReviewGrounding(reviewSummary?.grounding ?? {})}
               collectiveSummary={renderedCollectiveSummary}
               reviewSummary={reviewSummary}
+              locale={locale}
               selectedAgentId={selectedAgent?.cell_id ?? null}
               selectedZoneId={selectedZone?.zoneId ?? null}
               selectedBandKey={selectedBand?.key ?? null}
@@ -1976,62 +1962,37 @@ export default function GodView({
               onClearSelection={clearSelection}
               onJumpToT={setCurrentT}
             />
+          </main>
 
-            <div className="grid min-h-0 gap-4 xl:grid-cols-2">
-              <SimulationInspectorPanel
-                locale={locale}
-                selectedAgent={selectedAgent}
-                selectedZone={selectedZone}
-                selectedBand={selectedBand}
-                worldSummary={{
-                  worldId,
-                  currentT,
-                  visibleCount: renderedVisibleCells.length,
-                  totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
-                  sampled: renderedVisualStats?.sampled ?? false,
-                  collectiveSummary: renderedCollectiveSummary,
-                  collectiveSignal: renderedCollectiveSignal,
-                }}
-                agentRoster={renderedSnapshotCells}
-                onSelectAgent={setSelectedAgent}
-                onOpenWorldAt={(_, t) => {
-                  if (typeof t === "number") setCurrentT(t);
-                }}
-                onClearSelection={clearSelection}
-              />
-
-              <AgentDirectoryPanel
-                locale={locale}
-                agentRoster={renderedSnapshotCells}
-                onSelectAgent={setSelectedAgent}
-              />
-            </div>
-          </AppPanel>
-
-          <ScenarioTimeline
-            locale={locale}
-            worldId={worldId}
-            refreshKey={chartRefreshKey}
-            annotations={reviewSummary?.timeline_annotations ?? []}
-            emergentCurve={
-              ((reviewSummary?.emergent_dynamics?.worldview_curve as
-                | Array<Record<string, unknown>>
-                | undefined) ?? []
-              ).map((item) => ({
-                t: Number(item.t ?? 0),
-                avg_z: Number(item.avg_z ?? 0),
-                cell_count: Number(item.cell_count ?? 0),
-              }))
-            }
-            onJumpToT={setCurrentT}
-          />
-
-          {reviewSummary ? (
-            <AppPanel
-              title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
-              subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
-              bodyClassName="space-y-3"
-            >
+          <aside className="unified-dashboard__right">
+            <div className="unified-dashboard__section-label">{isKo ? "Live Insights" : "Live Insights"}</div>
+            <SimulationInspectorPanel
+              locale={locale}
+              selectedAgent={selectedAgent}
+              selectedZone={selectedZone}
+              selectedBand={selectedBand}
+              worldSummary={{
+                worldId,
+                currentT,
+                visibleCount: renderedVisibleCells.length,
+                totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
+                sampled: renderedVisualStats?.sampled ?? false,
+                collectiveSummary: renderedCollectiveSummary,
+                collectiveSignal: renderedCollectiveSignal,
+              }}
+              agentRoster={renderedSnapshotCells}
+              onSelectAgent={setSelectedAgent}
+              onOpenWorldAt={(_, t) => {
+                if (typeof t === "number") setCurrentT(t);
+              }}
+              onClearSelection={clearSelection}
+            />
+            {reviewSummary ? (
+              <AppPanel
+                title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
+                subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
+                bodyClassName="space-y-3"
+              >
               <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
               {reviewSummary.causal_analysis.slice(0, 2).map((item, index) => (
                 <div key={`${index}-${item}`} className="session-thread-card">
@@ -2083,8 +2044,10 @@ export default function GodView({
               >
                 {isKo ? "리뷰 단계 열기" : "Open Review Stage"}
               </button>
-            </AppPanel>
-          ) : null}
+              </AppPanel>
+            ) : null}
+          </aside>
+
         </div>
       )}
     </div>

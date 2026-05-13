@@ -60,22 +60,6 @@ export function RuntimeDock({
     [simulationDock]
   );
 
-  const connectionState =
-    simulationDock?.connectionState ??
-    (runtime?.llm?.enabled
-      ? {
-          key: "configured",
-          label: isKo ? "configured" : "configured",
-          tone: "amber" as const,
-          detail: isKo ? "저장된 연결 설정이 있습니다" : "saved runtime connection is configured",
-        }
-      : {
-          key: "disconnect",
-          label: "disconnect",
-          tone: "red" as const,
-          detail: isKo ? "연결 테스트 전" : "not tested yet",
-        });
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <AppPanel
@@ -84,40 +68,6 @@ export function RuntimeDock({
         className="min-h-0 flex-1"
         bodyClassName="flex h-full min-h-0 flex-col gap-3"
       >
-        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                {isKo ? "LLM 연결 상태" : "LLM Connection"}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {runtime?.llm?.provider ?? "stub"} · {runtime?.llm?.model ?? "stub"}
-              </p>
-            </div>
-            <span
-              className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-                connectionState.tone === "green"
-                  ? "bg-emerald-50 text-emerald-700"
-                  : connectionState.tone === "amber"
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-rose-50 text-rose-700"
-              }`}
-            >
-              <span
-                className={`inline-block h-2.5 w-2.5 rounded-full ${
-                  connectionState.tone === "green"
-                    ? "bg-emerald-500"
-                    : connectionState.tone === "amber"
-                      ? "bg-amber-500"
-                      : "bg-rose-500"
-                }`}
-              />
-              {connectionState.label}
-            </span>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">{connectionState.detail}</p>
-        </div>
-
         <div className="grid grid-cols-4 gap-2">
           <button
             type="button"

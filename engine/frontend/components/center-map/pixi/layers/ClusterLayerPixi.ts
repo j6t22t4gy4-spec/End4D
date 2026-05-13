@@ -65,29 +65,21 @@ export class ClusterLayerPixi {
   }
 
   animate(renderTime: number, pointerField: PointerField) {
-    const pointerPushX = (pointerField.x - 0.5) * (pointerField.active ? 18 : 7);
-    const pointerPushY = (pointerField.y - 0.5) * (pointerField.active ? 16 : 6);
+    void renderTime;
+
+    const pointerPushX = pointerField.active ? (pointerField.x - 0.5) * 4 : 0;
+    const pointerPushY = pointerField.active ? (pointerField.y - 0.5) * 3.5 : 0;
 
     for (const visual of this.visuals.values()) {
-      const wobbleX =
-        Math.sin(renderTime * (0.28 + visual.phase * 0.08) + visual.phase * 8) *
-        (3.2 + visual.avgPressure * 7);
-      const wobbleY =
-        Math.cos(renderTime * (0.24 + visual.phase * 0.06) + visual.phase * 7) *
-        (2.8 + visual.avgDrift * 6);
-      const driftWeight = 0.08 + visual.avgPressure * 0.14 + visual.avgDrift * 0.1;
+      const driftWeight = 0.03 + visual.avgPressure * 0.04 + visual.avgDrift * 0.03;
 
       visual.container.position.set(
-        visual.centerX + wobbleX + pointerPushX * driftWeight,
-        visual.centerY + wobbleY + pointerPushY * driftWeight
+        visual.centerX + pointerPushX * driftWeight,
+        visual.centerY + pointerPushY * driftWeight
       );
 
-      const outerPulse =
-        0.97 + ((Math.sin(renderTime * (0.72 + visual.phase * 0.22)) + 1) / 2) * 0.08;
-      const corePulse =
-        0.98 + ((Math.cos(renderTime * (0.9 + visual.phase * 0.28)) + 1) / 2) * 0.06;
-      visual.contour.scale.set(outerPulse);
-      visual.mass.scale.set(corePulse);
+      visual.contour.scale.set(1);
+      visual.mass.scale.set(1);
     }
   }
 
