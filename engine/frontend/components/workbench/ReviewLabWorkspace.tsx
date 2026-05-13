@@ -265,6 +265,32 @@ export function ReviewLabWorkspace({
     () => (data?.emergent_dynamics ?? {}) as Record<string, unknown>,
     [data]
   );
+  const validationReadout = useMemo(
+    () => (data?.validation_readout ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const mockValidation = useMemo(
+    () => (validationReadout.mock_long_horizon ?? {}) as Record<string, unknown>,
+    [validationReadout]
+  );
+  const liveValidation = useMemo(
+    () => (validationReadout.live_smoke ?? {}) as Record<string, unknown>,
+    [validationReadout]
+  );
+  const validationNotes = useMemo(
+    () =>
+      Array.isArray(validationReadout.interpretation_notes)
+        ? (validationReadout.interpretation_notes as string[])
+        : [],
+    [validationReadout]
+  );
+  const validationNextChecks = useMemo(
+    () =>
+      Array.isArray(validationReadout.recommended_next_checks)
+        ? (validationReadout.recommended_next_checks as string[])
+        : [],
+    [validationReadout]
+  );
   const groupAnalysis = useMemo(
     () => (data?.group_analysis ?? {}) as Record<string, unknown>,
     [data]
@@ -1827,6 +1853,91 @@ export function ReviewLabWorkspace({
             ))
           ) : (
             <p className="text-sm text-slate-500">하이라이트가 아직 없습니다.</p>
+          )}
+        </AppPanel>
+
+        <AppPanel
+          title="Validation Readout"
+          subtitle="How to interpret mock long-run vs live smoke results"
+          bodyClassName="space-y-3"
+        >
+          {Object.keys(validationReadout).length ? (
+            <>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Confidence
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700">
+                      {String(validationReadout.current_confidence ?? "medium")} · profile hint{" "}
+                      {String(validationReadout.runtime_profile_hint ?? "balanced")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-2">
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Mock Long-Horizon</p>
+                    <span className="session-thread-card__meta">
+                      {String(mockValidation.status ?? "validated-in-mock")}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    {String(mockValidation.headline ?? "Mock long-run validation summary unavailable.")}
+                  </p>
+                  <p className="inspector-body">{String(mockValidation.pattern ?? "")}</p>
+                  <p className="text-xs text-slate-500">
+                    {String(mockValidation.implication ?? "")}
+                  </p>
+                </div>
+
+                <div className="session-thread-card">
+                  <div className="session-thread-card__header">
+                    <p className="session-thread-card__title">Live Smoke</p>
+                    <span className="session-thread-card__meta">
+                      {String(liveValidation.status ?? "healthy-but-small")}
+                    </span>
+                  </div>
+                  <p className="session-thread-card__prompt">
+                    {String(liveValidation.headline ?? "Live smoke validation summary unavailable.")}
+                  </p>
+                  <p className="inspector-body">{String(liveValidation.pattern ?? "")}</p>
+                  <p className="text-xs text-slate-500">
+                    {String(liveValidation.implication ?? "")}
+                  </p>
+                </div>
+              </div>
+
+              {validationNotes.length ? (
+                <div className="grid gap-2">
+                  {validationNotes.map((item, index) => (
+                    <div key={`validation-note-${index}`} className="session-thread-card">
+                      <p className="inspector-body">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {validationNextChecks.length ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                    Recommended Next Checks
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {validationNextChecks.map((item, index) => (
+                      <p key={`validation-next-${index}`} className="text-sm text-amber-900">
+                        {item}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">검증 해석 요약이 아직 없습니다.</p>
           )}
         </AppPanel>
 

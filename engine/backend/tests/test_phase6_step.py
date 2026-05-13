@@ -35,6 +35,8 @@ def test_graph_run_preserves_vector_shapes_and_advances_t():
         assert isinstance(c.long_memory, list)
         assert isinstance(c.behavior_log, list)
         assert isinstance(c.action_state, dict)
+        assert "collective_pressure" in c.action_state
+        assert "group_influence_applied" in c.action_state
 
 
 def test_graph_uses_engine_zone_layout_params():

@@ -6,6 +6,12 @@ from typing import Any
 
 import numpy as np
 
+from app.core.settings import (
+    get_collective_drift_threshold,
+    get_collective_fracture_threshold,
+    get_collective_influence_scale,
+    get_collective_tension_threshold,
+)
 from app.models.cell import Cell
 
 
@@ -41,6 +47,86 @@ def _stance_signature(cells: list[Cell]) -> dict[str, float]:
         "policy": round(_safe_mean(policy), 3),
         "resource": round(_safe_mean(resource), 3),
         "mobility": round(_safe_mean(mobility), 3),
+    }
+
+
+def _pressure_bucket(pressure: float) -> str:
+    if pressure >= 0.72:
+        return "critical"
+    if pressure >= 0.5:
+        return "elevated"
+    if pressure >= 0.3:
+        return "watch"
+    return "low"
+
+
+def collective_context_from_action_state(action_state: dict[str, Any] | None) -> dict[str, float | str | bool]:
+    state = dict(action_state or {})
+    role_cohesion = _clip01(float(state.get("role_group_cohesion", 0.0) or 0.0))
+    role_tension = _clip01(float(state.get("role_group_tension", 0.0) or 0.0))
+    role_fracture = _clip01(float(state.get("role_group_fracture_risk", 0.0) or 0.0))
+    zone_tension = _clip01(float(state.get("zone_group_tension", 0.0) or 0.0))
+    zone_fracture = _clip01(float(state.get("zone_group_fracture_risk", 0.0) or 0.0))
+    zone_drift = max(0.0, float(state.get("zone_group_drift_velocity", 0.0) or 0.0))
+    pressure = _clip01(float(state.get("collective_pressure", 0.0) or 0.0))
+    return {
+        "collective_signal": str(state.get("collective_signal") or "stable"),
+        "collective_pressure": pressure,
+        "pressure_bucket": _pressure_bucket(pressure),
+        "role_cohesion": role_cohesion,
+        "role_tension": role_tension,
+        "role_fracture": role_fracture,
+        "zone_tension": zone_tension,
+        "zone_fracture": zone_fracture,
+        "zone_drift": zone_drift,
+        "fracture_alert": role_fracture >= get_collective_fracture_threshold() or zone_fracture >= get_collective_fracture_threshold(),
+        "tension_alert": role_tension >= get_collective_tension_threshold() or zone_tension >= get_collective_tension_threshold(),
+        "drift_alert": zone_drift >= get_collective_drift_threshold(),
+    }
+
+
+def _collective_deltas(
+    *,
+    role_cohesion: float,
+    role_fracture: float,
+    zone_tension: float,
+    zone_fracture: float,
+    zone_drift: float,
+    pressure: float,
+) -> dict[str, float]:
+    scale = get_collective_influence_scale()
+    cooperation_delta = (
+        (role_cohesion - 0.5) * 0.09
+        - role_fracture * 0.05
+        - zone_tension * 0.02
+    ) * scale
+    policy_delta = (
+        zone_tension * 0.045
+        + pressure * 0.035
+        + zone_fracture * 0.015
+    ) * scale
+    mobility_delta = (
+        zone_drift * 0.06
+        + role_fracture * 0.045
+        + zone_tension * 0.015
+        - role_cohesion * 0.012
+    ) * scale
+    resource_delta = (
+        pressure * 0.03
+        + zone_fracture * 0.02
+        - role_cohesion * 0.01
+    ) * scale
+    risk_delta = (
+        zone_tension * 0.03
+        + role_fracture * 0.04
+        + pressure * 0.02
+    ) * scale
+    return {
+        "cooperation_delta": max(-0.22, min(0.22, cooperation_delta)),
+        "policy_delta": max(-0.18, min(0.22, policy_delta)),
+        "mobility_delta": max(-0.14, min(0.25, mobility_delta)),
+        "resource_delta": max(-0.12, min(0.18, resource_delta)),
+        "risk_delta": max(-0.12, min(0.18, risk_delta)),
     }
 
 
@@ -272,10 +358,11 @@ def apply_collective_dynamics(
         role_fracture = float(role_entry.get("fracture_risk", 0.0))
         zone_tension = float(zone_entry.get("tension", 0.0))
         zone_drift = float(zone_entry.get("drift_velocity", 0.0))
+        zone_fracture = float(zone_entry.get("fracture_risk", 0.0))
         pressure = _clip01(
             role_fracture * 0.34
             + zone_tension * 0.26
-            + float(zone_entry.get("fracture_risk", 0.0)) * 0.20
+            + zone_fracture * 0.20
             + zone_drift * 0.20
         )
 
@@ -283,11 +370,31 @@ def apply_collective_dynamics(
         policy_sensitivity = float(action_state.get("policy_sensitivity", 0.5) or 0.5)
         mobility_bias = float(action_state.get("mobility_bias", 0.5) or 0.5)
         resource_bias = float(action_state.get("resource_bias", 0.5) or 0.5)
+        risk_tolerance = float(action_state.get("risk_tolerance", 0.5) or 0.5)
+        deltas = _collective_deltas(
+            role_cohesion=role_cohesion,
+            role_fracture=role_fracture,
+            zone_tension=zone_tension,
+            zone_fracture=zone_fracture,
+            zone_drift=zone_drift,
+            pressure=pressure,
+        )
 
-        cooperation_bias = _clip01(cooperation_bias + (role_cohesion - 0.5) * 0.05 - role_fracture * 0.02)
-        policy_sensitivity = _clip01(policy_sensitivity + zone_tension * 0.03 + pressure * 0.02)
-        mobility_bias = _clip01(mobility_bias + zone_drift * 0.04 + role_fracture * 0.02 - role_cohesion * 0.01)
-        resource_bias = _clip01(resource_bias + pressure * 0.02)
+        cooperation_bias = _clip01(cooperation_bias + deltas["cooperation_delta"])
+        policy_sensitivity = _clip01(policy_sensitivity + deltas["policy_delta"])
+        mobility_bias = _clip01(mobility_bias + deltas["mobility_delta"])
+        resource_bias = _clip01(resource_bias + deltas["resource_delta"])
+        risk_tolerance = _clip01(risk_tolerance + deltas["risk_delta"])
+        collective_effect = (
+            abs(deltas["cooperation_delta"])
+            + abs(deltas["policy_delta"])
+            + abs(deltas["mobility_delta"])
+            + abs(deltas["resource_delta"])
+            + abs(deltas["risk_delta"])
+        )
+        fracture_alert = role_fracture >= get_collective_fracture_threshold() or zone_fracture >= get_collective_fracture_threshold()
+        tension_alert = zone_tension >= get_collective_tension_threshold() or float(role_entry.get("tension", 0.0)) >= get_collective_tension_threshold()
+        drift_alert = zone_drift >= get_collective_drift_threshold()
 
         action_state.update(
             {
@@ -295,6 +402,7 @@ def apply_collective_dynamics(
                 "policy_sensitivity": round(policy_sensitivity, 4),
                 "mobility_bias": round(mobility_bias, 4),
                 "resource_bias": round(resource_bias, 4),
+                "risk_tolerance": round(risk_tolerance, 4),
                 "role_group_id": str(role_entry.get("group_id") or cell.role_key),
                 "role_group_label": str(role_entry.get("group_label") or cell.role_label or cell.role_key),
                 "role_group_cohesion": float(role_entry.get("cohesion", 0.0)),
@@ -308,8 +416,19 @@ def apply_collective_dynamics(
                 "zone_group_fracture_risk": float(zone_entry.get("fracture_risk", 0.0)),
                 "zone_group_drift_velocity": float(zone_entry.get("drift_velocity", 0.0)),
                 "collective_pressure": round(pressure, 3),
+                "collective_pressure_bucket": _pressure_bucket(pressure),
                 "collective_signal": str(group_state.get("collective_signal") or "stable"),
                 "collective_updated_t": float(current_t),
+                "group_influence_applied": True,
+                "fracture_signal_received": bool(fracture_alert),
+                "collective_tension_alert": bool(tension_alert),
+                "collective_drift_alert": bool(drift_alert),
+                "collective_bias_effect": round(collective_effect, 4),
+                "collective_delta_cooperation": round(deltas["cooperation_delta"], 4),
+                "collective_delta_policy": round(deltas["policy_delta"], 4),
+                "collective_delta_mobility": round(deltas["mobility_delta"], 4),
+                "collective_delta_resource": round(deltas["resource_delta"], 4),
+                "collective_delta_risk": round(deltas["risk_delta"], 4),
             }
         )
         updated.append(cell.copy(action_state=action_state))

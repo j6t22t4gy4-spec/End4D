@@ -47,7 +47,20 @@ def test_agent_dialogue_writes_behavior_log(monkeypatch):
         ]
 
     monkeypatch.setattr("app.llm.dialogue.llm_facade.run_dialogues", fake_run_dialogues)
-    cells = [_cell("a", 0.0, "citizen"), _cell("b", 1.0, "regulator")]
+    cells = [
+        _cell("a", 0.0, "citizen").copy(
+            action_state={
+                "cooperation_bias": 0.5,
+                "policy_sensitivity": 0.6,
+                "collective_pressure": 0.62,
+                "role_group_cohesion": 0.42,
+                "role_group_fracture_risk": 0.74,
+                "zone_group_tension": 0.58,
+                "zone_group_drift_velocity": 0.46,
+            }
+        ),
+        _cell("b", 1.0, "regulator"),
+    ]
     out = apply_agent_dialogues_if_due(cells, current_t=25.0)
 
     assert out[0].behavior_log[-1]["event_type"] == "agent_dialogue"
@@ -56,6 +69,8 @@ def test_agent_dialogue_writes_behavior_log(monkeypatch):
     assert out[0].long_memory[-1]["kind"] == "agent_dialogue"
     assert out[0].relationship_state["b"]["dialogue_count"] == 1
     assert out[0].relationship_state["b"]["trust"] > 0.0
+    assert out[0].action_state["collective_dialogue_effect"] > 0.0
+    assert out[0].action_state["fracture_signal_received"] is True
 
 
 def test_agent_dialogue_reuses_relationship_history(monkeypatch):
@@ -165,6 +180,7 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
     assert out[0].behavior_log[-1]["event_type"] == "group_deliberation"
     assert out[0].long_memory[-1]["kind"] == "group_deliberation"
     assert out[0].long_memory[-1]["payload"]["avg_trust"] > 0.0
+    assert out[0].action_state["collective_group_deliberation_effect"] > 0.0
     assert coalition_state["citizen"]["cycle_count"] == 1
     assert any(item["role"] == "citizen" for item in coalition_history)
 

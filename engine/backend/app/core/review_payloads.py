@@ -18,6 +18,54 @@ MAX_REVIEW_ANNOTATIONS = 8
 MAX_REVIEW_GRAPH_EDGES = 18
 
 
+def _validation_readout(entry: dict[str, Any]) -> dict[str, Any]:
+    engine_params = dict(((entry.get("engine_params") or {})))
+    runtime_profile = str(
+        engine_params.get("llm_runtime_profile")
+        or engine_params.get("runtime_profile")
+        or engine_params.get("llm_profile")
+        or "balanced"
+    )
+    return {
+        "current_confidence": "medium",
+        "runtime_profile_hint": runtime_profile,
+        "mock_long_horizon": {
+            "status": "validated-in-mock",
+            "headline": "Mock long-horizon runs show high-pressure self-damping rather than late collapse.",
+            "pattern": (
+                "Aggressive llm-first mock runs can hold elevated collective pressure, emit repeated fracture waves, "
+                "and then settle toward watch-level stability with residual policy drift."
+            ),
+            "implication": (
+                "Use mock long runs to study oscillation, delayed cooling, and residual polarization rather than "
+                "assuming immediate breakdown."
+            ),
+        },
+        "live_smoke": {
+            "status": "healthy-but-small",
+            "headline": "Live-provider smoke runs are operationally healthy, but still too small to cleanly separate profiles.",
+            "pattern": (
+                "Real-provider mini runs complete without fallback and usually remain in watch-level pressure bands, "
+                "with balanced and llm-first differences still muted at small scale."
+            ),
+            "implication": (
+                "Treat live smoke as a runtime sanity check first. Use it to confirm health and basic collective response, "
+                "not yet to claim strong profile divergence."
+            ),
+        },
+        "interpretation_notes": [
+            "Mock and live outputs are not contradictory by default: they are being sampled at different cost, scale, and horizon regimes.",
+            "Confidence is highest for engine health and basic collective response, moderate for long-horizon mock behavior, and still limited for live profile separation.",
+            "If a review shows only watch-level pressure, that can reflect harness size limits rather than absence of social dynamics.",
+        ],
+        "recommended_next_checks": [
+            "Use mock long-horizon runs for stress-testing fracture waves and damping behavior.",
+            "Use the live smoke harness to verify provider health, fallback rate, and minimum viable collective response.",
+            "Escalate live claims only after a larger runtime-config harness shows stable profile separation.",
+        ],
+    }
+
+
 def _entry_world_id(entry: dict[str, Any]) -> str:
     world = entry.get("world")
     if world is None:
@@ -126,6 +174,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         group_analysis=group_analysis,
         emergent_dynamics=emergent_dynamics,
     )
+    validation_readout = _validation_readout(entry)
     highlights = _build_highlights(
         summary_stats=summary_stats,
         belief_drift=belief_drift,
@@ -158,6 +207,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "lineage_summary": lineage_summary,
         "emergent_dynamics": emergent_dynamics,
         "mechanism_summary": mechanism_summary,
+        "validation_readout": validation_readout,
         "policy_impact": policy_impact,
         "policy_mechanisms": policy_mechanisms,
         "policy_lineage_bridge": policy_lineage_bridge,

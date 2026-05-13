@@ -5,7 +5,16 @@ import { useMemo, useState } from "react";
 import {
   emotionToColorAndScale,
   type CellSnapshot,
+  type ReviewGroundingItem,
+  type TimelineAnnotation,
 } from "@/lib/api";
+import { AgentLayer } from "@/components/center-map/layers/AgentLayer";
+import { AnchorLayer } from "@/components/center-map/layers/AnchorLayer";
+import { ClusterLayer } from "@/components/center-map/layers/ClusterLayer";
+import { DriftLayer } from "@/components/center-map/layers/DriftLayer";
+import { PressureFieldLayer } from "@/components/center-map/layers/PressureFieldLayer";
+import { ShockLayer } from "@/components/center-map/layers/ShockLayer";
+import { ZoneLayer } from "@/components/center-map/layers/ZoneLayer";
 import type {
   SelectedBand,
   SelectedZone,
@@ -15,15 +24,31 @@ type SimulationMap2DProps = {
   cells: CellSnapshot[];
   totalCells: number;
   sampled: boolean;
+  showPressureField?: boolean;
+  showShockLayer?: boolean;
+  showAnchorLayer?: boolean;
+  showDriftLayer?: boolean;
+  showClusterLayer?: boolean;
+  annotations?: TimelineAnnotation[];
+  groundingItems?: ReviewGroundingItem[];
+  currentT?: number;
+  renderTime?: number;
+  transitionPhase?: number;
+  pointerField?: {
+    x: number;
+    y: number;
+    active: boolean;
+  };
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;
   onSelectAgent?: (cell: CellSnapshot) => void;
   onSelectZone?: (zone: SelectedZone) => void;
   onSelectBand?: (band: SelectedBand) => void;
+  onJumpToT?: (t: number) => void;
 };
 
-type ZoneBox = {
+export type ZoneBox = {
   zoneId: string;
   label: string;
   influence: number;
@@ -33,6 +58,9 @@ type ZoneBox = {
   y0: number;
   y1: number;
   count: number;
+  avgDrift: number;
+  avgPressure: number;
+  fractureSignals: number;
 };
 
 type ElevationBand = {
@@ -48,7 +76,7 @@ type ElevationBand = {
   dominantRole: string;
 };
 
-type ObserverSemantics = {
+export type ObserverSemantics = {
   focus: string;
   score: number;
   ring: string;
@@ -65,6 +93,20 @@ type ZSemantics = {
   strokes: string[];
 };
 
+export type AgentNode = {
+  id: string;
+  cell: CellSnapshot;
+  cx: number;
+  cy: number;
+  r: number;
+  fill: string;
+  observer: ObserverSemantics;
+  title: string;
+  collectivePressure: number;
+  pressureBucket: string;
+  fractureSignal: boolean;
+};
+
 const SVG_WIDTH = 960;
 const SVG_HEIGHT = 640;
 const PADDING = 56;
@@ -73,15 +115,31 @@ export default function SimulationMap2D({
   cells,
   totalCells,
   sampled,
+  showPressureField = true,
+  showShockLayer = true,
+  showAnchorLayer = true,
+  showDriftLayer = false,
+  showClusterLayer = true,
+  annotations = [],
+  groundingItems = [],
+  currentT = 0,
+  renderTime = 0,
+  transitionPhase = 0,
+  pointerField = { x: 0.5, y: 0.5, active: false },
   selectedAgentId = null,
   selectedZoneId = null,
   selectedBandKey = null,
   onSelectAgent,
   onSelectZone,
   onSelectBand,
+  onJumpToT,
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
   const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
+  const pointerX = PADDING + pointerField.x * (SVG_WIDTH - PADDING * 2);
+  const pointerY = PADDING + pointerField.y * (SVG_HEIGHT - PADDING * 2);
+  const pointerDriftX = (pointerField.x - 0.5) * (pointerField.active ? 26 : 10);
+  const pointerDriftY = (pointerField.y - 0.5) * (pointerField.active ? 24 : 8);
   const activeBand =
     scene.elevationBands.find((band) => band.key === hoveredBandKey) ??
     scene.elevationBands.find((band) => band.key === selectedBandKey) ??
@@ -126,6 +184,22 @@ export default function SimulationMap2D({
             aria-label="2D social field simulation map"
           >
             <defs>
+              <radialGradient id="map-ambient-glow" cx="50%" cy="42%" r="68%">
+                <stop offset="0%" stopColor="rgba(56, 189, 248, 0.18)" />
+                <stop offset="38%" stopColor="rgba(99, 102, 241, 0.10)" />
+                <stop offset="100%" stopColor="rgba(15, 23, 42, 0)" />
+              </radialGradient>
+              <radialGradient id="map-core-field" cx="50%" cy="50%" r="72%">
+                <stop offset="0%" stopColor="rgba(30, 41, 59, 0.0)" />
+                <stop offset="100%" stopColor="rgba(15, 23, 42, 0.32)" />
+              </radialGradient>
+              <filter id="map-glow-soft" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="8" result="blurred" />
+                <feMerge>
+                  <feMergeNode in="blurred" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
               <pattern
                 id="map-grid"
                 width="48"
@@ -140,7 +214,42 @@ export default function SimulationMap2D({
                 />
               </pattern>
             </defs>
-            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="#f8fbfd" />
+            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="#07111f" />
+            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-ambient-glow)" />
+            <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-core-field)" />
+            <g opacity="0.72">
+              <circle
+                cx={SVG_WIDTH * 0.22 + Math.sin(renderTime * 0.23) * 28 + pointerDriftX * 0.35}
+                cy={SVG_HEIGHT * 0.24 + Math.cos(renderTime * 0.19) * 18 + pointerDriftY * 0.35}
+                r={146 + Math.sin(renderTime * 0.41) * 12}
+                fill="rgba(56, 189, 248, 0.08)"
+                filter="url(#map-glow-soft)"
+              />
+              <circle
+                cx={SVG_WIDTH * 0.78 + Math.cos(renderTime * 0.21) * 22 - pointerDriftX * 0.28}
+                cy={SVG_HEIGHT * 0.68 + Math.sin(renderTime * 0.27) * 16 - pointerDriftY * 0.24}
+                r={128 + Math.cos(renderTime * 0.36) * 10}
+                fill="rgba(99, 102, 241, 0.08)"
+                filter="url(#map-glow-soft)"
+              />
+            </g>
+            <g opacity={pointerField.active ? 0.78 : 0.5}>
+              <ellipse
+                cx={pointerX}
+                cy={pointerY}
+                rx={110 + Math.sin(renderTime * 1.2) * 12}
+                ry={86 + Math.cos(renderTime * 1.05) * 10}
+                fill="rgba(125, 211, 252, 0.08)"
+                filter="url(#map-glow-soft)"
+              />
+              <ellipse
+                cx={pointerX}
+                cy={pointerY}
+                rx={48 + Math.sin(renderTime * 1.8) * 6}
+                ry={36 + Math.cos(renderTime * 1.52) * 5}
+                fill="rgba(255,255,255,0.05)"
+              />
+            </g>
             <rect
               x={PADDING}
               y={PADDING}
@@ -149,6 +258,37 @@ export default function SimulationMap2D({
               rx="28"
               fill="url(#map-grid)"
             />
+            <g opacity="0.55" transform={`translate(${Math.sin(renderTime * 0.4) * 10} ${Math.cos(renderTime * 0.33) * 8})`}>
+              <rect
+                x={PADDING - 120 + ((renderTime * 92) % (SVG_WIDTH + 240))}
+                y={PADDING - 30}
+                width="96"
+                height={SVG_HEIGHT - PADDING * 2 + 60}
+                rx="28"
+                fill="rgba(255,255,255,0.035)"
+                transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
+              />
+              <rect
+                x={PADDING - 180 + ((renderTime * 64) % (SVG_WIDTH + 320))}
+                y={PADDING - 20}
+                width="42"
+                height={SVG_HEIGHT - PADDING * 2 + 40}
+                rx="24"
+                fill="rgba(125,211,252,0.028)"
+                transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
+              />
+            </g>
+            {transitionPhase > 0.001 ? (
+              <rect
+                x={PADDING}
+                y={PADDING}
+                width={SVG_WIDTH - PADDING * 2}
+                height={SVG_HEIGHT - PADDING * 2}
+                rx="28"
+                fill="rgba(255,255,255,0.08)"
+                opacity={transitionPhase * 0.55}
+              />
+            ) : null}
 
             {scene.elevationBands.map((band, index) => (
               <path
@@ -183,65 +323,58 @@ export default function SimulationMap2D({
               </path>
             ))}
 
-            {scene.zoneBoxes.map((zone, index) => (
-              <g key={zone.zoneId}>
-                <rect
-                  x={zone.x0}
-                  y={zone.y0}
-                  width={Math.max(24, zone.x1 - zone.x0)}
-                  height={Math.max(24, zone.y1 - zone.y0)}
-                  rx="24"
-                  fill={zoneBackground(index)}
-                  stroke={zoneStroke(index)}
-                  strokeWidth={selectedZoneId === zone.zoneId ? "3" : "1.5"}
-                  className="simulation-map__zone-rect"
-                  onClick={() =>
-                    onSelectZone?.({
-                      zoneId: zone.zoneId,
-                      label: zone.label,
-                      influence: zone.influence,
-                      friction: zone.friction,
-                      count: zone.count,
-                    })
-                  }
-                />
-                <text
-                  x={zone.x0 + 14}
-                  y={zone.y0 + 20}
-                  className="simulation-map__zone-label"
-                >
-                  {zone.label} · {zone.count}
-                </text>
-              </g>
-            ))}
+            {showClusterLayer ? (
+              <ClusterLayer
+                zones={scene.zoneBoxes}
+                renderTime={renderTime}
+                pointerField={pointerField}
+              />
+            ) : null}
+            {showPressureField ? (
+              <PressureFieldLayer
+                nodes={scene.nodes}
+                renderTime={renderTime}
+                pointerField={pointerField}
+              />
+            ) : null}
+            {showShockLayer ? (
+              <ShockLayer
+                nodes={scene.nodes}
+                annotations={annotations}
+                currentT={currentT}
+                renderTime={renderTime}
+              />
+            ) : null}
+            {showDriftLayer ? (
+              <DriftLayer
+                zones={scene.zoneBoxes}
+                mapCenter={{ x: SVG_WIDTH / 2, y: SVG_HEIGHT / 2 }}
+                renderTime={renderTime}
+              />
+            ) : null}
 
-            {scene.nodes.map((node) => (
-              <g key={node.id}>
-                {node.observer.score > 0 ? (
-                  <circle
-                    cx={node.cx}
-                    cy={node.cy}
-                    r={node.r + 5 + node.observer.score * 6}
-                    fill={node.observer.halo}
-                    fillOpacity={0.22 + node.observer.score * 0.18}
-                    stroke="none"
-                    className="simulation-map__agent-observer-halo"
-                  />
-                ) : null}
-                <circle
-                  cx={node.cx}
-                  cy={node.cy}
-                  r={node.r}
-                  fill={node.fill}
-                  fillOpacity="0.92"
-                  stroke={selectedAgentId === node.id ? "#0f172a" : node.observer.ring}
-                  strokeWidth={selectedAgentId === node.id ? "2.5" : 1.5 + node.observer.score * 1.8}
-                  className="simulation-map__agent-node"
-                  onClick={() => onSelectAgent?.(node.cell)}
-                />
-                <title>{node.title}</title>
-              </g>
-            ))}
+            <ZoneLayer
+              zones={scene.zoneBoxes}
+              selectedZoneId={selectedZoneId}
+              onSelectZone={onSelectZone}
+            />
+
+            {showAnchorLayer ? (
+              <AnchorLayer
+                nodes={scene.nodes}
+                zones={scene.zoneBoxes}
+                items={groundingItems}
+                currentT={currentT}
+                onJumpToT={onJumpToT}
+              />
+            ) : null}
+
+            <AgentLayer
+              nodes={scene.nodes}
+              renderTime={renderTime}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={onSelectAgent}
+            />
           </svg>
         )}
       </div>
@@ -368,12 +501,18 @@ function buildScene(cells: CellSnapshot[]) {
       y0: cy,
       y1: cy,
       count: 0,
+      avgDrift: 0,
+      avgPressure: 0,
+      fractureSignals: 0,
     };
     box.x0 = Math.min(box.x0, cx);
     box.x1 = Math.max(box.x1, cx);
     box.y0 = Math.min(box.y0, cy);
     box.y1 = Math.max(box.y1, cy);
     box.count += 1;
+    box.avgDrift += Number(cell.action_state?.zone_group_drift_velocity ?? 0);
+    box.avgPressure += Number(cell.action_state?.collective_pressure ?? 0);
+    box.fractureSignals += Number(Boolean(cell.action_state?.fracture_signal_received));
     zoneAcc.set(zoneId, box);
 
     return {
@@ -386,7 +525,10 @@ function buildScene(cells: CellSnapshot[]) {
       observer,
       title: `${cell.role_label ?? cell.role_key ?? "agent"} · ${
         zoneLabel
-      } · energy ${cell.energy.toFixed(1)} · observer ${observer.focus} ${observer.score.toFixed(2)}`,
+      } · pressure ${Number(cell.action_state?.collective_pressure ?? 0).toFixed(2)} · energy ${cell.energy.toFixed(1)} · observer ${observer.focus} ${observer.score.toFixed(2)}`,
+      collectivePressure: Math.max(0, Math.min(1, Number(cell.action_state?.collective_pressure ?? 0))),
+      pressureBucket: String(cell.action_state?.collective_pressure_bucket ?? "low"),
+      fractureSignal: Boolean(cell.action_state?.fracture_signal_received),
     };
   });
 
@@ -397,6 +539,8 @@ function buildScene(cells: CellSnapshot[]) {
       x1: Math.min(SVG_WIDTH - PADDING + 6, zone.x1 + 18),
       y0: Math.max(PADDING - 6, zone.y0 - 18),
       y1: Math.min(SVG_HEIGHT - PADDING + 6, zone.y1 + 18),
+      avgDrift: zone.count ? zone.avgDrift / zone.count : 0,
+      avgPressure: zone.count ? zone.avgPressure / zone.count : 0,
     }))
     .sort((a, b) => b.count - a.count);
 

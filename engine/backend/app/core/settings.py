@@ -488,6 +488,65 @@ def get_group_deliberation_max_groups() -> int:
         return 12
 
 
+def get_collective_influence_scale() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_INFLUENCE_SCALE", "")
+    if raw:
+        try:
+            return max(0.2, min(4.0, float(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 1.5
+    if profile == "rules-first":
+        return 0.85
+    return 1.2
+
+
+def get_collective_dialogue_scale() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_DIALOGUE_SCALE", "")
+    if raw:
+        try:
+            return max(0.2, min(4.0, float(raw)))
+        except ValueError:
+            pass
+    return 1.0
+
+
+def get_collective_policy_scale() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_POLICY_SCALE", "")
+    if raw:
+        try:
+            return max(0.2, min(4.0, float(raw)))
+        except ValueError:
+            pass
+    return 1.0
+
+
+def get_collective_fracture_threshold() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_FRACTURE_THRESHOLD", "0.58")
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.58
+
+
+def get_collective_tension_threshold() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_TENSION_THRESHOLD", "0.55")
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except ValueError:
+        return 0.55
+
+
+def get_collective_drift_threshold() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_DRIFT_THRESHOLD", "0.4")
+    try:
+        return max(0.0, min(4.0, float(raw)))
+    except ValueError:
+        return 0.4
+
+
 def get_snapshot_interval() -> int:
     """Persist every N ticks. Default 1 preserves current reproducibility behavior."""
     raw = os.getenv("ORGANIC4D_SNAPSHOT_INTERVAL", "1").strip()

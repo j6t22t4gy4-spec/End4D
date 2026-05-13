@@ -469,6 +469,7 @@ export type ReviewSummaryResponse = {
   group_tables: Record<string, unknown>;
   lineage_summary: Record<string, unknown>;
   emergent_dynamics: Record<string, unknown>;
+  validation_readout: Record<string, unknown>;
   policy_mechanisms: Record<string, unknown>;
   policy_lineage_bridge: Record<string, unknown>;
   zone_z_summary: Array<Record<string, unknown>>;

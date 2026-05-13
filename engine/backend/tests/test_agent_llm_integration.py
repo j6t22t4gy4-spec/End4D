@@ -32,9 +32,22 @@ def test_action_update_populates_action_state(monkeypatch):
         ]
 
     monkeypatch.setattr("app.llm.actions.llm_facade.decide_actions", fake_decide_actions)
-    updated = update_action_states_if_due([_cell()], current_t=10.0)
+    cell = _cell().copy(
+        action_state={
+            "collective_signal": "fracturing",
+            "collective_pressure": 0.66,
+            "role_group_cohesion": 0.41,
+            "role_group_fracture_risk": 0.72,
+            "zone_group_tension": 0.63,
+            "zone_group_drift_velocity": 0.44,
+            "group_influence_applied": True,
+        }
+    )
+    updated = update_action_states_if_due([cell], current_t=10.0)
     assert updated[0].action_state["cooperation_bias"] == 0.8
     assert updated[0].behavior_log[-1]["event_type"] == "action_plan"
+    assert updated[0].action_state["collective_signal"] == "fracturing"
+    assert updated[0].action_state["group_influence_applied"] is True
 
 
 def test_policy_shift_uses_llm_interpretation(monkeypatch):
@@ -60,3 +73,33 @@ def test_policy_shift_uses_llm_interpretation(monkeypatch):
     assert cell.behavior_log[-1]["event_type"] == "policy_interpretation"
     assert cell.action_state["policy_sensitivity"] > 0.5
     assert cell.emotion_vec[5] > 0
+
+
+def test_policy_shift_records_collective_policy_effect(monkeypatch):
+    def fake_interpret_policy(cells, *, event_type, payload):
+        return [
+            '{"memory_summary":"reacts under social pressure","emotion_index":3,"emotion_delta":0.1,"cooperation_shift":0.05,"policy_sensitivity_shift":0.12,"importance":0.72}'
+        ]
+
+    monkeypatch.setattr("app.llm.policy.llm_facade.interpret_policy", fake_interpret_policy)
+    cell = _cell("worker").copy(
+        action_state={
+            "collective_pressure": 0.7,
+            "zone_group_tension": 0.68,
+            "role_group_fracture_risk": 0.74,
+            "collective_signal": "fracturing",
+        }
+    )
+    updated = apply_inject_to_cells(
+        [cell],
+        "policy_shift",
+        {
+            "name": "labor protections",
+            "summary": "보호 정책 강화",
+            "intensity": 0.6,
+            "target_roles": ["worker"],
+        },
+    )
+    action_state = updated[0].action_state
+    assert action_state["collective_policy_effect"] > 0.0
+    assert action_state["fracture_signal_received"] is True

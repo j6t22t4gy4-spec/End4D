@@ -4,10 +4,15 @@ from __future__ import annotations
 import json
 from typing import Dict, List, Tuple
 
+from app.core.collective_dynamics import collective_context_from_action_state
 from app.core.coordinates import distance_4d
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.relationship_state import relationship_score, update_relationship
-from app.core.settings import get_dialogue_interval, get_dialogue_max_pairs
+from app.core.settings import (
+    get_collective_dialogue_scale,
+    get_dialogue_interval,
+    get_dialogue_max_pairs,
+)
 from app.core.spatial_index import SpatialHashGrid
 from app.llm.facade import llm_facade
 from app.models.cell import Cell
@@ -90,16 +95,25 @@ def _apply_dialogue_to_cell(
     summary_key = "summary_a" if side == "a" else "summary_b"
     summary = str(outcome.get(summary_key) or outcome.get("summary_a") or "direct dialogue")
     current_action = dict(cell.action_state)
+    collective = collective_context_from_action_state(current_action)
+    dialogue_scale = get_collective_dialogue_scale()
+    fracture_boost = 1.0 + (0.25 if bool(collective["fracture_alert"]) else 0.0) + (0.12 if bool(collective["drift_alert"]) else 0.0)
+    pressure = float(collective["collective_pressure"])
     trust_delta = max(0.0, float(outcome["cooperation_delta"])) * 0.7 + max(0.0, float(outcome["alignment_delta"])) * 0.35
     tension_delta = max(0.0, float(outcome["tension_delta"])) + max(0.0, -float(outcome["cooperation_delta"])) * 0.45
+    cooperation_delta = float(outcome["cooperation_delta"]) * max(0.6, 1.0 + (float(collective["role_cohesion"]) - 0.5) * 0.35 - pressure * 0.15) * dialogue_scale
+    risk_delta = float(outcome["tension_delta"]) * 0.15 * fracture_boost * dialogue_scale
     current_action["cooperation_bias"] = _clip01(
-        float(current_action.get("cooperation_bias", 0.5)) + float(outcome["cooperation_delta"])
+        float(current_action.get("cooperation_bias", 0.5)) + cooperation_delta
     )
     current_action["risk_tolerance"] = _clip01(
-        float(current_action.get("risk_tolerance", 0.5)) + float(outcome["tension_delta"]) * 0.15
+        float(current_action.get("risk_tolerance", 0.5)) + risk_delta
     )
     current_action["last_dialogue_summary"] = summary
     current_action["last_dialogue_peer_id"] = peer.cell_id
+    current_action["collective_dialogue_effect"] = round(abs(cooperation_delta) + abs(risk_delta), 4)
+    current_action["collective_dialogue_pressure"] = round(pressure, 3)
+    current_action["fracture_signal_received"] = bool(current_action.get("fracture_signal_received") or collective["fracture_alert"])
 
     entry = memory_entry(
         t=float(current_t),
@@ -111,8 +125,10 @@ def _apply_dialogue_to_cell(
             "peer_id": peer.cell_id,
             "alignment_delta": outcome["alignment_delta"],
             "tension_delta": outcome["tension_delta"],
-            "cooperation_delta": outcome["cooperation_delta"],
+            "cooperation_delta": cooperation_delta,
             "trust_delta": trust_delta,
+            "collective_pressure": pressure,
+            "fracture_alert": collective["fracture_alert"],
         },
         tags=["llm", "dialogue"],
     )

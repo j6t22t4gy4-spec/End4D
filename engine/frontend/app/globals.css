@@ -589,7 +589,7 @@ textarea {
 .simulation-map {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   min-height: min(68vh, 620px);
 }
 
@@ -606,7 +606,7 @@ textarea {
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #64748b;
+  color: #93c5fd;
 }
 
 .simulation-map__title {
@@ -614,14 +614,14 @@ textarea {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.03em;
-  color: #0f172a;
+  color: #e2e8f0;
 }
 
 .simulation-map__subtitle {
   margin: 4px 0 0;
   font-size: 11px;
   line-height: 1.4;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .simulation-map__meta {
@@ -634,20 +634,26 @@ textarea {
 .simulation-map__meta span {
   padding: 6px 8px;
   border-radius: 999px;
-  background: #f8fafc;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(96, 165, 250, 0.18);
   font-size: 10px;
   font-weight: 600;
-  color: #475569;
+  color: #cbd5e1;
 }
 
 .simulation-map__viewport {
+  position: relative;
   min-height: 0;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 18px;
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  border-radius: 24px;
   background:
-    radial-gradient(circle at top left, rgba(56, 189, 248, 0.08), transparent 26%),
-    linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%);
+    radial-gradient(circle at 20% 12%, rgba(56, 189, 248, 0.16), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgba(99, 102, 241, 0.14), transparent 28%),
+    radial-gradient(circle at 48% 78%, rgba(244, 63, 94, 0.08), transparent 26%),
+    linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 18px 40px rgba(2, 6, 23, 0.28);
   overflow: hidden;
 }
 
@@ -662,22 +668,24 @@ textarea {
   place-items: center;
   min-height: min(68vh, 620px);
   height: 100%;
-  color: #64748b;
+  color: #94a3b8;
   font-size: 13px;
 }
 
 .simulation-map__zone-label {
   font-size: 10px;
   font-weight: 700;
-  fill: #334155;
+  fill: #dbeafe;
   letter-spacing: 0.02em;
 }
 
 .simulation-map__contour-band {
-  stroke-width: 1.1;
+  stroke-width: 1.15;
   stroke-dasharray: 8 8;
   cursor: pointer;
-  transition: opacity 140ms ease, transform 140ms ease;
+  transition: opacity 180ms ease, transform 180ms ease, filter 180ms ease;
+  animation: map-dash-drift 16s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.08));
 }
 
 .simulation-map__zone-rect,
@@ -685,13 +693,82 @@ textarea {
   cursor: pointer;
 }
 
+.simulation-map__zone-rect {
+  transition: opacity 160ms ease, stroke-width 160ms ease, transform 160ms ease, filter 160ms ease;
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.06));
+}
+
+.simulation-map__zone-rect:hover {
+  filter: drop-shadow(0 0 16px rgba(96, 165, 250, 0.18));
+}
+
+.simulation-map__agent-group {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.simulation-map__agent-node {
+  transition: transform 160ms ease, stroke-width 160ms ease, filter 160ms ease, opacity 160ms ease;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: map-agent-float 4.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.08));
+}
+
+.simulation-map__agent-node:hover {
+  filter: drop-shadow(0 0 12px rgba(125, 211, 252, 0.4));
+}
+
+.simulation-map__agent-observer-halo {
+  animation: map-halo-pulse 3.4s ease-in-out infinite;
+}
+
+.simulation-map__agent-focus-ring {
+  animation: map-focus-ring 2.1s ease-in-out infinite;
+}
+
+.simulation-map__pressure-pulse {
+  animation: map-pressure-bloom 4.2s ease-in-out infinite;
+  filter: url(#map-glow-soft);
+}
+
+.simulation-map__pressure-core {
+  animation: map-pressure-core 3.1s ease-in-out infinite;
+}
+
+.simulation-map__shock-ring {
+  animation: map-shock-ripple 2.6s ease-out infinite;
+}
+
+.simulation-map__shock-core {
+  animation: map-shock-core 1.8s ease-in-out infinite;
+  filter: url(#map-glow-soft);
+}
+
+.simulation-map__shock-label,
+.simulation-map__anchor-label {
+  text-shadow: 0 0 12px rgba(15, 23, 42, 0.9);
+}
+
+.simulation-map__drift-stream {
+  animation: map-dash-drift 9s linear infinite;
+}
+
+.simulation-map__drift-arrow {
+  animation: map-drift-breathe 3.4s ease-in-out infinite;
+}
+
+.simulation-map__anchor-pin {
+  animation: map-anchor-bob 3.8s ease-in-out infinite;
+}
+
 .simulation-map__detail-card {
   display: grid;
   gap: 8px;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(248, 250, 252, 0.92);
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  background: rgba(15, 23, 42, 0.58);
 }
 
 .simulation-map__detail-eyebrow {
@@ -699,14 +776,14 @@ textarea {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  color: #64748b;
+  color: #93c5fd;
 }
 
 .simulation-map__detail-title {
   margin: 0;
   font-size: 13px;
   font-weight: 700;
-  color: #0f172a;
+  color: #e2e8f0;
 }
 
 .simulation-map__detail-grid {
@@ -714,7 +791,7 @@ textarea {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   font-size: 11px;
-  color: #475569;
+  color: #cbd5e1;
 }
 
 .simulation-map__legend {
@@ -729,8 +806,8 @@ textarea {
   align-items: center;
   padding: 8px 9px;
   border-radius: 12px;
-  background: rgba(248, 250, 252, 0.92);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(96, 165, 250, 0.12);
 }
 
 .simulation-map__legend-item--elevation {
@@ -765,13 +842,117 @@ textarea {
 
 .simulation-map__legend-item strong {
   font-size: 11px;
-  color: #0f172a;
+  color: #e2e8f0;
 }
 
 .simulation-map__legend-item span {
   margin-top: 2px;
   font-size: 10px;
-  color: #64748b;
+  color: #94a3b8;
+}
+
+@keyframes map-agent-float {
+  0%,
+  100% {
+    transform: translateY(0px) scale(1);
+  }
+  50% {
+    transform: translateY(-1.6px) scale(1.03);
+  }
+}
+
+@keyframes map-halo-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes map-focus-ring {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes map-pressure-bloom {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.98);
+    transform-origin: center;
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+    transform-origin: center;
+  }
+}
+
+@keyframes map-pressure-core {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes map-shock-ripple {
+  0% {
+    opacity: 0.85;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0.18;
+    stroke-dashoffset: 56;
+  }
+}
+
+@keyframes map-shock-core {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes map-dash-drift {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -120;
+  }
+}
+
+@keyframes map-drift-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes map-anchor-bob {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
 }
 
 .godview-layout {

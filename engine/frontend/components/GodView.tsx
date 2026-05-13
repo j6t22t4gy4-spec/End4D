@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
-import SimulationMap2D from "@/components/SimulationMap2D";
 import { TimeSlider } from "@/components/TimeSlider/TimeSlider";
 import { InjectPanel } from "@/components/InjectPanel/InjectPanel";
 import { PersonaPreview } from "@/components/PersonaPreview";
 import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline";
 import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
+import { CenterMapShell } from "@/components/center-map/CenterMapShell";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import type { SessionSummary } from "@/lib/api";
 import {
@@ -1949,27 +1949,33 @@ export default function GodView({
               </div>
             ) : null}
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
-              <SimulationMap2D
-                cells={renderedVisibleCells}
-                totalCells={renderedVisualStats?.totalCells ?? renderedVisibleCells.length}
-                sampled={renderedVisualStats?.sampled ?? false}
-                selectedAgentId={selectedAgent?.cell_id ?? null}
-                selectedZoneId={selectedZone?.zoneId ?? null}
-                selectedBandKey={selectedBand?.key ?? null}
-                onSelectAgent={(cell) => {
-                  setSelectedAgent(cell);
-                  setSelectedZone(null);
-                }}
-                onSelectZone={(zone) => {
-                  setSelectedZone(zone);
-                  setSelectedAgent(null);
-                }}
-                onSelectBand={(band) => {
-                  setSelectedBand(band);
-                }}
-              />
-            </div>
+            <CenterMapShell
+              mode="precision"
+              cells={renderedVisibleCells}
+              totalCells={renderedVisualStats?.totalCells ?? renderedVisibleCells.length}
+              sampled={renderedVisualStats?.sampled ?? false}
+              currentT={currentT}
+              annotations={reviewSummary?.timeline_annotations ?? []}
+              groundingItems={flattenReviewGrounding(reviewSummary?.grounding ?? {})}
+              collectiveSummary={renderedCollectiveSummary}
+              reviewSummary={reviewSummary}
+              selectedAgentId={selectedAgent?.cell_id ?? null}
+              selectedZoneId={selectedZone?.zoneId ?? null}
+              selectedBandKey={selectedBand?.key ?? null}
+              onSelectAgent={(cell) => {
+                setSelectedAgent(cell);
+                setSelectedZone(null);
+              }}
+              onSelectZone={(zone) => {
+                setSelectedZone(zone);
+                setSelectedAgent(null);
+              }}
+              onSelectBand={(band) => {
+                setSelectedBand(band);
+              }}
+              onClearSelection={clearSelection}
+              onJumpToT={setCurrentT}
+            />
 
             <div className="grid min-h-0 gap-4 xl:grid-cols-2">
               <SimulationInspectorPanel
@@ -2339,4 +2345,10 @@ function buildCollectiveSummaryFromCells(cells: CellSnapshot[]): CollectiveDynam
     role: summarizeAxis(Array.from(roleMap.values())),
     zone: summarizeAxis(Array.from(zoneMap.values())),
   };
+}
+
+function flattenReviewGrounding(
+  grounding: ReviewSummaryResponse["grounding"] | undefined
+) {
+  return Object.values(grounding ?? {}).flat();
 }

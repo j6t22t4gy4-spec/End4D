@@ -56,6 +56,7 @@ class ReviewSummaryResponse(BaseModel):
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
     emergent_dynamics: Dict[str, Any] = Field(default_factory=dict)
     mechanism_summary: Dict[str, Any] = Field(default_factory=dict)
+    validation_readout: Dict[str, Any] = Field(default_factory=dict)
     policy_mechanisms: Dict[str, Any] = Field(default_factory=dict)
     policy_lineage_bridge: Dict[str, Any] = Field(default_factory=dict)
     zone_z_summary: List[Dict[str, Any]] = Field(default_factory=list)
@@ -160,6 +161,7 @@ def _build_review_summary_response(
         lineage_summary=dict(payload.get("lineage_summary") or {}),
         emergent_dynamics=dict(payload.get("emergent_dynamics") or {}),
         mechanism_summary=dict(payload.get("mechanism_summary") or {}),
+        validation_readout=dict(payload.get("validation_readout") or {}),
         policy_mechanisms=dict(payload.get("policy_mechanisms") or {}),
         policy_lineage_bridge=dict(payload.get("policy_lineage_bridge") or {}),
         zone_z_summary=[dict(item) for item in list(payload.get("zone_z_drift") or [])],
