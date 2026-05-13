@@ -21,6 +21,73 @@
 
 ---
 
+## 0.5 Swarm Mode 복구 목표
+
+현재 Swarm Mode의 목표는 "많은 점이 움직이는 화면"이 아니다. 목표는 아래다.
+
+> **Persona가 있는 대량 에이전트들이 시나리오를 이해하고, `t` 내부에서 계속 협의/충돌/전파하며, 그 과정을 가볍고 안정적으로 시각화하는 엔진.**
+
+### 현재 문제 인식
+
+| 영역 | 문제 | 결과 |
+|------|------|------|
+| 실행 안정성 | live stream payload가 무겁고 observer cell에 대형 vector가 포함됨 | 에이전트 수가 조금만 늘어도 WebSocket/React/Pixi 이전에 payload가 병목 |
+| Swarm Genesis | `role-0` 같은 synthetic role과 단순 ring 배치가 중심 | persona/시나리오/지역/이해관계가 약해 "사람"이 아니라 랜덤 점처럼 보임 |
+| Persona Grounding | persona text, attrs, scenario prompt가 thought/action/position에 충분히 고정되지 않음 | Agent Stream 생각이 추상적이고 시나리오 반영 여부가 불명확 |
+| Agent Interaction | 내부 substep은 생겼지만 누가 누구와 왜 협의/충돌했는지 event가 부족 | 에이전트끼리 소통하는지 필드와 로그에서 확인하기 어려움 |
+| Thought/Action 품질 | action summary가 짧고 영어 fallback이 남아 있음 | 한국어 UI에서 몰입이 깨지고 의사결정 흔적으로 보기 어려움 |
+| Field Visualization | 협의/충돌/전파가 Pixi field에 transient signal로 표시되지 않음 | MiroFish식 "살아있는 필드 콘솔" 체감이 약함 |
+| Runtime UX | progress, heartbeat, reconnect 상태 표현이 약함 | 긴 실행 중 멈춘 것처럼 보이고 간헐적 disconnect가 제품 신뢰를 깎음 |
+
+### 성능 목표
+
+| 규모 | 목표 |
+|------|------|
+| 1k agents | 안정적인 stream 실행, progress/heartbeat 표시, compact observer payload |
+| 5k agents | compact scene + sampled observer 기준 안정 실행 |
+| 10k agents | full agent detail 금지, meso/bloc 중심 표시, detail은 선택 조회 |
+
+성능 원칙:
+
+- WebSocket stream에 `gene_vec`, `thought_vec`, `worldview_vec` 같은 대형 vector를 싣지 않는다.
+- React state에 full agent array를 상시 보관하지 않는다.
+- Pixi에는 sampled scene, compact pressure grid, transient interaction edge만 전달한다.
+- LLM은 기본 packet mode이며 agent mode는 sample/cap이 필수다.
+- Review/trajectory는 모든 internal substep마다 만들지 않고 interval/summary 기반으로만 만든다.
+
+### 품질 목표
+
+- 에이전트는 persona, role, zone, scenario를 초기 상태부터 인지해야 한다.
+- 한국어 UI에서는 thought/action/stream summary가 한국어로 표시되어야 한다.
+- action은 `행동 + 이유 + 대상` 구조를 가져야 한다.
+- agent-agent, group-group 협의/충돌은 event로 남아야 한다.
+- 필드에는 협의, 충돌, rumor/policy 전파가 transient edge/pulse/ripple로 보여야 한다.
+- 연결이 끊겨도 heartbeat timeout, reconnect, latest state resync로 복구 가능해야 한다.
+
+### 실행 순서
+
+| 순위 | 작업 | 완료 기준 |
+|------|------|-----------|
+| 1 | Stream Payload Diet | observer payload에서 대형 vector 제거, compact DTO 테스트 추가 |
+| 2 | Run Progress & Heartbeat | `started`, `step`, `heartbeat`, `completed`, `error` event와 진행률/스피너 표시 |
+| 3 | Persona-aware Swarm Genesis | persona catalog 기반 role/zone/bloc/position seed, synthetic role은 fallback으로만 사용 |
+| 4 | Interaction Event Layer | t 내부 협의/충돌/전파 event 생성, top-K/sample/TTL로 제한 |
+| 5 | Pixi Interaction Visualization | interaction edge/pulse/ripple layer 추가, 협의/충돌 색상 분리 |
+| 6 | Thought/Action Grounding | locale-aware 한국어 summary, persona/scenario/recent interaction prompt 강화 |
+| 7 | Runtime Reliability | reconnect/resync, queue backpressure, timeout/error 메시지 개선 |
+
+### 첫 번째 스프린트 완료 기준
+
+- 1k agents stream이 안정적으로 돈다.
+- observer payload에 대형 vector가 없다.
+- 실행 탭에 진행률, 스피너, 마지막 heartbeat 시간이 보인다.
+- WebSocket step event가 progress 정보를 포함한다.
+- 기존 테스트 통과 + payload compact 테스트가 추가된다.
+
+이 단계가 끝나기 전에는 시각 효과를 더 넣지 않는다. 먼저 혈관을 뚫고, 그 다음 persona와 field 체감을 올린다.
+
+---
+
 ## 1. 핵심 결손 표
 
 | 영역 | 현재 상태 | 우선순위 | 문제 |
