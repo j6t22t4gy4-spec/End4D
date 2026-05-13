@@ -68,6 +68,14 @@ export class PixiSceneController {
     this.transitionPhase = transitionPhase;
   }
 
+  setHoveredAgent(agentId: string | null) {
+    this.agentLayer.setHoveredAgent(agentId);
+  }
+
+  hitTest(x: number, y: number) {
+    return this.agentLayer.hitTest(x, y);
+  }
+
   render(renderTime: number) {
     this.drawField(renderTime);
     this.clusterLayer.animate(renderTime, this.pointerField);

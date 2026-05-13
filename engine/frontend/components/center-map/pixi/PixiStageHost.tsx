@@ -17,6 +17,12 @@ type PixiStageHostProps = {
   renderTime: number;
   transitionPhase: number;
   pointerField: PointerField;
+  onInteractionApiReady?: ((api: PixiInteractionApi | null) => void) | undefined;
+};
+
+export type PixiInteractionApi = {
+  hitTestAtNormalized: (x: number, y: number) => string | null;
+  setHoveredAgent: (agentId: string | null) => void;
 };
 
 export function PixiStageHost({
@@ -26,6 +32,7 @@ export function PixiStageHost({
   renderTime,
   transitionPhase,
   pointerField,
+  onInteractionApiReady,
 }: PixiStageHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -63,6 +70,11 @@ export function PixiStageHost({
       controller.updateShocks(annotations, currentT);
       controller.setPointerField(pointerField);
       controller.setTransitionPhase(transitionPhase);
+      onInteractionApiReady?.({
+        hitTestAtNormalized: (x, y) =>
+          controller.hitTest(scene.width * x, scene.height * y),
+        setHoveredAgent: (agentId) => controller.setHoveredAgent(agentId),
+      });
 
       resizeObserver = new ResizeObserver((entries) => {
         const entry = entries[0];
@@ -88,6 +100,7 @@ export function PixiStageHost({
 
     return () => {
       disposed = true;
+      onInteractionApiReady?.(null);
       resizeObserver?.disconnect();
       controllerRef.current?.destroy();
       controllerRef.current = null;

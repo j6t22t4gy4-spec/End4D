@@ -21,6 +21,7 @@ type AgentVisual = {
   pressure: number;
   observerScore: number;
   selected: boolean;
+  hovered: boolean;
   fractureSignal: boolean;
   phase: number;
 };
@@ -106,8 +107,35 @@ export class AgentLayerPixi {
       const ringPulse =
         1 + ((Math.sin(renderTime * (3.1 + visual.phase * 0.5) + visual.phase * 8) + 1) / 2) * 0.14;
       visual.ring.scale.set(ringPulse);
-      visual.ring.alpha = visual.selected || visual.fractureSignal ? 0.88 : 0.0;
+      visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal ? 0.9 : 0.0;
     }
+  }
+
+  setHoveredAgent(agentId: string | null) {
+    for (const [id, visual] of this.visuals) {
+      const nextHovered = id === agentId;
+      if (visual.hovered === nextHovered) continue;
+      visual.hovered = nextHovered;
+      this.redrawVisual(visual);
+    }
+  }
+
+  hitTest(x: number, y: number) {
+    let bestId: string | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+
+    for (const [id, visual] of this.visuals) {
+      const dx = x - visual.container.position.x;
+      const dy = y - visual.container.position.y;
+      const distance = Math.hypot(dx, dy);
+      const threshold = visual.radius + 10;
+      if (distance > threshold) continue;
+      if (distance >= bestDistance) continue;
+      bestDistance = distance;
+      bestId = id;
+    }
+
+    return bestId;
   }
 
   destroy() {
@@ -139,6 +167,7 @@ export class AgentLayerPixi {
       pressure: agent.pressure,
       observerScore: agent.observerScore,
       selected: agent.selected,
+      hovered: false,
       fractureSignal: agent.fractureSignal,
       phase: Math.random(),
     };
@@ -154,10 +183,10 @@ export class AgentLayerPixi {
     visual.halo.endFill();
 
     visual.ring.clear();
-    if (visual.selected || visual.fractureSignal) {
+    if (visual.selected || visual.hovered || visual.fractureSignal) {
       visual.ring.lineStyle(
-        1.5 + (visual.selected ? 0.9 : 0),
-        visual.selected ? 0xf8fafc : 0xfb7185,
+        1.5 + (visual.selected ? 0.9 : visual.hovered ? 0.5 : 0),
+        visual.selected ? 0xf8fafc : visual.hovered ? 0x7dd3fc : 0xfb7185,
         0.88
       );
       visual.ring.drawCircle(0, 0, visual.radius + 9 + visual.pressure * 5);

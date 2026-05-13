@@ -657,6 +657,13 @@ textarea {
   overflow: hidden;
 }
 
+.simulation-map__stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: min(68vh, 620px);
+}
+
 .simulation-map__pixi-stage {
   position: absolute;
   inset: 0;
@@ -678,6 +685,24 @@ textarea {
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.simulation-map__hover-chip {
+  position: absolute;
+  right: 18px;
+  top: 18px;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(2, 6, 23, 0.82);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.24);
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #dbeafe;
 }
 
 .simulation-map__empty {

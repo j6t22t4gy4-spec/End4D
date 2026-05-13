@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import {
   emotionToColorAndScale,
@@ -16,6 +16,7 @@ import { PressureFieldLayer } from "@/components/center-map/layers/PressureField
 import { ShockLayer } from "@/components/center-map/layers/ShockLayer";
 import { ZoneLayer } from "@/components/center-map/layers/ZoneLayer";
 import { PixiStageHost } from "@/components/center-map/pixi/PixiStageHost";
+import type { PixiInteractionApi } from "@/components/center-map/pixi/PixiStageHost";
 import { buildCenterMapScene } from "@/components/center-map/scene/buildCenterMapScene";
 import type { PointerField } from "@/components/center-map/scene/sceneTypes";
 import type {
@@ -140,6 +141,12 @@ export default function SimulationMap2D({
   );
   const usePixiLiveField = true;
   const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
+  const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
+  const pixiInteractionRef = useRef<PixiInteractionApi | null>(null);
+  const cellById = useMemo(
+    () => new Map(cells.map((cell) => [cell.cell_id, cell])),
+    [cells]
+  );
   const pointerX = PADDING + pointerField.x * (SVG_WIDTH - PADDING * 2);
   const pointerY = PADDING + pointerField.y * (SVG_HEIGHT - PADDING * 2);
   const pointerDriftX = (pointerField.x - 0.5) * (pointerField.active ? 26 : 10);
@@ -181,6 +188,46 @@ export default function SimulationMap2D({
             Run the simulation to populate the social field.
           </div>
         ) : (
+          <div
+            className="simulation-map__stage"
+            onMouseMove={(event) => {
+              const target = event.target as Element | null;
+              if (target?.closest(".simulation-map__zone-rect, .simulation-map__anchor-pin, .simulation-map__contour-band")) {
+                pixiInteractionRef.current?.setHoveredAgent(null);
+                setHoveredAgentId(null);
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return;
+              const nextId =
+                pixiInteractionRef.current?.hitTestAtNormalized(
+                  Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+                  Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+                ) ?? null;
+              pixiInteractionRef.current?.setHoveredAgent(nextId);
+              setHoveredAgentId(nextId);
+            }}
+            onMouseLeave={() => {
+              pixiInteractionRef.current?.setHoveredAgent(null);
+              setHoveredAgentId(null);
+            }}
+            onClick={(event) => {
+              const target = event.target as Element | null;
+              if (target?.closest(".simulation-map__zone-rect, .simulation-map__anchor-pin, .simulation-map__contour-band")) {
+                return;
+              }
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return;
+              const selectedId =
+                pixiInteractionRef.current?.hitTestAtNormalized(
+                  Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+                  Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+                ) ?? null;
+              if (!selectedId) return;
+              const selectedCell = cellById.get(selectedId);
+              if (selectedCell) onSelectAgent?.(selectedCell);
+            }}
+          >
           <>
             <PixiStageHost
               scene={pixiScene}
@@ -189,6 +236,9 @@ export default function SimulationMap2D({
               renderTime={renderTime}
               transitionPhase={transitionPhase}
               pointerField={pointerField}
+              onInteractionApiReady={(api) => {
+                pixiInteractionRef.current = api;
+              }}
             />
             <svg
               className="simulation-map__svg"
@@ -390,8 +440,16 @@ export default function SimulationMap2D({
                 onSelectAgent={onSelectAgent}
               />
             ) : null}
-          </svg>
+            </svg>
           </>
+          {hoveredAgentId ? (
+            <div className="simulation-map__hover-chip">
+              {cellById.get(hoveredAgentId)?.role_label ??
+                cellById.get(hoveredAgentId)?.role_key ??
+                "agent"}
+            </div>
+          ) : null}
+          </div>
         )}
       </div>
 
