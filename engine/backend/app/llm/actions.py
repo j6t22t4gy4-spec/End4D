@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from typing import Dict, List
 
+from app.core.collective_dynamics import collective_decision_influence
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.settings import get_action_refresh_interval, get_llm_agent_sample_size, get_llm_runtime_profile
 from app.llm.facade import llm_facade
@@ -24,6 +25,7 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
         action_state = _parse_action_state(text, cell)
         merged_action_state = dict(cell.action_state)
         merged_action_state.update(action_state)
+        _apply_collective_action_pressure(merged_action_state)
         merged_action_state["last_action_t"] = float(current_t)
         entry = memory_entry(
             t=float(current_t),
@@ -49,7 +51,9 @@ def update_action_states_if_due(cells: List[Cell], current_t: float) -> List[Cel
         if idx in selected_set:
             continue
         if not cell.action_state:
-            out[idx] = cell.copy(action_state=_heuristic_action_state(cell))
+            action_state = _heuristic_action_state(cell)
+            _apply_collective_action_pressure(action_state)
+            out[idx] = cell.copy(action_state=action_state)
     return out
 
 
@@ -101,6 +105,34 @@ def _heuristic_action_state(cell: Cell) -> Dict[str, float | str]:
         "policy_sensitivity": 0.4 + 0.35 * short_factor,
         "mobility_bias": 0.35 + 0.2 * (1.0 - long_factor),
     }
+
+
+def _apply_collective_action_pressure(action_state: Dict[str, float | str]) -> None:
+    influence = collective_decision_influence(action_state)
+    delta = float(influence["decision_pressure_delta"])
+    if bool(influence["collective_influence_applied"]):
+        action_state["cooperation_bias"] = _bounded_float(
+            float(action_state.get("cooperation_bias", 0.5)) - delta * 0.32,
+            default=0.5,
+        )
+        action_state["policy_sensitivity"] = _bounded_float(
+            float(action_state.get("policy_sensitivity", 0.5)) + delta * 0.42,
+            default=0.5,
+        )
+        action_state["mobility_bias"] = _bounded_float(
+            float(action_state.get("mobility_bias", 0.4)) + delta * 0.24,
+            default=0.4,
+        )
+        action_state["risk_tolerance"] = _bounded_float(
+            float(action_state.get("risk_tolerance", 0.5)) + delta * 0.36,
+            default=0.5,
+        )
+        action_state["strategy_summary"] = (
+            f"{action_state.get('strategy_summary') or 'adaptive planning'}; "
+            f"collective pressure: {influence['group_pressure_reason']}"
+        )
+    action_state.update(influence)
+    action_state["collective_action_decision_delta"] = round(delta, 4)
 
 
 def _extract_json_object(text: str) -> dict | None:

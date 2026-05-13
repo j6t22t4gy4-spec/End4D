@@ -44,10 +44,14 @@ def test_action_update_populates_action_state(monkeypatch):
         }
     )
     updated = update_action_states_if_due([cell], current_t=10.0)
-    assert updated[0].action_state["cooperation_bias"] == 0.8
+    assert updated[0].action_state["cooperation_bias"] < 0.8
+    assert updated[0].action_state["policy_sensitivity"] > 0.6
     assert updated[0].behavior_log[-1]["event_type"] == "action_plan"
     assert updated[0].action_state["collective_signal"] == "fracturing"
     assert updated[0].action_state["group_influence_applied"] is True
+    assert updated[0].action_state["collective_influence_applied"] is True
+    assert updated[0].action_state["collective_action_decision_delta"] > 0.0
+    assert "fracture" in updated[0].action_state["group_pressure_reason"]
 
 
 def test_policy_shift_uses_llm_interpretation(monkeypatch):
@@ -102,4 +106,7 @@ def test_policy_shift_records_collective_policy_effect(monkeypatch):
     )
     action_state = updated[0].action_state
     assert action_state["collective_policy_effect"] > 0.0
+    assert action_state["collective_policy_decision_delta"] > 0.0
+    assert action_state["collective_influence_applied"] is True
+    assert "fracture" in action_state["group_pressure_reason"]
     assert action_state["fracture_signal_received"] is True

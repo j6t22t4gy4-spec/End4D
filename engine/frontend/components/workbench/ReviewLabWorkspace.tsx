@@ -269,6 +269,22 @@ export function ReviewLabWorkspace({
     () => (data?.validation_readout ?? {}) as Record<string, unknown>,
     [data]
   );
+  const decisionInfluence = useMemo(
+    () => (data?.decision_influence ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const decisionInfluenceLatest = useMemo(
+    () => (decisionInfluence.latest ?? {}) as Record<string, unknown>,
+    [decisionInfluence]
+  );
+  const decisionInfluencePeak = useMemo(
+    () => (decisionInfluence.peak ?? {}) as Record<string, unknown>,
+    [decisionInfluence]
+  );
+  const decisionInfluenceSummary = useMemo(
+    () => (decisionInfluence.summary ?? {}) as Record<string, unknown>,
+    [decisionInfluence]
+  );
   const mockValidation = useMemo(
     () => (validationReadout.mock_long_horizon ?? {}) as Record<string, unknown>,
     [validationReadout]
@@ -696,6 +712,42 @@ export function ReviewLabWorkspace({
                 <MetricCard label={isKo ? "요약 모드" : "Summary Mode"} value={String(data.summary_mode)} />
                 <MetricCard label={isKo ? "어노테이션 모드" : "Annotation Mode"} value={String(data.annotation_mode)} />
               </div>
+              {Object.keys(decisionInfluence).length ? (
+                <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                        {isKo ? "Decision Pressure" : "Decision Pressure"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-amber-900">
+                        {String(
+                          decisionInfluenceSummary.interpretation ??
+                            (isKo
+                              ? "집단 압력이 의사결정 루프에 얼마나 개입했는지 요약합니다."
+                              : "Summarizes how strongly collective pressure entered decision loops.")
+                        )}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800">
+                      {String(decisionInfluenceSummary.latest_dominant_reason ?? decisionInfluenceLatest.dominant_reason ?? "stable")}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <MetricCard
+                      label={isKo ? "최신 평균 Δ" : "Latest Avg Δ"}
+                      value={Number(decisionInfluenceLatest.avg_decision_pressure_delta ?? 0).toFixed(3)}
+                    />
+                    <MetricCard
+                      label={isKo ? "피크 최대 Δ" : "Peak Max Δ"}
+                      value={Number(decisionInfluencePeak.max_decision_pressure_delta ?? 0).toFixed(3)}
+                    />
+                    <MetricCard
+                      label={isKo ? "적용률" : "Applied Rate"}
+                      value={`${Math.round(Number(decisionInfluenceLatest.collective_influence_applied_rate ?? 0) * 100)}%`}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>

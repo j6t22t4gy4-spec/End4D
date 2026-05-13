@@ -1,7 +1,7 @@
 """Structured review payload builders for post-simulation analysis."""
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 import numpy as np
@@ -132,6 +132,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     )
     zone_z_drift = _zone_z_drift(first, latest)
     belief_trajectory = _group_belief_trajectory_summary(store=store, available_t=available_t)
+    decision_influence = _decision_influence_summary(store=store, available_t=available_t)
     notable_agents = _notable_agents(first, latest)
     key_events = [_event_summary(event) for event in list(world.nutrients or [])[-MAX_REVIEW_EVENTS:]]
     summary_stats = {
@@ -206,6 +207,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "summary_stats": summary_stats,
         "belief_drift": belief_drift,
         "belief_trajectory": belief_trajectory,
+        "decision_influence": decision_influence,
         "group_analysis": group_analysis,
         "group_tables": group_tables,
         "lineage_summary": lineage_summary,
@@ -350,6 +352,45 @@ def build_session_review_payload(
             }
             for item in ranked_worlds[:5]
         ],
+    }
+
+
+def _decision_influence_delta(base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+    base = dict(base_payload.get("decision_influence") or {})
+    target = dict(target_payload.get("decision_influence") or {})
+    base_latest = dict(base.get("latest") or {})
+    target_latest = dict(target.get("latest") or {})
+    base_peak = dict(base.get("peak") or {})
+    target_peak = dict(target.get("peak") or {})
+    avg_gap = round(
+        float(target_latest.get("avg_decision_pressure_delta", 0.0))
+        - float(base_latest.get("avg_decision_pressure_delta", 0.0)),
+        4,
+    )
+    applied_gap = round(
+        float(target_latest.get("collective_influence_applied_rate", 0.0))
+        - float(base_latest.get("collective_influence_applied_rate", 0.0)),
+        4,
+    )
+    peak_gap = round(
+        float(target_peak.get("max_decision_pressure_delta", 0.0))
+        - float(base_peak.get("max_decision_pressure_delta", 0.0)),
+        4,
+    )
+    signal = "muted"
+    if avg_gap >= 0.035 or peak_gap >= 0.045:
+        signal = "decision-amplified"
+    elif avg_gap <= -0.035 or peak_gap <= -0.045:
+        signal = "decision-damped"
+    elif abs(applied_gap) >= 0.2:
+        signal = "coverage-shift"
+    return {
+        "base": base,
+        "target": target,
+        "latest_avg_delta_gap": avg_gap,
+        "latest_applied_rate_gap": applied_gap,
+        "peak_max_delta_gap": peak_gap,
+        "decision_influence_signal": signal,
     }
 
 
@@ -549,6 +590,7 @@ def build_review_diff_payload(
     policy_mechanism_delta = _policy_mechanism_delta(base_payload=base_payload, target_payload=target_payload)
     lineage_delta = _lineage_delta(base_payload=base_payload, target_payload=target_payload)
     policy_lineage_delta = _policy_lineage_delta(base_payload=base_payload, target_payload=target_payload)
+    decision_influence_delta = _decision_influence_delta(base_payload, target_payload)
     belief_trajectory_delta = _belief_trajectory_delta(
         base_payload=base_payload,
         target_payload=target_payload,
@@ -588,6 +630,7 @@ def build_review_diff_payload(
         "policy_mechanism_delta": policy_mechanism_delta,
         "lineage_delta": lineage_delta,
         "policy_lineage_delta": policy_lineage_delta,
+        "decision_influence_delta": decision_influence_delta,
         "belief_trajectory_delta": belief_trajectory_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
@@ -1027,8 +1070,20 @@ def _group_belief_point(snapshot: Snapshot, group_kind: str, cells: list[Cell]) 
     fracture = _trajectory_metric(cells, group_kind, "fracture_risk")
     drift = _trajectory_metric(cells, group_kind, "drift_velocity")
     pressure = _trajectory_mean_action(cells, "collective_pressure")
+    decision_pressure = _trajectory_mean_action(cells, "decision_pressure_delta")
     policy = _trajectory_mean_action(cells, "policy_sensitivity", 0.5)
     cooperation = _trajectory_mean_action(cells, "cooperation_bias", 0.5)
+    applied = [
+        1.0 if bool(dict(getattr(cell, "action_state", {}) or {}).get("collective_influence_applied")) else 0.0
+        for cell in cells
+    ]
+    cap_ratios = []
+    for cell in cells:
+        state = dict(getattr(cell, "action_state", {}) or {})
+        cap = float(state.get("collective_influence_cap", 0.0) or 0.0)
+        delta = float(state.get("decision_pressure_delta", 0.0) or 0.0)
+        if cap > 0.0:
+            cap_ratios.append(max(0.0, min(1.0, delta / cap)))
     polarization = float(np.std([float(getattr(cell, "z", 0.0)) for cell in cells])) if len(cells) > 1 else 0.0
     return {
         "t": float(snapshot.t),
@@ -1039,6 +1094,9 @@ def _group_belief_point(snapshot: Snapshot, group_kind: str, cells: list[Cell]) 
         "fracture_risk": round(fracture, 4),
         "drift_velocity": round(drift, 4),
         "collective_pressure": round(pressure, 4),
+        "decision_pressure_delta": round(decision_pressure, 4),
+        "collective_influence_applied_rate": round(float(np.mean(applied)) if applied else 0.0, 4),
+        "collective_influence_cap_utilization": round(float(np.mean(cap_ratios)) if cap_ratios else 0.0, 4),
         "pressure_bucket": _trajectory_pressure_bucket(pressure),
         "polarization": round(polarization, 4),
         "stance_signature": {
@@ -1088,6 +1146,7 @@ def _group_belief_trajectory_axis(
         latest = points[-1]
         deltas = {
             "pressure_delta": round(float(latest["collective_pressure"]) - float(first["collective_pressure"]), 4),
+            "decision_pressure_delta": round(float(latest["decision_pressure_delta"]) - float(first["decision_pressure_delta"]), 4),
             "fracture_delta": round(float(latest["fracture_risk"]) - float(first["fracture_risk"]), 4),
             "tension_delta": round(float(latest["tension"]) - float(first["tension"]), 4),
             "drift_delta": round(float(latest["drift_velocity"]) - float(first["drift_velocity"]), 4),
@@ -1100,6 +1159,8 @@ def _group_belief_trajectory_axis(
                 "member_count": int(row.get("member_count", 0)),
                 "latest_stance": str(latest["stance"]),
                 "latest_pressure": float(latest["collective_pressure"]),
+                "latest_decision_pressure": float(latest["decision_pressure_delta"]),
+                "latest_influence_applied_rate": float(latest["collective_influence_applied_rate"]),
                 "latest_bucket": str(latest["pressure_bucket"]),
                 "deltas": deltas,
                 "points": points,
@@ -1132,6 +1193,81 @@ def _group_belief_trajectory_summary(*, store: Any, available_t: list[float]) ->
         "role": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="role"),
         "persona": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="persona"),
         "zone": _group_belief_trajectory_axis(store=store, sampled_t=selected_t, group_kind="zone"),
+    }
+
+
+def _decision_influence_point(snapshot: Snapshot) -> dict[str, Any]:
+    states = [dict(getattr(cell, "action_state", {}) or {}) for cell in snapshot.cells]
+    deltas = [float(state.get("decision_pressure_delta", 0.0) or 0.0) for state in states]
+    raw = [float(state.get("decision_pressure_raw", 0.0) or 0.0) for state in states]
+    caps = [float(state.get("collective_influence_cap", 0.0) or 0.0) for state in states]
+    applied = [1.0 if bool(state.get("collective_influence_applied")) else 0.0 for state in states]
+    cap_utilization = [
+        max(0.0, min(1.0, delta / cap))
+        for delta, cap in zip(deltas, caps)
+        if cap > 0.0
+    ]
+    reasons = Counter(str(state.get("group_pressure_reason") or "unknown") for state in states)
+    dominant_reason = reasons.most_common(1)[0][0] if reasons else "unknown"
+    return {
+        "t": float(snapshot.t),
+        "avg_decision_pressure_delta": round(float(np.mean(deltas)) if deltas else 0.0, 4),
+        "max_decision_pressure_delta": round(max(deltas) if deltas else 0.0, 4),
+        "avg_decision_pressure_raw": round(float(np.mean(raw)) if raw else 0.0, 4),
+        "collective_influence_applied_rate": round(float(np.mean(applied)) if applied else 0.0, 4),
+        "collective_influence_cap_utilization": round(float(np.mean(cap_utilization)) if cap_utilization else 0.0, 4),
+        "dominant_reason": dominant_reason,
+        "reason_counts": dict(sorted(reasons.items())),
+    }
+
+
+def _decision_influence_interpretation(latest: dict[str, Any], peak: dict[str, Any]) -> str:
+    latest_avg = float(latest.get("avg_decision_pressure_delta", 0.0) or 0.0)
+    applied_rate = float(latest.get("collective_influence_applied_rate", 0.0) or 0.0)
+    peak_max = float(peak.get("max_decision_pressure_delta", 0.0) or 0.0)
+    if latest_avg >= 0.18 or peak_max >= 0.2:
+        return "collective pressure is actively steering decisions while remaining under the soft cap"
+    if latest_avg >= 0.1 or applied_rate >= 0.35:
+        return "collective pressure is moderately shaping decisions without dominating the loop"
+    if applied_rate > 0.0:
+        return "collective pressure is present but mostly light-touch"
+    return "collective decision influence is currently muted"
+
+
+def _decision_influence_summary(*, store: Any, available_t: list[float]) -> dict[str, Any]:
+    selected_t = [float(t) for t in available_t]
+    if len(selected_t) > MAX_REVIEW_TRAJECTORY_POINTS:
+        indices = np.linspace(0, len(selected_t) - 1, num=MAX_REVIEW_TRAJECTORY_POINTS)
+        selected_t = sorted(dict.fromkeys(selected_t[int(round(idx))] for idx in indices))
+    points = []
+    for t_value in selected_t:
+        snapshot = store.get(t_value) or store.get_nearest(t_value)
+        if snapshot is not None:
+            points.append(_decision_influence_point(snapshot))
+    if not points:
+        return {}
+    first = dict(points[0])
+    latest = dict(points[-1])
+    peak = max(points, key=lambda item: float(item.get("max_decision_pressure_delta", 0.0) or 0.0))
+    return {
+        "points": points,
+        "latest": latest,
+        "peak": dict(peak),
+        "summary": {
+            "avg_delta_change": round(
+                float(latest.get("avg_decision_pressure_delta", 0.0))
+                - float(first.get("avg_decision_pressure_delta", 0.0)),
+                4,
+            ),
+            "applied_rate_change": round(
+                float(latest.get("collective_influence_applied_rate", 0.0))
+                - float(first.get("collective_influence_applied_rate", 0.0)),
+                4,
+            ),
+            "peak_max_delta": float(peak.get("max_decision_pressure_delta", 0.0)),
+            "latest_dominant_reason": str(latest.get("dominant_reason") or "unknown"),
+            "interpretation": _decision_influence_interpretation(latest, dict(peak)),
+        },
     }
 
 

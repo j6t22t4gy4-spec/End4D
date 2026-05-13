@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CenterMapToolbar } from "@/components/center-map/CenterMapToolbar";
 import { CenterMapViewport } from "@/components/center-map/CenterMapViewport";
@@ -64,6 +64,10 @@ export function CenterMapShell({
 }: CenterMapShellProps) {
   const [visibleLayers, setVisibleLayers] = useState<CenterMapVisibleLayers>(() => defaultVisibleLayers(mode));
   const [cameraResetSignal, setCameraResetSignal] = useState(0);
+
+  useEffect(() => {
+    setVisibleLayers(defaultVisibleLayers(mode));
+  }, [mode]);
 
   const focusSummary = useMemo(() => {
     const roleFracture = Math.round((collectiveSummary?.role?.avg_fracture_risk ?? 0) * 100);

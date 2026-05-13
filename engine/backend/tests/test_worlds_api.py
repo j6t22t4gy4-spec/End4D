@@ -84,6 +84,42 @@ def test_create_world_with_god_mode_overrides():
     assert data["simulation_config"]["engine_params"]["z_scale"] == 14.0
 
 
+def test_create_world_with_swarm_mode_allows_large_agent_pool():
+    r = client.post(
+        "/worlds",
+        json={
+            "prompt": "대량 시민 에이전트가 정책 충격에 반응하는 swarm 시나리오",
+            "god_mode": {
+                "enabled": True,
+                "overrides": {
+                    "simulation_mode": "swarm",
+                    "t_max": 24,
+                    "initial_cell_count": 1000,
+                },
+                "engine_params": {
+                    "simulation_mode": "swarm",
+                    "swarm_llm_mode": "packet",
+                    "swarm_tier_model": {
+                        "micro": {"rule_based": True},
+                        "meso": {"group_count": 24, "llm_mode": "packet"},
+                        "macro": {"fields": ["pressure", "shock", "drift"]},
+                    },
+                    "zone_count": 24,
+                    "zone_layout": "swarm",
+                },
+            },
+        },
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["initial_cell_count"] == 1000
+    params = data["simulation_config"]["engine_params"]
+    assert params["simulation_mode"] == "swarm"
+    assert params["swarm_llm_mode"] == "packet"
+    assert params["swarm_tier_model"]["meso"]["group_count"] == 24
+    assert params["zone_layout"] == "swarm"
+
+
 def test_world_persona_preview():
     wid = world_store.create(
         t_max=1,

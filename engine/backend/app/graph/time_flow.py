@@ -34,7 +34,9 @@ def _create_initial_cells(
     if not roles:
         roles = ["agent"]
     personas = persona_catalog or []
-    zone_count = max(1, min(12, int(params.get("zone_count", max(1, min(4, count))))))
+    simulation_mode = str(params.get("simulation_mode") or "precision").strip().lower()
+    max_zones = 64 if simulation_mode == "swarm" else 12
+    zone_count = max(1, min(max_zones, int(params.get("zone_count", max(1, min(4, count))))))
     zone_layout = str(params.get("zone_layout", "grid")).strip() or "grid"
     spacing = max(0.6, float(params.get("zone_spacing", 2.0)))
     zone_influence_step = max(0.0, float(params.get("zone_influence_step", 0.08)))
@@ -73,6 +75,12 @@ def _create_initial_cells(
             radius = spacing * (2.4 + zone_index * 0.55)
             x = float(math.cos(theta) * radius)
             y = float(math.sin(theta) * radius)
+        elif zone_layout == "swarm":
+            theta = (2.0 * math.pi * (i % max(8, zone_count * 3))) / max(8, zone_count * 3)
+            ring = 1.0 + (i // max(1, zone_count)) ** 0.5 * 0.18
+            radius = spacing * (1.8 + zone_index * 0.42) * ring
+            x = float(math.cos(theta + zone_index * 0.37) * radius + (i % 7) * 0.035)
+            y = float(math.sin(theta + zone_index * 0.37) * radius + (i % 11) * 0.025)
         else:
             x = float(col * spacing)
             y = float(row * spacing)

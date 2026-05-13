@@ -1,9 +1,12 @@
 """Phase 6: 스텝 루프에 Emotion·Thought·메모리 연동."""
+import os
+
 import numpy as np
 import pytest
 
 from app.api.run import _build_live_observer_cells
 from app.core.snapshot import SnapshotStore
+from app.graph.nodes import step_loop_node
 from app.graph.time_flow import _create_initial_cells, create_time_flow_graph
 from app.llm import thought as thought_module
 from app.models.cell import Cell
@@ -58,6 +61,59 @@ def test_graph_uses_engine_zone_layout_params():
     ys = {round(float(c.y), 1) for c in out["cells"]}
     assert len(zone_ids) == 3
     assert len(ys) >= 2
+
+
+def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
+    captured: dict[str, str | None] = {}
+
+    def capture_action_env(cells, current_t):
+        captured["action_interval"] = os.environ.get("ORGANIC4D_ACTION_INTERVAL")
+        captured["sample_size"] = os.environ.get("ORGANIC4D_LLM_AGENT_SAMPLE_SIZE")
+        captured["deliberation_interval"] = os.environ.get("ORGANIC4D_GROUP_DELIBERATION_INTERVAL")
+        captured["deliberation_groups"] = os.environ.get("ORGANIC4D_GROUP_DELIBERATION_MAX_GROUPS")
+        captured["action_priority"] = os.environ.get("ORGANIC4D_LLM_PRIORITY_ACTION")
+        captured["group_priority"] = os.environ.get("ORGANIC4D_LLM_PRIORITY_GROUP_DELIBERATION")
+        return cells
+
+    monkeypatch.setattr("app.graph.nodes.update_thoughts_if_due", lambda cells, current_t: cells)
+    monkeypatch.setattr("app.graph.nodes.update_worldviews_if_due", lambda cells, current_t: cells)
+    monkeypatch.setattr("app.graph.nodes.update_action_states_if_due", capture_action_env)
+    monkeypatch.setattr("app.graph.nodes.apply_agent_dialogues_if_due", lambda cells, current_t: cells)
+    monkeypatch.setattr(
+        "app.graph.nodes.apply_group_deliberation_if_due",
+        lambda cells, current_t, coalition_state=None, coalition_history=None: (
+            cells,
+            dict(coalition_state or {}),
+            list(coalition_history or []),
+        ),
+    )
+    cells = _create_initial_cells(
+        count=8,
+        role_catalog=["citizen", "worker"],
+        engine_params={"simulation_mode": "swarm", "zone_count": 4, "zone_layout": "swarm"},
+    )
+
+    out = step_loop_node(
+        {
+            "cells": cells,
+            "current_t": 0.0,
+            "t_max": 1.0,
+            "engine_params": {
+                "simulation_mode": "swarm",
+                "swarm_llm_mode": "packet",
+                "swarm_tier_model": {"meso": {"group_count": 24, "llm_mode": "packet"}},
+            },
+            "world_events": [],
+        }
+    )
+
+    assert out["current_t"] == 1.0
+    assert captured["action_interval"] == "16"
+    assert captured["deliberation_interval"] == "6"
+    assert captured["deliberation_groups"] == "24"
+    assert captured["action_priority"] == "3"
+    assert captured["group_priority"] == "0"
+    assert os.environ.get("ORGANIC4D_ACTION_INTERVAL") is None
 
 
 def test_graph_assigns_social_elevation_from_engine_params():
@@ -369,3 +425,5 @@ def test_graph_emits_collective_group_state_and_feedback():
     assert "role_group_cohesion" in sample
     assert "zone_group_tension" in sample
     assert "collective_pressure" in sample
+    assert "decision_pressure_delta" in sample
+    assert "group_pressure_reason" in sample

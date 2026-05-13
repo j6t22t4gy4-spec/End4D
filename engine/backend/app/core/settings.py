@@ -523,6 +523,31 @@ def get_collective_policy_scale() -> float:
     return 1.0
 
 
+def get_collective_decision_influence_cap() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_DECISION_INFLUENCE_CAP", "")
+    if raw:
+        try:
+            return max(0.02, min(0.5, float(raw)))
+        except ValueError:
+            pass
+    profile = get_llm_runtime_profile()
+    if profile == "llm-first":
+        return 0.2
+    if profile == "rules-first":
+        return 0.12
+    return 0.16
+
+
+def get_collective_decision_damping() -> float:
+    raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_DECISION_DAMPING", "")
+    if raw:
+        try:
+            return max(0.1, min(1.0, float(raw)))
+        except ValueError:
+            pass
+    return 0.82
+
+
 def get_collective_fracture_threshold() -> float:
     raw = _get_runtime_llm_value("ORGANIC4D_COLLECTIVE_FRACTURE_THRESHOLD", "0.58")
     try:

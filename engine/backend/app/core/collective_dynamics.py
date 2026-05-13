@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import math
 from typing import Any
 
 import numpy as np
 
 from app.core.settings import (
+    get_collective_decision_damping,
+    get_collective_decision_influence_cap,
     get_collective_drift_threshold,
     get_collective_fracture_threshold,
     get_collective_influence_scale,
@@ -82,6 +85,50 @@ def collective_context_from_action_state(action_state: dict[str, Any] | None) ->
         "fracture_alert": role_fracture >= get_collective_fracture_threshold() or zone_fracture >= get_collective_fracture_threshold(),
         "tension_alert": role_tension >= get_collective_tension_threshold() or zone_tension >= get_collective_tension_threshold(),
         "drift_alert": zone_drift >= get_collective_drift_threshold(),
+    }
+
+
+def collective_decision_influence(action_state: dict[str, Any] | None) -> dict[str, float | str | bool]:
+    """Translate group state into a capped decision-loop pressure packet."""
+    state = dict(action_state or {})
+    collective = collective_context_from_action_state(state)
+    pressure = float(collective["collective_pressure"])
+    fracture = max(float(collective["role_fracture"]), float(collective["zone_fracture"]))
+    tension = max(float(collective["role_tension"]), float(collective["zone_tension"]))
+    drift = min(1.0, float(collective["zone_drift"]) / max(0.001, get_collective_drift_threshold()))
+    raw = _clip01(pressure * 0.42 + fracture * 0.28 + tension * 0.22 + drift * 0.08)
+    alert_boost = (
+        1.0
+        + (0.18 if bool(collective["fracture_alert"]) else 0.0)
+        + (0.12 if bool(collective["tension_alert"]) else 0.0)
+        + (0.08 if bool(collective["drift_alert"]) else 0.0)
+    )
+    previous_delta = _clip01(float(state.get("decision_pressure_delta", 0.0) or 0.0))
+    damping = max(0.55, 1.0 - min(0.45, previous_delta * get_collective_decision_damping()))
+    cap = get_collective_decision_influence_cap()
+    scaled = max(0.0, raw * get_collective_influence_scale() * alert_boost * damping)
+    delta = cap * (1.0 - math.exp(-scaled / max(0.001, cap)))
+    reasons: list[str] = []
+    if pressure >= 0.3:
+        reasons.append("pressure")
+    if fracture >= get_collective_fracture_threshold():
+        reasons.append("fracture")
+    if tension >= get_collective_tension_threshold():
+        reasons.append("tension")
+    if bool(collective["drift_alert"]):
+        reasons.append("drift")
+    if not reasons:
+        reasons.append("stable")
+    return {
+        "collective_influence_applied": bool(delta >= 0.025),
+        "decision_pressure_delta": round(delta, 4),
+        "decision_pressure_raw": round(raw, 4),
+        "decision_pressure_capped": round(delta, 4),
+        "collective_influence_cap": round(cap, 4),
+        "collective_influence_damping": round(damping, 4),
+        "group_pressure_reason": "+".join(reasons),
+        "collective_pressure_bucket": str(collective["pressure_bucket"]),
+        "fracture_signal_received": bool(collective["fracture_alert"]),
     }
 
 
@@ -395,6 +442,18 @@ def apply_collective_dynamics(
         fracture_alert = role_fracture >= get_collective_fracture_threshold() or zone_fracture >= get_collective_fracture_threshold()
         tension_alert = zone_tension >= get_collective_tension_threshold() or float(role_entry.get("tension", 0.0)) >= get_collective_tension_threshold()
         drift_alert = zone_drift >= get_collective_drift_threshold()
+        influence_state = {
+            **action_state,
+            "role_group_cohesion": float(role_entry.get("cohesion", 0.0)),
+            "role_group_tension": float(role_entry.get("tension", 0.0)),
+            "role_group_fracture_risk": role_fracture,
+            "zone_group_tension": zone_tension,
+            "zone_group_fracture_risk": zone_fracture,
+            "zone_group_drift_velocity": zone_drift,
+            "collective_pressure": pressure,
+            "collective_signal": str(group_state.get("collective_signal") or "stable"),
+        }
+        decision_influence = collective_decision_influence(influence_state)
 
         action_state.update(
             {
@@ -420,6 +479,7 @@ def apply_collective_dynamics(
                 "collective_signal": str(group_state.get("collective_signal") or "stable"),
                 "collective_updated_t": float(current_t),
                 "group_influence_applied": True,
+                **decision_influence,
                 "fracture_signal_received": bool(fracture_alert),
                 "collective_tension_alert": bool(tension_alert),
                 "collective_drift_alert": bool(drift_alert),

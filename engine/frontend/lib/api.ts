@@ -427,6 +427,7 @@ export type GodModePayload = {
     t_max?: number;
     initial_cell_count?: number;
     role_catalog?: string[];
+    simulation_mode?: "precision" | "swarm";
     t_step_semantic?: string;
     t_step_unit?: string;
     nutrient_per_step?: number;
@@ -442,6 +443,9 @@ export type GodModePayload = {
     z_mode?: string;
     z_weight?: number;
     z_scale?: number;
+    simulation_mode?: "precision" | "swarm";
+    swarm_llm_mode?: "packet" | "agent";
+    swarm_tier_model?: Record<string, unknown>;
   };
 };
 
@@ -501,6 +505,7 @@ export type ReviewSummaryResponse = {
   metrics: Record<string, unknown>;
   stance_groups: Array<Record<string, unknown>>;
   belief_trajectory: Record<string, unknown>;
+  decision_influence: Record<string, unknown>;
   group_analysis: Record<string, unknown>;
   group_tables: Record<string, unknown>;
   lineage_summary: Record<string, unknown>;

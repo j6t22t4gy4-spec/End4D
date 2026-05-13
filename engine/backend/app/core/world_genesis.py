@@ -116,6 +116,8 @@ def apply_genesis_overrides(
     overrides: Dict[str, Any] | None = None,
 ) -> GenesisPlan:
     data = dict(overrides or {})
+    simulation_mode = str(data.get("simulation_mode") or "").strip().lower()
+    max_initial_cells = 5000 if simulation_mode == "swarm" else 256
     role_catalog = [
         str(item).strip()
         for item in data.get("role_catalog") or plan.role_catalog
@@ -126,7 +128,7 @@ def apply_genesis_overrides(
     return GenesisPlan(
         t_max=max(1.0, float(data.get("t_max", plan.t_max))),
         initial_cell_count=max(
-            6, min(256, int(data.get("initial_cell_count", plan.initial_cell_count)))
+            6, min(max_initial_cells, int(data.get("initial_cell_count", plan.initial_cell_count)))
         ),
         role_catalog=role_catalog[:16],
         rationale=str(data.get("rationale") or plan.rationale),

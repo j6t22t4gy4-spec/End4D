@@ -41,6 +41,11 @@ def test_review_summary_returns_summary_and_annotations():
     first_role = payload["belief_trajectory"]["role"]["groups"][0]
     assert "points" in first_role
     assert "deltas" in first_role
+    assert "latest_decision_pressure" in first_role
+    assert "decision_influence" in payload
+    assert "latest" in payload["decision_influence"]
+    assert "summary" in payload["decision_influence"]
+    assert "interpretation" in payload["decision_influence"]["summary"]
     assert "grounding" in payload
     assert "citations" in payload
     assert "causal_analysis.0" in payload["citations"]
@@ -131,6 +136,8 @@ def test_review_diff_returns_comparison():
     assert "policy_mechanism_delta" in payload["compared_metrics"]
     assert "lineage_delta" in payload["compared_metrics"]
     assert "policy_lineage_delta" in payload["compared_metrics"]
+    assert "decision_influence_delta" in payload["compared_metrics"]
+    assert "decision_influence_signal" in payload["compared_metrics"]["decision_influence_delta"]
     assert "belief_trajectory_delta" in payload["compared_metrics"]
     assert "summary" in payload["compared_metrics"]["belief_trajectory_delta"]
     assert "top_diverging" in payload["compared_metrics"]["belief_trajectory_delta"]

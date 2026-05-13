@@ -91,6 +91,11 @@ const DIALOGUE_PAIR_OPTIONS = ["16", "32", "64", "128", "320"];
 const DELIBERATION_GROUP_OPTIONS = ["4", "8", "12", "24", "40", "64"];
 const TASK_BUDGET_OPTIONS = ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024"];
 const TASK_PRIORITY_OPTIONS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+const SWARM_AGENT_OPTIONS = ["512", "1000", "2000", "5000"];
+const SWARM_MESO_OPTIONS = ["8", "16", "24", "40", "64"];
+
+type SimulationMode = "precision" | "swarm";
+type SwarmLlmMode = "packet" | "agent";
 
 const LLM_PROVIDER_PRESETS = [
   {
@@ -161,6 +166,10 @@ export default function GodView({
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
   const [stage, setStage] = useState<"setup" | "run" | "review">("setup");
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>("precision");
+  const [swarmAgentCount, setSwarmAgentCount] = useState("1000");
+  const [swarmMesoGroups, setSwarmMesoGroups] = useState("24");
+  const [swarmLlmMode, setSwarmLlmMode] = useState<SwarmLlmMode>("packet");
   const [genesisPrompt, setGenesisPrompt] = useState("");
   const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
@@ -247,6 +256,28 @@ export default function GodView({
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
+  }, []);
+
+  const applySimulationMode = useCallback((mode: SimulationMode) => {
+    setSimulationMode(mode);
+    if (mode === "swarm") {
+      setGodModeEnabled(true);
+      setCustomInitialCells((value) => (Number.parseInt(value, 10) >= 512 ? value : "1000"));
+      setCustomTMax((value) => (Number.parseInt(value, 10) >= 80 ? value : "120"));
+      setZoneLayout("swarm");
+      setZoneCount((value) => (Number.parseInt(value, 10) >= 8 ? value : "24"));
+      setZoneSpacing("1.25");
+      setZMode("policy");
+      setZWeight("0.05");
+      setZScale("8.0");
+      setLlmRuntimeProfile("balanced");
+      setLlmCycleBudget("160");
+      setLlmAgentSampleSize("256");
+      setLlmDialoguePairs("32");
+      setLlmDeliberationGroups("24");
+    } else {
+      setZoneLayout((value) => (value === "swarm" ? "grid" : value));
+    }
   }, []);
 
   const {
@@ -543,22 +574,31 @@ export default function GodView({
     }
     try {
       disconnectWebSocket();
-      const godMode: GodModePayload | null = godModeEnabled
+      const swarmEnabled = simulationMode === "swarm";
+      const godMode: GodModePayload | null = godModeEnabled || swarmEnabled
         ? {
             enabled: true,
             auto_roles_from_personas: godRoleMode === "auto",
             overrides: {
               t_max: parsePositiveNumber(customTMax),
-              initial_cell_count: parsePositiveInt(customInitialCells),
+              initial_cell_count: parsePositiveInt(swarmEnabled ? swarmAgentCount : customInitialCells),
               role_catalog: godRoleMode === "manual" ? splitRoles(customRoles) : undefined,
+              simulation_mode: simulationMode,
               t_step_unit: customTUnit.trim() || undefined,
               nutrient_per_step: parsePositiveNumber(customNutrient),
               persona_country: customCountry.trim() || undefined,
             },
             engine_params: {
-              zone_count: parsePositiveInt(zoneCount),
-              zone_layout: zoneLayout,
-              zone_spacing: parsePositiveNumber(zoneSpacing),
+              simulation_mode: simulationMode,
+              swarm_llm_mode: swarmLlmMode,
+              swarm_tier_model: {
+                micro: { rule_based: true, visual_agents: parsePositiveInt(swarmAgentCount) },
+                meso: { group_count: parsePositiveInt(swarmMesoGroups), llm_mode: swarmLlmMode },
+                macro: { fields: ["pressure", "shock", "drift"] },
+              },
+              zone_count: parsePositiveInt(swarmEnabled ? swarmMesoGroups : zoneCount),
+              zone_layout: swarmEnabled ? "swarm" : zoneLayout,
+              zone_spacing: parsePositiveNumber(swarmEnabled ? "1.25" : zoneSpacing),
               zone_influence_step: parseNumber(zoneInfluenceStep),
               zone_friction_step: parseNumber(zoneFrictionStep),
               z_mode: zMode,
@@ -609,6 +649,10 @@ export default function GodView({
     godRoleMode,
     genesisPrompt,
     godModeEnabled,
+    simulationMode,
+    swarmAgentCount,
+    swarmLlmMode,
+    swarmMesoGroups,
     zoneCount,
     zoneFrictionStep,
     zoneInfluenceStep,
@@ -687,7 +731,8 @@ export default function GodView({
       .then((snap) => {
         if (cancelled) return;
         const { cells, totalCells, sampled } = sampleCellsForVisualization(
-          snap.cells
+          snap.cells,
+          simulationMode === "swarm" ? 20000 : undefined
         );
         setSnapshotCells(snap.cells);
         setVisibleCells(cells);
@@ -703,7 +748,7 @@ export default function GodView({
     return () => {
       cancelled = true;
     };
-  }, [availableKey, currentT, worldId]);
+  }, [availableKey, currentT, simulationMode, worldId]);
 
   const shouldUseLiveObserver =
     Boolean(isRunning) &&
@@ -1324,8 +1369,20 @@ export default function GodView({
           </div>
           {stage === "run" ? (
             <div className="unified-dashboard__mode-toggle" aria-label="simulation mode">
-              <span className="is-active">Precision</span>
-              <span>{isKo ? "Swarm 준비중" : "Swarm soon"}</span>
+              <button
+                type="button"
+                className={simulationMode === "precision" ? "is-active" : ""}
+                onClick={() => applySimulationMode("precision")}
+              >
+                Precision
+              </button>
+              <button
+                type="button"
+                className={simulationMode === "swarm" ? "is-active" : ""}
+                onClick={() => applySimulationMode("swarm")}
+              >
+                Swarm
+              </button>
             </div>
           ) : null}
           {stage === "run" ? (
@@ -1382,6 +1439,68 @@ export default function GodView({
                   className="app-textarea"
                 />
               </label>
+              <div className="grid gap-3 rounded-[22px] border border-slate-200 bg-white/80 p-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    simulationMode === "precision"
+                      ? "border-slate-900 bg-slate-900 text-white shadow-lg"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+                  }`}
+                  onClick={() => applySimulationMode("precision")}
+                >
+                  <span className="block text-xs font-semibold uppercase tracking-[0.18em] opacity-70">Precision Mode</span>
+                  <span className="mt-1 block text-sm font-semibold">
+                    {isKo ? "고해상도 개인/집단 분석" : "High-resolution individual and group analysis"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-2xl border px-4 py-3 text-left transition ${
+                    simulationMode === "swarm"
+                      ? "border-sky-500 bg-sky-50 text-sky-950 shadow-lg"
+                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"
+                  }`}
+                  onClick={() => applySimulationMode("swarm")}
+                >
+                  <span className="block text-xs font-semibold uppercase tracking-[0.18em] opacity-70">Swarm Mode</span>
+                  <span className="mt-1 block text-sm font-semibold">
+                    {isKo ? "대량 에이전트 + Meso packet LLM" : "Mass agents + meso packet LLM"}
+                  </span>
+                </button>
+              </div>
+              {simulationMode === "swarm" ? (
+                <div className="grid gap-3 rounded-[22px] border border-sky-200 bg-sky-50/80 p-4 md:grid-cols-3">
+                  <label className="flex flex-col gap-1 text-xs text-sky-800">
+                    {isKo ? "Swarm agents" : "Swarm agents"}
+                    <select value={swarmAgentCount} onChange={(e) => setSwarmAgentCount(e.target.value)} className="app-input">
+                      {SWARM_AGENT_OPTIONS.map((value) => (
+                        <option key={value} value={value}>{Number(value).toLocaleString()}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-sky-800">
+                    {isKo ? "Meso groups" : "Meso groups"}
+                    <select value={swarmMesoGroups} onChange={(e) => setSwarmMesoGroups(e.target.value)} className="app-input">
+                      {SWARM_MESO_OPTIONS.map((value) => (
+                        <option key={value} value={value}>{value}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1 text-xs text-sky-800">
+                    {isKo ? "LLM 모드" : "LLM mode"}
+                    <select value={swarmLlmMode} onChange={(e) => setSwarmLlmMode(e.target.value as SwarmLlmMode)} className="app-input">
+                      <option value="packet">{isKo ? "Packet: group/state 단위" : "Packet: group/state"}</option>
+                      <option value="agent">{isKo ? "1:1 Agent: 개별 호출" : "1:1 Agent calls"}</option>
+                    </select>
+                  </label>
+                  <p className="md:col-span-3 rounded-2xl bg-white/75 px-3 py-2 text-[11px] leading-5 text-sky-900">
+                    {isKo
+                      ? "MVP에서는 Micro agent는 rule 기반으로 빠르게 움직이고, Meso group packet 설정을 engine params에 보존합니다. Packet/1:1 실제 호출 전략은 다음 단계에서 이 설정을 소비하도록 확장합니다."
+                      : "In this MVP, micro agents move through rules while meso group packet settings are persisted in engine params. The next step wires Packet/1:1 settings into the live LLM scheduler."}
+                  </p>
+                </div>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={handleCreateWorld} className="app-button app-button--primary">
                   {isKo ? "월드 생성" : "Create world"}
@@ -1920,6 +2039,7 @@ export default function GodView({
                 <h3>{isKo ? "실시간 소셜 필드" : "Live Social Field"}</h3>
               </div>
               <div className="unified-dashboard__status-strip">
+                <span>{simulationMode}</span>
                 <span>{renderedCollectiveSignal}</span>
                 <span>{isKo ? "압력" : "pressure"} {Math.round((renderedCollectiveSummary?.role?.avg_fracture_risk ?? 0) * 100)}</span>
                 {renderedVisualStats?.sampled ? (
@@ -1935,7 +2055,7 @@ export default function GodView({
               </div>
             ) : null}
             <CenterMapShell
-              mode="precision"
+              mode={simulationMode}
               cells={renderedVisibleCells}
               totalCells={renderedVisualStats?.totalCells ?? renderedVisibleCells.length}
               sampled={renderedVisualStats?.sampled ?? false}

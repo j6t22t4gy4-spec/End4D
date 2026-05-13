@@ -70,6 +70,9 @@ def test_agent_dialogue_writes_behavior_log(monkeypatch):
     assert out[0].relationship_state["b"]["dialogue_count"] == 1
     assert out[0].relationship_state["b"]["trust"] > 0.0
     assert out[0].action_state["collective_dialogue_effect"] > 0.0
+    assert out[0].action_state["collective_dialogue_decision_delta"] > 0.0
+    assert out[0].action_state["collective_influence_applied"] is True
+    assert "fracture" in out[0].action_state["group_pressure_reason"]
     assert out[0].action_state["fracture_signal_received"] is True
 
 
@@ -143,8 +146,18 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
         "app.llm.group_deliberation.llm_facade.deliberate_groups",
         fake_deliberate_groups,
     )
+    high_pressure_state = {
+        "cooperation_bias": 0.5,
+        "policy_sensitivity": 0.6,
+        "collective_pressure": 0.64,
+        "role_group_cohesion": 0.46,
+        "role_group_fracture_risk": 0.7,
+        "zone_group_tension": 0.61,
+        "zone_group_drift_velocity": 0.43,
+    }
     cells = [
         _cell("a", 0.0, "citizen").copy(
+            action_state=dict(high_pressure_state),
             relationship_state={
                 "b": {
                     "peer_id": "b",
@@ -158,6 +171,7 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
             }
         ),
         _cell("b", 1.0, "citizen").copy(
+            action_state=dict(high_pressure_state),
             relationship_state={
                 "a": {
                     "peer_id": "a",
@@ -170,7 +184,7 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
                 }
             }
         ),
-        _cell("c", 2.0, "regulator"),
+        _cell("c", 2.0, "regulator").copy(action_state=dict(high_pressure_state)),
     ]
     out, coalition_state, coalition_history = apply_group_deliberation_if_due(cells, current_t=50.0)
 
@@ -181,6 +195,8 @@ def test_group_deliberation_updates_role_pressure(monkeypatch):
     assert out[0].long_memory[-1]["kind"] == "group_deliberation"
     assert out[0].long_memory[-1]["payload"]["avg_trust"] > 0.0
     assert out[0].action_state["collective_group_deliberation_effect"] > 0.0
+    assert out[0].action_state["collective_group_decision_delta"] > 0.0
+    assert out[0].action_state["collective_influence_applied"] is True
     assert coalition_state["citizen"]["cycle_count"] == 1
     assert any(item["role"] == "citizen" for item in coalition_history)
 

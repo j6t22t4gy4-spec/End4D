@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from typing import Any, Dict, List, Tuple
 
-from app.core.collective_dynamics import collective_context_from_action_state
+from app.core.collective_dynamics import collective_context_from_action_state, collective_decision_influence
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.relationship_state import average_relationship_metrics
 from app.core.settings import (
@@ -117,9 +117,11 @@ def _apply_group_pressure(
 ) -> Cell:
     current_action = dict(cell.action_state)
     collective = collective_context_from_action_state(current_action)
+    influence = collective_decision_influence(current_action)
+    decision_delta = float(influence["decision_pressure_delta"])
     pressure = float(collective["collective_pressure"])
     cohesion_multiplier = 1.0 + max(0.0, float(collective["role_cohesion"]) - 0.5) * 0.4
-    tension_multiplier = 1.0 + pressure * 0.3 + (0.18 if bool(collective["fracture_alert"]) else 0.0)
+    tension_multiplier = 1.0 + pressure * 0.3 + (0.18 if bool(collective["fracture_alert"]) else 0.0) + decision_delta * 0.8
     current_action["cooperation_bias"] = _clip01(
         float(current_action.get("cooperation_bias", 0.5)) + float(outcome["cohesion_delta"]) * 0.4 * cohesion_multiplier
     )
@@ -137,6 +139,8 @@ def _apply_group_pressure(
         + abs(float(outcome["tension_delta"]) * 0.2 * tension_multiplier),
         4,
     )
+    current_action["collective_group_decision_delta"] = round(decision_delta, 4)
+    current_action.update(influence)
     updated = cell.copy(action_state=current_action)
     if not write_memory:
         return updated
@@ -147,7 +151,12 @@ def _apply_group_pressure(
         summary=str(outcome["stance_summary"]),
         importance=float(outcome["importance"]),
         source="llm.group_deliberation",
-        payload={**dict(outcome), "coalition_record": dict(coalition_record)},
+        payload={
+            **dict(outcome),
+            "coalition_record": dict(coalition_record),
+            "decision_pressure_delta": decision_delta,
+            "group_pressure_reason": influence["group_pressure_reason"],
+        },
         tags=["llm", "group", "deliberation"],
     )
     behavior = behavior_event(
@@ -156,7 +165,12 @@ def _apply_group_pressure(
         source="llm.group_deliberation",
         summary=str(outcome["stance_summary"]),
         quality_score=float(outcome["importance"]),
-        payload={**dict(outcome), "coalition_record": dict(coalition_record)},
+        payload={
+            **dict(outcome),
+            "coalition_record": dict(coalition_record),
+            "decision_pressure_delta": decision_delta,
+            "group_pressure_reason": influence["group_pressure_reason"],
+        },
     )
     return append_memory(updated, entry, behavior=behavior, promote=float(outcome["importance"]) >= 0.76)
 

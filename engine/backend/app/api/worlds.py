@@ -132,6 +132,11 @@ def create_world(req: CreateWorldRequest):
     god_enabled = bool(god_mode.get("enabled"))
     god_overrides = dict(god_mode.get("overrides") or {})
     engine_params = dict(god_mode.get("engine_params") or {})
+    simulation_mode = str(engine_params.get("simulation_mode") or god_overrides.get("simulation_mode") or "precision").strip().lower()
+    if simulation_mode not in {"precision", "swarm"}:
+        simulation_mode = "precision"
+    engine_params["simulation_mode"] = simulation_mode
+    god_overrides["simulation_mode"] = simulation_mode
     auto_roles_from_personas = bool(god_mode.get("auto_roles_from_personas", True))
     if god_enabled:
         plan = apply_genesis_overrides(plan, god_overrides)
@@ -177,6 +182,9 @@ def create_world(req: CreateWorldRequest):
             **inferred_engine_params,
             **engine_params,
             "control_mode": "god" if god_enabled else "auto",
+            "simulation_mode": simulation_mode,
+            "swarm_llm_mode": str(engine_params.get("swarm_llm_mode") or "packet"),
+            "swarm_tier_model": dict(engine_params.get("swarm_tier_model") or {}),
             "auto_roles_from_personas": auto_roles_from_personas,
             "genesis_mode": "persona-aware" if persona_catalog else "heuristic",
             "z_mode": str(engine_params.get("z_mode", persona_bias.get("z_mode", "hybrid"))),

@@ -8,6 +8,7 @@ Purpose:
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import contextlib
 import json
 import os
@@ -286,8 +287,18 @@ def build_mini_conflict_world(cell_count: int, *, aggressive: bool = False) -> l
 def summarize_cells(cells: list[Cell]) -> dict[str, float | int]:
     states = [dict(cell.action_state) for cell in cells]
     pressures = [float(state.get("collective_pressure", 0.0) or 0.0) for state in states]
+    decision_deltas = [float(state.get("decision_pressure_delta", 0.0) or 0.0) for state in states]
+    caps = [float(state.get("collective_influence_cap", 0.0) or 0.0) for state in states]
+    reason_counts = Counter(str(state.get("group_pressure_reason") or "unknown") for state in states)
     variance = statistics.pvariance(pressures) if len(pressures) > 1 else 0.0
+    decision_variance = statistics.pvariance(decision_deltas) if len(decision_deltas) > 1 else 0.0
     fracture_count = sum(1 for state in states if bool(state.get("fracture_signal_received")))
+    influence_count = sum(1 for state in states if bool(state.get("collective_influence_applied")))
+    cap_hit_count = sum(
+        1
+        for delta, cap in zip(decision_deltas, caps)
+        if cap > 0.0 and abs(delta - cap) <= 0.0001
+    )
     watch_count = sum(1 for state in states if str(state.get("collective_pressure_bucket") or "") == "watch")
     elevated_count = sum(1 for state in states if str(state.get("collective_pressure_bucket") or "") == "elevated")
     critical_count = sum(1 for state in states if str(state.get("collective_pressure_bucket") or "") == "critical")
@@ -295,6 +306,12 @@ def summarize_cells(cells: list[Cell]) -> dict[str, float | int]:
         "avg_pressure": round(statistics.fmean(pressures), 4) if pressures else 0.0,
         "max_pressure": round(max(pressures), 4) if pressures else 0.0,
         "pressure_variance": round(float(variance), 5),
+        "avg_decision_pressure_delta": round(statistics.fmean(decision_deltas), 4) if decision_deltas else 0.0,
+        "max_decision_pressure_delta": round(max(decision_deltas), 4) if decision_deltas else 0.0,
+        "decision_pressure_variance": round(float(decision_variance), 5),
+        "collective_influence_applied_count": influence_count,
+        "collective_influence_cap_hit_count": cap_hit_count,
+        "group_pressure_reason_counts": dict(sorted(reason_counts.items())),
         "fracture_signal_count": fracture_count,
         "watch_count": watch_count,
         "elevated_count": elevated_count,
@@ -312,6 +329,18 @@ def summarize_store(store: SnapshotStore) -> dict[str, object]:
     return {
         "timeline": timeline,
         "max_pressure_seen": round(max((float(item["max_pressure"]) for item in timeline), default=0.0), 4),
+        "max_decision_pressure_delta_seen": round(
+            max((float(item["max_decision_pressure_delta"]) for item in timeline), default=0.0),
+            4,
+        ),
+        "max_collective_influence_applied_count": max(
+            (int(item["collective_influence_applied_count"]) for item in timeline),
+            default=0,
+        ),
+        "max_collective_influence_cap_hit_count": max(
+            (int(item["collective_influence_cap_hit_count"]) for item in timeline),
+            default=0,
+        ),
         "max_fracture_signal_count": max((int(item["fracture_signal_count"]) for item in timeline), default=0),
         "first_critical_t": next((float(item["t"]) for item in timeline if int(item["critical_count"]) > 0), None),
     }

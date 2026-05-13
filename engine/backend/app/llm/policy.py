@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from app.core.collective_dynamics import collective_context_from_action_state
+from app.core.collective_dynamics import collective_context_from_action_state, collective_decision_influence
 from app.core.memory_store import append_memory, behavior_event, memory_entry
 from app.core.settings import get_collective_policy_scale
 from app.llm.facade import llm_facade
@@ -46,20 +46,22 @@ def apply_policy_interpretation(
 
 def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
     interp = _parse_policy_state(text, payload)
-    collective = collective_context_from_action_state(dict(cell.action_state))
+    current_action = dict(cell.action_state)
+    collective = collective_context_from_action_state(current_action)
+    influence = collective_decision_influence(current_action)
+    decision_delta = float(influence["decision_pressure_delta"])
     policy_scale = get_collective_policy_scale()
     pressure = float(collective["collective_pressure"])
-    tension_boost = 1.0 + float(collective["zone_tension"]) * 0.35 + pressure * 0.25
+    tension_boost = 1.0 + float(collective["zone_tension"]) * 0.35 + pressure * 0.25 + decision_delta * 0.9
     if bool(collective["fracture_alert"]):
         tension_boost += 0.18
-    cooperation_shift = float(interp["cooperation_shift"]) * max(0.65, 1.0 - pressure * 0.25) * policy_scale
+    cooperation_shift = float(interp["cooperation_shift"]) * max(0.5, 1.0 - pressure * 0.25 - decision_delta * 0.45) * policy_scale
     policy_sensitivity_shift = float(interp["policy_sensitivity_shift"]) * tension_boost * policy_scale
     ev = cell.emotion_vec.copy().astype(np.float32)
     emotion_index = int(interp["emotion_index"])
     if 0 <= emotion_index < ev.shape[0]:
         ev[emotion_index] = np.clip(ev[emotion_index] + float(interp["emotion_delta"]), -1.0, 1.0)
 
-    current_action = dict(cell.action_state)
     current_action["cooperation_bias"] = _clip01(
         float(current_action.get("cooperation_bias", 0.5)) + cooperation_shift
     )
@@ -70,6 +72,8 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
     current_action["last_policy_channel"] = str(interp["dominant_channel"])
     current_action["collective_policy_effect"] = round(abs(cooperation_shift) + abs(policy_sensitivity_shift), 4)
     current_action["collective_policy_pressure"] = round(pressure, 3)
+    current_action["collective_policy_decision_delta"] = round(decision_delta, 4)
+    current_action.update(influence)
     current_action["fracture_signal_received"] = bool(current_action.get("fracture_signal_received") or collective["fracture_alert"])
 
     entry = memory_entry(
@@ -83,6 +87,8 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
             "cooperation_shift_applied": cooperation_shift,
             "policy_sensitivity_shift_applied": policy_sensitivity_shift,
             "collective_pressure": pressure,
+            "decision_pressure_delta": decision_delta,
+            "group_pressure_reason": influence["group_pressure_reason"],
             "fracture_alert": collective["fracture_alert"],
             "policy_payload": dict(payload),
         },
@@ -99,6 +105,8 @@ def _apply_policy_to_cell(cell: Cell, text: str, payload: Dict) -> Cell:
             "cooperation_shift_applied": cooperation_shift,
             "policy_sensitivity_shift_applied": policy_sensitivity_shift,
             "collective_pressure": pressure,
+            "decision_pressure_delta": decision_delta,
+            "group_pressure_reason": influence["group_pressure_reason"],
             "fracture_alert": collective["fracture_alert"],
             "policy_payload": dict(payload),
         },
