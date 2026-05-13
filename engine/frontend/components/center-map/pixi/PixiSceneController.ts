@@ -6,16 +6,28 @@ import { AgentLayerPixi } from "@/components/center-map/pixi/layers/AgentLayerPi
 import { ClusterLayerPixi } from "@/components/center-map/pixi/layers/ClusterLayerPixi";
 import { PressureLayerPixi } from "@/components/center-map/pixi/layers/PressureLayerPixi";
 import { ShockLayerPixi } from "@/components/center-map/pixi/layers/ShockLayerPixi";
+import { ZoneRegionLayerPixi } from "@/components/center-map/pixi/layers/ZoneRegionLayerPixi";
 import type { TimelineAnnotation } from "@/lib/api";
 import type {
   CenterMapScene,
   PointerField,
 } from "@/components/center-map/scene/sceneTypes";
+import type { PixiLayerVisibility } from "@/components/center-map/pixi/PixiStageHost";
+
+export type PixiCameraState = {
+  offsetX: number;
+  offsetY: number;
+  scaleX: number;
+  scaleY: number;
+  zoom: number;
+};
 
 export class PixiSceneController {
   private readonly root = new Container();
   private readonly fieldLayer = new Container();
+  private readonly shockFlashOverlay = new Graphics();
   private readonly transitionOverlay = new Graphics();
+  private readonly zoneRegionLayer = new ZoneRegionLayerPixi();
   private readonly clusterLayer = new ClusterLayerPixi();
   private readonly pressureLayer = new PressureLayerPixi();
   private readonly shockLayer = new ShockLayerPixi();
@@ -27,12 +39,22 @@ export class PixiSceneController {
   private transitionPhase = 0;
   private sceneWidth = 960;
   private sceneHeight = 640;
+  private viewportWidth = 960;
+  private viewportHeight = 640;
+  private zoom = 1;
+  private offsetX = 0;
+  private offsetY = 0;
 
-  constructor(private readonly app: Application) {
+  constructor(
+    private readonly app: Application,
+    private readonly onCameraStateChange?: (camera: PixiCameraState) => void
+  ) {
     this.root.addChild(this.fieldLayer);
+    this.root.addChild(this.zoneRegionLayer.container);
     this.root.addChild(this.clusterLayer.container);
     this.root.addChild(this.pressureLayer.container);
     this.root.addChild(this.shockLayer.container);
+    this.root.addChild(this.shockFlashOverlay);
     this.root.addChild(this.agentLayer.container);
     this.root.addChild(this.transitionOverlay);
     this.app.stage.addChild(this.root);
@@ -42,6 +64,7 @@ export class PixiSceneController {
     this.sceneWidth = scene.width;
     this.sceneHeight = scene.height;
     this.sceneAgents = scene.agents;
+    this.zoneRegionLayer.updateZones(scene.zones);
     this.clusterLayer.updateZones(scene.zones);
     this.pressureLayer.updateAgents(scene.agents);
     this.agentLayer.updateAgents(scene.agents);
@@ -53,7 +76,13 @@ export class PixiSceneController {
 
   resize(width: number, height: number) {
     if (width <= 0 || height <= 0) return;
-    this.root.scale.set(width / this.sceneWidth, height / this.sceneHeight);
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+    this.applyViewportTransform();
+    this.shockFlashOverlay.clear();
+    this.shockFlashOverlay.beginFill(0xf8fafc, 0);
+    this.shockFlashOverlay.drawRoundedRect(56, 56, this.sceneWidth - 112, this.sceneHeight - 112, 28);
+    this.shockFlashOverlay.endFill();
     this.transitionOverlay.clear();
     this.transitionOverlay.beginFill(0xffffff, 0);
     this.transitionOverlay.drawRoundedRect(56, 56, this.sceneWidth - 112, this.sceneHeight - 112, 28);
@@ -68,6 +97,14 @@ export class PixiSceneController {
     this.transitionPhase = transitionPhase;
   }
 
+  setLayerVisibility(layers: PixiLayerVisibility) {
+    this.agentLayer.container.visible = layers.agents;
+    this.clusterLayer.container.visible = layers.clusters;
+    this.pressureLayer.container.visible = layers.pressure;
+    this.shockLayer.container.visible = layers.shocks;
+    this.shockFlashOverlay.visible = layers.shocks;
+  }
+
   setHoveredAgent(agentId: string | null) {
     this.agentLayer.setHoveredAgent(agentId);
   }
@@ -76,16 +113,52 @@ export class PixiSceneController {
     return this.agentLayer.hitTest(x, y);
   }
 
+  hitTestScreen(screenX: number, screenY: number) {
+    return this.agentLayer.hitTest(
+      this.screenToWorldX(screenX),
+      this.screenToWorldY(screenY)
+    );
+  }
+
+  panByScreen(dx: number, dy: number) {
+    this.offsetX += dx;
+    this.offsetY += dy;
+    this.applyViewportTransform();
+  }
+
+  zoomAtScreen(factor: number, screenX: number, screenY: number) {
+    const worldX = this.screenToWorldX(screenX);
+    const worldY = this.screenToWorldY(screenY);
+    this.zoom = Math.max(0.75, Math.min(3.2, this.zoom * factor));
+    const scaleX = this.viewportScaleX();
+    const scaleY = this.viewportScaleY();
+    this.offsetX = screenX - worldX * scaleX;
+    this.offsetY = screenY - worldY * scaleY;
+    this.applyViewportTransform();
+  }
+
+  getCameraState(): PixiCameraState {
+    return {
+      offsetX: this.offsetX,
+      offsetY: this.offsetY,
+      scaleX: this.viewportScaleX(),
+      scaleY: this.viewportScaleY(),
+      zoom: this.zoom,
+    };
+  }
+
   render(renderTime: number) {
     this.drawField(renderTime);
     this.clusterLayer.animate(renderTime, this.pointerField);
     this.pressureLayer.animate(renderTime, this.pointerField);
     this.shockLayer.animate(renderTime);
+    this.shockFlashOverlay.alpha = 0.03 + Math.min(0.16, this.shockLayer.getFlashLevel(renderTime));
     this.agentLayer.animate(renderTime, this.pointerField);
     this.transitionOverlay.alpha = this.transitionPhase * 0.24;
   }
 
   destroy() {
+    this.zoneRegionLayer.destroy();
     this.clusterLayer.destroy();
     this.pressureLayer.destroy();
     this.shockLayer.destroy();
@@ -93,34 +166,53 @@ export class PixiSceneController {
     this.root.destroy({ children: true });
   }
 
+  private applyViewportTransform() {
+    this.root.position.set(this.offsetX, this.offsetY);
+    this.root.scale.set(this.viewportScaleX(), this.viewportScaleY());
+    this.onCameraStateChange?.(this.getCameraState());
+  }
+
+  private viewportScaleX() {
+    return (this.viewportWidth / this.sceneWidth) * this.zoom;
+  }
+
+  private viewportScaleY() {
+    return (this.viewportHeight / this.sceneHeight) * this.zoom;
+  }
+
+  private screenToWorldX(screenX: number) {
+    return (screenX - this.offsetX) / this.viewportScaleX();
+  }
+
+  private screenToWorldY(screenY: number) {
+    return (screenY - this.offsetY) / this.viewportScaleY();
+  }
+
   private drawField(renderTime: number) {
     this.fieldLayer.removeChildren().forEach((child) => child.destroy());
 
+    void renderTime;
+
+    const grid = new Graphics();
+    grid.lineStyle(1, 0x94a3b8, 0.08);
+    for (let x = 56; x <= this.sceneWidth - 56; x += 72) {
+      grid.moveTo(x, 56);
+      grid.lineTo(x, this.sceneHeight - 56);
+    }
+    for (let y = 56; y <= this.sceneHeight - 56; y += 72) {
+      grid.moveTo(56, y);
+      grid.lineTo(this.sceneWidth - 56, y);
+    }
+    this.fieldLayer.addChild(grid);
+
     const pointerX = 56 + this.pointerField.x * (this.sceneWidth - 112);
     const pointerY = 56 + this.pointerField.y * (this.sceneHeight - 112);
-
-    for (let i = 0; i < 3; i += 1) {
-      const ellipse = new Graphics();
-      const driftX = Math.sin(renderTime * (0.22 + i * 0.07) + i) * (28 + i * 10);
-      const driftY = Math.cos(renderTime * (0.18 + i * 0.05) + i * 1.3) * (22 + i * 8);
-      const baseX = this.sceneWidth * (0.22 + i * 0.26);
-      const baseY = this.sceneHeight * (0.28 + (i % 2) * 0.24);
-      const color = i === 0 ? 0x38bdf8 : i === 1 ? 0x6366f1 : 0xfb7185;
-      ellipse.beginFill(color, 0.06 + i * 0.01);
-      ellipse.drawEllipse(baseX + driftX, baseY + driftY, 120 + i * 26, 82 + i * 20);
-      ellipse.endFill();
-      this.fieldLayer.addChild(ellipse);
-    }
-
-    const pointerAura = new Graphics();
-    pointerAura.beginFill(0x7dd3fc, this.pointerField.active ? 0.08 : 0.04);
-    pointerAura.drawEllipse(
-      pointerX,
-      pointerY,
-      90 + Math.sin(renderTime * 1.4) * 8,
-      64 + Math.cos(renderTime * 1.2) * 6
-    );
-    pointerAura.endFill();
-    this.fieldLayer.addChild(pointerAura);
+    const crosshair = new Graphics();
+    crosshair.lineStyle(1, 0x0ea5e9, this.pointerField.active ? 0.16 : 0.06);
+    crosshair.moveTo(pointerX - 18, pointerY);
+    crosshair.lineTo(pointerX + 18, pointerY);
+    crosshair.moveTo(pointerX, pointerY - 18);
+    crosshair.lineTo(pointerX, pointerY + 18);
+    this.fieldLayer.addChild(crosshair);
   }
 }

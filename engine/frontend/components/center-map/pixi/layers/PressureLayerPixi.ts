@@ -9,15 +9,15 @@ import type {
 
 type PressureVisual = {
   container: Container;
-  bloom: Graphics;
-  outer: Graphics;
-  core: Graphics;
+  contour: Graphics;
+  crest: Graphics;
   x: number;
   y: number;
   targetX: number;
   targetY: number;
   pressure: number;
   fractureSignal: boolean;
+  selected: boolean;
   radius: number;
   phase: number;
 };
@@ -53,14 +53,16 @@ export class PressureLayerPixi {
 
       existing.targetX = agent.x;
       existing.targetY = agent.y;
-      const nextRadius = 18 + agent.pressure * 68 + (agent.fractureSignal ? 16 : 0);
+      const nextRadius = 26 + agent.pressure * 92 + (agent.fractureSignal ? 24 : 0);
       const needsRedraw =
         existing.pressure !== agent.pressure ||
-        existing.fractureSignal !== agent.fractureSignal ||
+      existing.fractureSignal !== agent.fractureSignal ||
+        existing.selected !== agent.selected ||
         existing.radius !== nextRadius;
 
       existing.pressure = agent.pressure;
       existing.fractureSignal = agent.fractureSignal;
+      existing.selected = agent.selected;
       existing.radius = nextRadius;
 
       if (needsRedraw) this.redrawVisual(existing);
@@ -68,48 +70,43 @@ export class PressureLayerPixi {
   }
 
   animate(renderTime: number, pointerField: PointerField) {
-    const pointerPushX = (pointerField.x - 0.5) * (pointerField.active ? 16 : 6);
-    const pointerPushY = (pointerField.y - 0.5) * (pointerField.active ? 14 : 6);
+    const pointerPushX = (pointerField.x - 0.5) * (pointerField.active ? 10 : 4);
+    const pointerPushY = (pointerField.y - 0.5) * (pointerField.active ? 9 : 4);
+    const selectedVisual = Array.from(this.visuals.values()).find((visual) => visual.selected);
 
     for (const visual of this.visuals.values()) {
-      visual.x += (visual.targetX - visual.x) * 0.1;
-      visual.y += (visual.targetY - visual.y) * 0.1;
+      const isolationWeight = selectedVisual
+        ? Math.max(0.22, 1 - Math.hypot(visual.x - selectedVisual.x, visual.y - selectedVisual.y) / 240)
+        : 1;
+      visual.x += (visual.targetX - visual.x) * 0.08;
+      visual.y += (visual.targetY - visual.y) * 0.08;
 
       const wobbleX =
         Math.sin(renderTime * (0.64 + visual.phase * 0.3) + visual.phase * 9) *
-        (3 + visual.pressure * 5);
+        (2.2 + visual.pressure * 3.2);
       const wobbleY =
         Math.cos(renderTime * (0.58 + visual.phase * 0.24) + visual.phase * 8) *
-        (2.5 + visual.pressure * 4);
-      const driftWeight = 0.18 + visual.pressure * 0.34;
+        (1.8 + visual.pressure * 2.8);
+      const driftWeight = 0.12 + visual.pressure * 0.18;
 
       visual.container.position.set(
         visual.x + wobbleX + pointerPushX * driftWeight,
         visual.y + wobbleY + pointerPushY * driftWeight
       );
 
-      const outerPulse =
-        1 + ((Math.sin(renderTime * (1.2 + visual.phase * 0.2) + visual.phase * 5) + 1) / 2) * 0.34;
-      const bloomPulse =
-        1.04 + ((Math.cos(renderTime * (0.94 + visual.phase * 0.16) + visual.phase * 4) + 1) / 2) * 0.28;
-      const corePulse =
-        0.92 + ((Math.cos(renderTime * (1.7 + visual.phase * 0.25) + visual.phase * 6) + 1) / 2) * 0.22;
+      const contourPulse =
+        1 + ((Math.sin(renderTime * (0.46 + visual.phase * 0.1) + visual.phase * 5) + 1) / 2) * 0.025;
 
-      visual.bloom.scale.set(bloomPulse);
-      visual.outer.scale.set(outerPulse);
-      visual.core.scale.set(corePulse);
-      visual.bloom.alpha = Math.min(
-        0.28,
-        0.08 + visual.pressure * 0.22 + (visual.fractureSignal ? 0.08 : 0)
-      );
-      visual.outer.alpha = Math.min(
-        0.42,
-        0.12 + visual.pressure * 0.28 + (visual.fractureSignal ? 0.1 : 0)
-      );
-      visual.core.alpha = Math.min(
-        0.28,
-        0.08 + visual.pressure * 0.16 + (visual.fractureSignal ? 0.06 : 0)
-      );
+      visual.contour.scale.set(contourPulse);
+      visual.crest.scale.set(1);
+      visual.contour.alpha = Math.min(
+        0.72,
+        0.34 + visual.pressure * 0.34 + (visual.fractureSignal ? 0.1 : 0)
+      ) * isolationWeight;
+      visual.crest.alpha = Math.min(
+        0.6,
+        0.28 + visual.pressure * 0.28 + (visual.fractureSignal ? 0.08 : 0)
+      ) * isolationWeight;
     }
   }
 
@@ -120,25 +117,23 @@ export class PressureLayerPixi {
 
   private createVisual(agent: CenterMapSceneAgent) {
     const container = new Container();
-    const bloom = new Graphics();
-    const outer = new Graphics();
-    const core = new Graphics();
-    container.addChild(bloom);
-    container.addChild(outer);
-    container.addChild(core);
+    const contour = new Graphics();
+    const crest = new Graphics();
+    container.addChild(crest);
+    container.addChild(contour);
 
     const visual: PressureVisual = {
       container,
-      bloom,
-      outer,
-      core,
+      contour,
+      crest,
       x: agent.x,
       y: agent.y,
       targetX: agent.x,
       targetY: agent.y,
       pressure: agent.pressure,
       fractureSignal: agent.fractureSignal,
-      radius: 18 + agent.pressure * 68 + (agent.fractureSignal ? 16 : 0),
+      selected: agent.selected,
+      radius: 26 + agent.pressure * 92 + (agent.fractureSignal ? 24 : 0),
       phase: Math.random(),
     };
     this.redrawVisual(visual);
@@ -148,27 +143,46 @@ export class PressureLayerPixi {
 
   private redrawVisual(visual: PressureVisual) {
     const fill = pressureColor(visual.pressure, visual.fractureSignal);
+    const width = visual.radius * 2.2;
+    const height = visual.radius * 1.08;
 
-    visual.bloom.clear();
-    visual.bloom.beginFill(fill, 0.12);
-    visual.bloom.drawEllipse(0, 0, visual.radius * 1.76, visual.radius * 1.3);
-    visual.bloom.endFill();
+    visual.crest.clear();
+    visual.crest.beginFill(fill, 0.24);
+    drawContourPatch(visual.crest, width * 0.92, height * 0.8, visual.phase, 0.8);
+    visual.crest.endFill();
 
-    visual.outer.clear();
-    visual.outer.beginFill(fill, 0.24);
-    visual.outer.drawEllipse(0, 0, visual.radius * 1.26, visual.radius * 0.94);
-    visual.outer.endFill();
-
-    visual.core.clear();
-    visual.core.beginFill(fill, 0.18);
-    visual.core.drawEllipse(0, 0, visual.radius * 0.64, visual.radius * 0.5);
-    visual.core.endFill();
+    visual.contour.clear();
+    visual.contour.beginFill(fill, 0.12);
+    drawContourPatch(visual.contour, width, height, visual.phase, 0);
+    visual.contour.endFill();
+    visual.contour.lineStyle(1.8, fill, 0.58);
+    drawContourPatch(visual.contour, width, height, visual.phase, 0);
+    visual.contour.lineStyle(1.3, fill, 0.42);
+    drawContourPatch(visual.contour, width * 0.72, height * 0.66, visual.phase, 1.7);
+    visual.contour.lineStyle(1, fill, 0.28);
+    drawContourPatch(visual.contour, width * 0.48, height * 0.44, visual.phase, 2.9);
   }
 }
 
+function drawContourPatch(graphics: Graphics, width: number, height: number, phase: number, offset: number) {
+  const points = 18;
+  for (let i = 0; i <= points; i += 1) {
+    const angle = (Math.PI * 2 * i) / points;
+    const ripple =
+      1 +
+      Math.sin(angle * 3 + phase * 8 + offset) * 0.08 +
+      Math.cos(angle * 5 + offset) * 0.04;
+    const x = Math.cos(angle) * width * 0.5 * ripple;
+    const y = Math.sin(angle) * height * 0.5 * ripple;
+    if (i === 0) graphics.moveTo(x, y);
+    else graphics.lineTo(x, y);
+  }
+  graphics.closePath();
+}
+
 function pressureColor(pressure: number, fractureSignal: boolean) {
-  if (fractureSignal || pressure >= 0.55) return 0xf43f5e;
-  if (pressure >= 0.35) return 0xfb923c;
-  if (pressure >= 0.18) return 0xfacc15;
-  return 0x38bdf8;
+  if (fractureSignal || pressure >= 0.55) return 0xe11d48;
+  if (pressure >= 0.35) return 0xea580c;
+  if (pressure >= 0.18) return 0xca8a04;
+  return 0x0284c7;
 }

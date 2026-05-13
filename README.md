@@ -43,7 +43,8 @@
 - **대체 더블클릭 실행**: [Launch_End4D.command](/Users/sejun/Desktop/Project_endpoint/vitaswarm4D/Launch_End4D.command)
 - 런처는 백엔드와 프론트를 함께 띄우고, `http://127.0.0.1:3000`이 준비되면 브라우저 클라이언트를 자동으로 연다.
 - Next.js 개발 서버의 초기 컴파일 동안에도 종료되지 않도록 프론트 readiness 판정을 포트 기준으로 처리한다.
-- 프론트 빌드가 있으면 `start`, 없으면 자동으로 `dev` 모드로 실행한다.
+- 프론트 실행 모드는 기본 `auto`이며, `.next` 빌드보다 소스 파일이 더 최신이면 자동으로 `dev`, 그렇지 않으면 `start`를 사용한다.
+- 최신 UI 변경을 바로 확인하려면 `--frontend-mode dev`를 명시할 수 있다.
 - 브라우저 자동 실행을 끄려면 `--no-browser` 옵션을 사용한다.
 - macOS 앱 번들을 다시 만들려면 `python3 scripts/build_macos_launcher_app.py`
 - 현재 로컬 런타임 상태와 설치된 데이터 팩은 `GET /runtime/local-status`에서 확인할 수 있다.

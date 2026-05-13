@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Application } from "pixi.js";
 
-import { PixiSceneController } from "@/components/center-map/pixi/PixiSceneController";
+import {
+  PixiSceneController,
+  type PixiCameraState,
+} from "@/components/center-map/pixi/PixiSceneController";
 import type { TimelineAnnotation } from "@/lib/api";
 import type {
   CenterMapScene,
@@ -17,12 +20,25 @@ type PixiStageHostProps = {
   renderTime: number;
   transitionPhase: number;
   pointerField: PointerField;
+  layerVisibility?: PixiLayerVisibility | undefined;
   onInteractionApiReady?: ((api: PixiInteractionApi | null) => void) | undefined;
+  onCameraStateChange?: ((camera: PixiCameraState) => void) | undefined;
+};
+
+export type PixiLayerVisibility = {
+  agents: boolean;
+  clusters: boolean;
+  pressure: boolean;
+  shocks: boolean;
 };
 
 export type PixiInteractionApi = {
+  hitTestAtScreen: (x: number, y: number) => string | null;
   hitTestAtNormalized: (x: number, y: number) => string | null;
   setHoveredAgent: (agentId: string | null) => void;
+  panByScreen: (dx: number, dy: number) => void;
+  zoomAtScreen: (factor: number, x: number, y: number) => void;
+  zoomAtNormalized: (factor: number, x: number, y: number) => void;
 };
 
 export function PixiStageHost({
@@ -32,7 +48,9 @@ export function PixiStageHost({
   renderTime,
   transitionPhase,
   pointerField,
+  layerVisibility,
   onInteractionApiReady,
+  onCameraStateChange,
 }: PixiStageHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
@@ -62,7 +80,7 @@ export function PixiStageHost({
       app.canvas.classList.add("simulation-map__pixi-canvas");
       host.appendChild(app.canvas);
 
-      const controller = new PixiSceneController(app);
+      const controller = new PixiSceneController(app, onCameraStateChange);
       appRef.current = app;
       controllerRef.current = controller;
 
@@ -70,10 +88,20 @@ export function PixiStageHost({
       controller.updateShocks(annotations, currentT);
       controller.setPointerField(pointerField);
       controller.setTransitionPhase(transitionPhase);
+      if (layerVisibility) controller.setLayerVisibility(layerVisibility);
       onInteractionApiReady?.({
+        hitTestAtScreen: (x, y) => controller.hitTestScreen(x, y),
         hitTestAtNormalized: (x, y) =>
-          controller.hitTest(scene.width * x, scene.height * y),
+          controller.hitTestScreen(host.clientWidth * x, host.clientHeight * y),
         setHoveredAgent: (agentId) => controller.setHoveredAgent(agentId),
+        panByScreen: (dx, dy) => controller.panByScreen(dx, dy),
+        zoomAtScreen: (factor, x, y) => controller.zoomAtScreen(factor, x, y),
+        zoomAtNormalized: (factor, x, y) =>
+          controller.zoomAtScreen(
+            factor,
+            host.clientWidth * x,
+            host.clientHeight * y
+          ),
       });
 
       resizeObserver = new ResizeObserver((entries) => {
@@ -132,6 +160,11 @@ export function PixiStageHost({
   useEffect(() => {
     controllerRef.current?.setTransitionPhase(transitionPhase);
   }, [transitionPhase]);
+
+  useEffect(() => {
+    if (!layerVisibility) return;
+    controllerRef.current?.setLayerVisibility(layerVisibility);
+  }, [layerVisibility]);
 
   return <div ref={hostRef} className="simulation-map__pixi-stage" aria-hidden="true" />;
 }

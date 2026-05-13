@@ -8,15 +8,9 @@ import {
   type ReviewGroundingItem,
   type TimelineAnnotation,
 } from "@/lib/api";
-import { AgentLayer } from "@/components/center-map/layers/AgentLayer";
-import { AnchorLayer } from "@/components/center-map/layers/AnchorLayer";
-import { ClusterLayer } from "@/components/center-map/layers/ClusterLayer";
-import { DriftLayer } from "@/components/center-map/layers/DriftLayer";
-import { PressureFieldLayer } from "@/components/center-map/layers/PressureFieldLayer";
-import { ShockLayer } from "@/components/center-map/layers/ShockLayer";
-import { ZoneLayer } from "@/components/center-map/layers/ZoneLayer";
 import { PixiStageHost } from "@/components/center-map/pixi/PixiStageHost";
 import type { PixiInteractionApi } from "@/components/center-map/pixi/PixiStageHost";
+import type { PixiCameraState } from "@/components/center-map/pixi/PixiSceneController";
 import { buildCenterMapScene } from "@/components/center-map/scene/buildCenterMapScene";
 import type { PointerField } from "@/components/center-map/scene/sceneTypes";
 import type {
@@ -33,6 +27,7 @@ type SimulationMap2DProps = {
   showAnchorLayer?: boolean;
   showDriftLayer?: boolean;
   showClusterLayer?: boolean;
+  showAgentLayer?: boolean;
   annotations?: TimelineAnnotation[];
   groundingItems?: ReviewGroundingItem[];
   currentT?: number;
@@ -45,6 +40,7 @@ type SimulationMap2DProps = {
   onSelectAgent?: (cell: CellSnapshot) => void;
   onSelectZone?: (zone: SelectedZone) => void;
   onSelectBand?: (band: SelectedBand) => void;
+  onClearSelection?: () => void;
   onJumpToT?: (t: number) => void;
 };
 
@@ -120,6 +116,7 @@ export default function SimulationMap2D({
   showAnchorLayer = true,
   showDriftLayer = false,
   showClusterLayer = true,
+  showAgentLayer = true,
   annotations = [],
   groundingItems = [],
   currentT = 0,
@@ -132,6 +129,7 @@ export default function SimulationMap2D({
   onSelectAgent,
   onSelectZone,
   onSelectBand,
+  onClearSelection,
   onJumpToT,
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
@@ -139,46 +137,46 @@ export default function SimulationMap2D({
     () => buildCenterMapScene({ cells, selectedAgentId }),
     [cells, selectedAgentId]
   );
-  const usePixiLiveField = true;
-  const [hoveredBandKey, setHoveredBandKey] = useState<string | null>(null);
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<{
+    x: number;
+    y: number;
+    width: number;
+  } | null>(null);
+  const [cameraState, setCameraState] = useState<PixiCameraState>({
+    offsetX: 0,
+    offsetY: 0,
+    scaleX: 1,
+    scaleY: 1,
+    zoom: 1,
+  });
   const pixiInteractionRef = useRef<PixiInteractionApi | null>(null);
+  const dragRef = useRef<{ active: boolean; moved: boolean; x: number; y: number }>({
+    active: false,
+    moved: false,
+    x: 0,
+    y: 0,
+  });
   const cellById = useMemo(
     () => new Map(cells.map((cell) => [cell.cell_id, cell])),
     [cells]
   );
-  const pointerX = PADDING + pointerField.x * (SVG_WIDTH - PADDING * 2);
-  const pointerY = PADDING + pointerField.y * (SVG_HEIGHT - PADDING * 2);
-  const pointerDriftX = (pointerField.x - 0.5) * (pointerField.active ? 26 : 10);
-  const pointerDriftY = (pointerField.y - 0.5) * (pointerField.active ? 24 : 8);
-  const activeBand =
-    scene.elevationBands.find((band) => band.key === hoveredBandKey) ??
-    scene.elevationBands.find((band) => band.key === selectedBandKey) ??
-    scene.elevationBands[scene.elevationBands.length - 1] ??
-    null;
+  const resolvedAnchors = useMemo(
+    () => resolveOverlayAnchors(scene.nodes, scene.zoneBoxes, groundingItems, currentT),
+    [scene.nodes, scene.zoneBoxes, groundingItems, currentT]
+  );
+  const selectedBand = selectedBandKey
+    ? scene.elevationBands.find((band) => band.key === selectedBandKey) ?? null
+    : null;
+  const metaItems = [
+    `${cells.length.toLocaleString()} visible`,
+    `${totalCells.toLocaleString()} total`,
+    `${scene.zoneBoxes.length} zones`,
+    sampled ? "sampled" : "full",
+  ];
 
   return (
     <div className="simulation-map">
-      <div className="simulation-map__header">
-        <div>
-          <p className="simulation-map__eyebrow">2D Social Field</p>
-          <h3 className="simulation-map__title">Zone-aware agent communication surface</h3>
-          <p className="simulation-map__subtitle">
-            {scene.zSemantics.subtitle}
-          </p>
-          <p className="simulation-map__subtitle">
-            Derived from live agent `z` values refreshed by energy, zone influence, policy sensitivity, memory, and relationship state.
-          </p>
-        </div>
-        <div className="simulation-map__meta">
-          <span>{cells.length.toLocaleString()} visible</span>
-          <span>{totalCells.toLocaleString()} total</span>
-          <span>{scene.zoneBoxes.length} zones</span>
-          <span>{scene.zSemantics.rangeLabel} {scene.zRange.min.toFixed(1)}-{scene.zRange.max.toFixed(1)}</span>
-          {sampled ? <span>sampled</span> : <span>full</span>}
-        </div>
-      </div>
-
       <div className="simulation-map__viewport">
         {cells.length === 0 ? (
           <div
@@ -190,45 +188,111 @@ export default function SimulationMap2D({
         ) : (
           <div
             className="simulation-map__stage"
-            onMouseMove={(event) => {
+            onPointerDown={(event) => {
               const target = event.target as Element | null;
-              if (target?.closest(".simulation-map__zone-rect, .simulation-map__anchor-pin, .simulation-map__contour-band")) {
+              if (target?.closest(".simulation-map__zone-chip, .simulation-map__anchor-pin")) {
+                return;
+              }
+              dragRef.current = { active: true, moved: false, x: event.clientX, y: event.clientY };
+            }}
+            onPointerUp={() => {
+              dragRef.current.active = false;
+            }}
+            onPointerCancel={() => {
+              dragRef.current.active = false;
+            }}
+            onMouseMove={(event) => {
+              if (dragRef.current.active) {
+                const dx = event.clientX - dragRef.current.x;
+                const dy = event.clientY - dragRef.current.y;
+                dragRef.current = {
+                  active: true,
+                  moved: dragRef.current.moved || Math.abs(dx) > 1 || Math.abs(dy) > 1,
+                  x: event.clientX,
+                  y: event.clientY,
+                };
+                pixiInteractionRef.current?.panByScreen(dx, dy);
+                return;
+              }
+              const target = event.target as Element | null;
+              if (target?.closest(".simulation-map__zone-chip, .simulation-map__anchor-pin")) {
                 pixiInteractionRef.current?.setHoveredAgent(null);
                 setHoveredAgentId(null);
+                setHoverPosition(null);
                 return;
               }
               const rect = event.currentTarget.getBoundingClientRect();
               if (rect.width <= 0 || rect.height <= 0) return;
               const nextId =
-                pixiInteractionRef.current?.hitTestAtNormalized(
-                  Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-                  Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+                pixiInteractionRef.current?.hitTestAtScreen(
+                  event.clientX - rect.left,
+                  event.clientY - rect.top
                 ) ?? null;
               pixiInteractionRef.current?.setHoveredAgent(nextId);
               setHoveredAgentId(nextId);
+              setHoverPosition(
+                nextId
+                  ? {
+                      x: event.clientX - rect.left,
+                      y: event.clientY - rect.top,
+                      width: rect.width,
+                    }
+                  : null
+              );
             }}
             onMouseLeave={() => {
+              dragRef.current.active = false;
               pixiInteractionRef.current?.setHoveredAgent(null);
               setHoveredAgentId(null);
+              setHoverPosition(null);
+            }}
+            onWheel={(event) => {
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0 || rect.height <= 0) return;
+              const factor = event.deltaY < 0 ? 1.08 : 0.92;
+              pixiInteractionRef.current?.zoomAtScreen(
+                factor,
+                event.clientX - rect.left,
+                event.clientY - rect.top
+              );
             }}
             onClick={(event) => {
               const target = event.target as Element | null;
-              if (target?.closest(".simulation-map__zone-rect, .simulation-map__anchor-pin, .simulation-map__contour-band")) {
+              if (dragRef.current.moved || target?.closest(".simulation-map__zone-chip, .simulation-map__anchor-pin")) {
+                dragRef.current.moved = false;
                 return;
               }
               const rect = event.currentTarget.getBoundingClientRect();
               if (rect.width <= 0 || rect.height <= 0) return;
               const selectedId =
-                pixiInteractionRef.current?.hitTestAtNormalized(
-                  Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-                  Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+                pixiInteractionRef.current?.hitTestAtScreen(
+                  event.clientX - rect.left,
+                  event.clientY - rect.top
                 ) ?? null;
-              if (!selectedId) return;
+              if (!selectedId) {
+                onClearSelection?.();
+                return;
+              }
+              if (selectedId === selectedAgentId) {
+                onClearSelection?.();
+                return;
+              }
               const selectedCell = cellById.get(selectedId);
               if (selectedCell) onSelectAgent?.(selectedCell);
             }}
           >
-          <>
+            <div className="simulation-map__hud">
+              <div>
+                <p className="simulation-map__eyebrow">Social Field</p>
+                <h3 className="simulation-map__title">{scene.zSemantics.label}</h3>
+              </div>
+              <div className="simulation-map__meta">
+                {metaItems.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+            </div>
             <PixiStageHost
               scene={pixiScene}
               annotations={annotations}
@@ -236,214 +300,68 @@ export default function SimulationMap2D({
               renderTime={renderTime}
               transitionPhase={transitionPhase}
               pointerField={pointerField}
+              layerVisibility={{
+                agents: showAgentLayer,
+                clusters: showClusterLayer,
+                pressure: showPressureField,
+                shocks: showShockLayer,
+              }}
               onInteractionApiReady={(api) => {
                 pixiInteractionRef.current = api;
               }}
+              onCameraStateChange={setCameraState}
             />
-            <svg
-              className="simulation-map__svg"
-              viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-              role="img"
-              aria-label="2D social field simulation map"
+            <div className="simulation-map__dom-overlay">
+              <div className="simulation-map__overlay-world" style={overlayWorldStyle(cameraState)}>
+                {scene.zoneBoxes.map((zone, index) => (
+                  <button
+                    key={zone.zoneId}
+                    type="button"
+                    className={`simulation-map__zone-chip${
+                      selectedZoneId === zone.zoneId ? " simulation-map__zone-chip--active" : ""
+                    }`}
+                    style={zoneOverlayStyle(zone, index)}
+                    onClick={() =>
+                      onSelectZone?.({
+                        zoneId: zone.zoneId,
+                        label: zone.label,
+                        influence: zone.influence,
+                        friction: zone.friction,
+                        count: zone.count,
+                      })
+                    }
+                  >
+                    <span>{zone.label}</span>
+                  </button>
+                ))}
+
+                {showAnchorLayer
+                  ? resolvedAnchors.map((anchor) => (
+                      <button
+                        key={anchor.key}
+                        type="button"
+                        className="simulation-map__anchor-pin"
+                        style={anchorOverlayStyle(anchor)}
+                        onClick={() => {
+                          if (onJumpToT && anchor.t != null) onJumpToT(anchor.t);
+                        }}
+                        title={anchor.reason}
+                      >
+                        <span
+                          className="simulation-map__anchor-dot"
+                          style={{ background: anchor.color }}
+                        />
+                        <span className="simulation-map__anchor-text">{anchor.label}</span>
+                      </button>
+                    ))
+                  : null}
+              </div>
+            </div>
+          {hoveredAgentId && hoverPosition ? (
+            <div
+              className="simulation-map__hover-chip"
+              style={hoverChipStyle(hoverPosition)}
             >
-              <defs>
-                <radialGradient id="map-ambient-glow" cx="50%" cy="42%" r="68%">
-                  <stop offset="0%" stopColor="rgba(56, 189, 248, 0.18)" />
-                  <stop offset="38%" stopColor="rgba(99, 102, 241, 0.10)" />
-                  <stop offset="100%" stopColor="rgba(15, 23, 42, 0)" />
-                </radialGradient>
-                <radialGradient id="map-core-field" cx="50%" cy="50%" r="72%">
-                  <stop offset="0%" stopColor="rgba(30, 41, 59, 0.0)" />
-                  <stop offset="100%" stopColor="rgba(15, 23, 42, 0.32)" />
-                </radialGradient>
-                <filter id="map-glow-soft" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="8" result="blurred" />
-                  <feMerge>
-                    <feMergeNode in="blurred" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-                <pattern
-                  id="map-grid"
-                  width="48"
-                  height="48"
-                  patternUnits="userSpaceOnUse"
-                >
-                  <path
-                    d="M 48 0 L 0 0 0 48"
-                    fill="none"
-                    stroke="rgba(148,163,184,0.18)"
-                    strokeWidth="1"
-                  />
-                </pattern>
-              </defs>
-              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="#07111f" />
-              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-ambient-glow)" />
-              <rect width={SVG_WIDTH} height={SVG_HEIGHT} fill="url(#map-core-field)" />
-              <g opacity="0.56">
-                <circle
-                  cx={SVG_WIDTH * 0.22 + Math.sin(renderTime * 0.23) * 28 + pointerDriftX * 0.35}
-                  cy={SVG_HEIGHT * 0.24 + Math.cos(renderTime * 0.19) * 18 + pointerDriftY * 0.35}
-                  r={146 + Math.sin(renderTime * 0.41) * 12}
-                  fill="rgba(56, 189, 248, 0.05)"
-                  filter="url(#map-glow-soft)"
-                />
-                <circle
-                  cx={SVG_WIDTH * 0.78 + Math.cos(renderTime * 0.21) * 22 - pointerDriftX * 0.28}
-                  cy={SVG_HEIGHT * 0.68 + Math.sin(renderTime * 0.27) * 16 - pointerDriftY * 0.24}
-                  r={128 + Math.cos(renderTime * 0.36) * 10}
-                  fill="rgba(99, 102, 241, 0.05)"
-                  filter="url(#map-glow-soft)"
-                />
-              </g>
-              <g opacity={pointerField.active ? 0.48 : 0.32}>
-                <ellipse
-                  cx={pointerX}
-                  cy={pointerY}
-                  rx={110 + Math.sin(renderTime * 1.2) * 12}
-                  ry={86 + Math.cos(renderTime * 1.05) * 10}
-                  fill="rgba(125, 211, 252, 0.05)"
-                  filter="url(#map-glow-soft)"
-                />
-                <ellipse
-                  cx={pointerX}
-                  cy={pointerY}
-                  rx={48 + Math.sin(renderTime * 1.8) * 6}
-                  ry={36 + Math.cos(renderTime * 1.52) * 5}
-                  fill="rgba(255,255,255,0.035)"
-                />
-              </g>
-              <rect
-                x={PADDING}
-                y={PADDING}
-                width={SVG_WIDTH - PADDING * 2}
-                height={SVG_HEIGHT - PADDING * 2}
-                rx="28"
-                fill="url(#map-grid)"
-              />
-              <g opacity="0.24" transform={`translate(${Math.sin(renderTime * 0.4) * 10} ${Math.cos(renderTime * 0.33) * 8})`}>
-                <rect
-                  x={PADDING - 120 + ((renderTime * 92) % (SVG_WIDTH + 240))}
-                  y={PADDING - 30}
-                  width="96"
-                  height={SVG_HEIGHT - PADDING * 2 + 60}
-                  rx="28"
-                  fill="rgba(255,255,255,0.02)"
-                  transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
-                />
-                <rect
-                  x={PADDING - 180 + ((renderTime * 64) % (SVG_WIDTH + 320))}
-                  y={PADDING - 20}
-                  width="42"
-                  height={SVG_HEIGHT - PADDING * 2 + 40}
-                  rx="24"
-                  fill="rgba(125,211,252,0.015)"
-                  transform={`rotate(-12 ${SVG_WIDTH / 2} ${SVG_HEIGHT / 2})`}
-                />
-              </g>
-              {transitionPhase > 0.001 ? (
-                <rect
-                  x={PADDING}
-                  y={PADDING}
-                  width={SVG_WIDTH - PADDING * 2}
-                  height={SVG_HEIGHT - PADDING * 2}
-                  rx="28"
-                  fill="rgba(255,255,255,0.05)"
-                  opacity={transitionPhase * 0.4}
-                />
-              ) : null}
-
-            {scene.elevationBands.map((band, index) => (
-              <path
-                key={band.key}
-                d={band.d}
-                className="simulation-map__contour-band"
-                style={{
-                  fill: contourFill(scene.zSemantics, index, band.alpha),
-                  stroke: contourStroke(scene.zSemantics, index),
-                  opacity:
-                    !activeBand || activeBand.key === band.key || selectedBandKey === band.key
-                      ? 1
-                      : 0.58,
-                }}
-                onMouseEnter={() => setHoveredBandKey(band.key)}
-                onMouseLeave={() => setHoveredBandKey(null)}
-                onClick={() =>
-                  onSelectBand?.({
-                    key: band.key,
-                    label: band.label,
-                    lower: band.lower,
-                    upper: band.upper,
-                    agentCount: band.agentCount,
-                    avgEnergy: band.avgEnergy,
-                    avgZ: band.avgZ,
-                    dominantRole: band.dominantRole,
-                    modeLabel: scene.zSemantics.label,
-                  })
-                }
-              >
-                <title>{band.label}</title>
-              </path>
-            ))}
-
-            {!usePixiLiveField && showClusterLayer ? (
-              <ClusterLayer
-                zones={scene.zoneBoxes}
-                renderTime={renderTime}
-                pointerField={pointerField}
-              />
-            ) : null}
-            {!usePixiLiveField && showPressureField ? (
-              <PressureFieldLayer
-                nodes={scene.nodes}
-                renderTime={renderTime}
-                pointerField={pointerField}
-              />
-            ) : null}
-            {!usePixiLiveField && showShockLayer ? (
-              <ShockLayer
-                nodes={scene.nodes}
-                annotations={annotations}
-                currentT={currentT}
-                renderTime={renderTime}
-              />
-            ) : null}
-            {showDriftLayer ? (
-              <DriftLayer
-                zones={scene.zoneBoxes}
-                mapCenter={{ x: SVG_WIDTH / 2, y: SVG_HEIGHT / 2 }}
-                renderTime={renderTime}
-              />
-            ) : null}
-
-            <ZoneLayer
-              zones={scene.zoneBoxes}
-              selectedZoneId={selectedZoneId}
-              onSelectZone={onSelectZone}
-            />
-
-            {showAnchorLayer ? (
-              <AnchorLayer
-                nodes={scene.nodes}
-                zones={scene.zoneBoxes}
-                items={groundingItems}
-                currentT={currentT}
-                onJumpToT={onJumpToT}
-              />
-            ) : null}
-
-            {!usePixiLiveField ? (
-              <AgentLayer
-                nodes={scene.nodes}
-                renderTime={renderTime}
-                selectedAgentId={selectedAgentId}
-                onSelectAgent={onSelectAgent}
-              />
-            ) : null}
-            </svg>
-          </>
-          {hoveredAgentId ? (
-            <div className="simulation-map__hover-chip">
               {cellById.get(hoveredAgentId)?.role_label ??
                 cellById.get(hoveredAgentId)?.role_key ??
                 "agent"}
@@ -453,13 +371,13 @@ export default function SimulationMap2D({
         )}
       </div>
 
-      {activeBand && (
+      {selectedBand && (
         <details className="simulation-map__detail-collapse group">
           <summary className="simulation-map__detail-summary">
             <div>
               <p className="simulation-map__detail-eyebrow">{scene.zSemantics.contourName}</p>
               <h4 className="simulation-map__detail-title">
-                {scene.zSemantics.label} · {activeBand.label}
+                {scene.zSemantics.label} · {selectedBand.label}
               </h4>
             </div>
             <span className="simulation-map__detail-toggle">
@@ -468,61 +386,15 @@ export default function SimulationMap2D({
           </summary>
           <div className="simulation-map__detail-card">
             <div className="simulation-map__detail-grid">
-              <span>{activeBand.agentCount} agents</span>
-              <span>avg z {activeBand.avgZ.toFixed(2)}</span>
-              <span>avg energy {activeBand.avgEnergy.toFixed(1)}</span>
-              <span>dominant role {activeBand.dominantRole}</span>
+              <span>{selectedBand.agentCount} agents</span>
+              <span>avg z {selectedBand.avgZ.toFixed(2)}</span>
+              <span>avg energy {selectedBand.avgEnergy.toFixed(1)}</span>
+              <span>dominant role {selectedBand.dominantRole}</span>
             </div>
           </div>
         </details>
       )}
 
-      <div className="simulation-map__legend">
-        {scene.zoneBoxes.slice(0, 5).map((zone, index) => (
-          <div key={zone.zoneId} className="simulation-map__legend-item">
-            <span
-              className="simulation-map__legend-swatch"
-              style={{ background: zoneBackground(index) }}
-            />
-            <div>
-              <strong>{zone.label}</strong>
-              <span>
-                influence {zone.influence.toFixed(2)} · friction{" "}
-                {zone.friction.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        ))}
-        <div className="simulation-map__legend-item simulation-map__legend-item--elevation">
-          <span
-            className="simulation-map__legend-contour"
-            style={{
-              background: contourLegendFill(scene.zSemantics),
-              borderColor: contourStroke(scene.zSemantics, 1),
-            }}
-          />
-          <div>
-            <strong>{scene.zLabel}</strong>
-            <span>
-              {scene.zSemantics.contourName} {scene.zRange.min.toFixed(1)} to {scene.zRange.max.toFixed(1)}
-            </span>
-          </div>
-        </div>
-        <div className="simulation-map__legend-item simulation-map__legend-item--elevation">
-          <span
-            className="simulation-map__legend-contour"
-            style={{
-              background:
-                "linear-gradient(180deg, rgba(124, 58, 237, 0.24), rgba(14, 165, 233, 0.16)), #ffffff",
-              borderColor: "rgba(124, 58, 237, 0.48)",
-            }}
-          />
-          <div>
-            <strong>observer signal</strong>
-            <span>focus halo + ring intensity mark live observer importance</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -636,6 +508,127 @@ function buildScene(cells: CellSnapshot[]) {
     zLabel: zSemantics.label,
     zSemantics,
   };
+}
+
+type OverlayAnchor = {
+  key: string;
+  x: number;
+  y: number;
+  label: string;
+  reason: string;
+  t: number | null;
+  color: string;
+};
+
+function resolveOverlayAnchors(
+  nodes: AgentNode[],
+  zones: ZoneBox[],
+  items: ReviewGroundingItem[],
+  currentT: number
+) {
+  const filtered = items
+    .filter((item) => item.t == null || Math.abs(Number(item.t) - currentT) <= 12)
+    .slice(0, 8);
+
+  const fallbackNodes = [...nodes]
+    .sort((a, b) => b.collectivePressure - a.collectivePressure)
+    .slice(0, Math.max(1, filtered.length));
+
+  return filtered
+    .map((item, index) => {
+      const color = overlayAnchorColor(item.kind);
+      if (item.cell_id) {
+        const node = nodes.find((candidate) => candidate.id === item.cell_id);
+        if (node) {
+          return {
+            key: item.anchor_id || `cell-${item.cell_id}-${index}`,
+            x: node.cx,
+            y: node.cy,
+            label: item.label,
+            reason: item.reason,
+            t: item.t ?? null,
+            color,
+          };
+        }
+      }
+      if (item.zone_id) {
+        const zone = zones.find((candidate) => candidate.zoneId === item.zone_id);
+        if (zone) {
+          return {
+            key: item.anchor_id || `zone-${item.zone_id}-${index}`,
+            x: (zone.x0 + zone.x1) / 2,
+            y: (zone.y0 + zone.y1) / 2,
+            label: item.label,
+            reason: item.reason,
+            t: item.t ?? null,
+            color,
+          };
+        }
+      }
+      const fallback = fallbackNodes[index % Math.max(1, fallbackNodes.length)];
+      if (!fallback) return null;
+      return {
+        key: item.anchor_id || `fallback-${index}`,
+        x: fallback.cx,
+        y: fallback.cy,
+        label: item.label,
+        reason: item.reason,
+        t: item.t ?? null,
+        color,
+      };
+    })
+    .filter((item): item is OverlayAnchor => item !== null);
+}
+
+function zoneOverlayStyle(zone: ZoneBox, index: number) {
+  const palette = [
+    ["rgba(255, 255, 255, 0.72)", "rgba(2, 132, 199, 0.28)"],
+    ["rgba(255, 255, 255, 0.72)", "rgba(37, 99, 235, 0.28)"],
+    ["rgba(255, 255, 255, 0.72)", "rgba(234, 88, 12, 0.28)"],
+    ["rgba(255, 255, 255, 0.72)", "rgba(5, 150, 105, 0.28)"],
+    ["rgba(255, 255, 255, 0.72)", "rgba(219, 39, 119, 0.28)"],
+  ] as const;
+  const [bg, border] = palette[index % palette.length]!;
+  const labelX = Math.min(zone.x1 - 24, Math.max(PADDING, zone.x0 + 8));
+  const labelY = Math.min(zone.y1 - 18, Math.max(PADDING, zone.y0 + 8));
+  return {
+    left: `${labelX}px`,
+    top: `${labelY}px`,
+    background: bg,
+    borderColor: border,
+  };
+}
+
+function hoverChipStyle(position: { x: number; y: number; width: number }) {
+  return {
+    left: `${Math.min(position.x + 14, Math.max(24, position.width - 140))}px`,
+    top: `${Math.max(16, position.y - 18)}px`,
+  };
+}
+
+function anchorOverlayStyle(anchor: OverlayAnchor) {
+  return {
+    left: `${anchor.x}px`,
+    top: `${anchor.y}px`,
+    color: anchor.color,
+  };
+}
+
+function overlayWorldStyle(camera: PixiCameraState) {
+  return {
+    width: `${SVG_WIDTH}px`,
+    height: `${SVG_HEIGHT}px`,
+    transform: `translate(${camera.offsetX}px, ${camera.offsetY}px) scale(${camera.scaleX}, ${camera.scaleY})`,
+    transformOrigin: "top left",
+  } as const;
+}
+
+function overlayAnchorColor(kind: string) {
+  if (kind === "event") return "rgb(249, 115, 22)";
+  if (kind === "group") return "rgb(99, 102, 241)";
+  if (kind === "zone") return "rgb(16, 185, 129)";
+  if (kind === "agent") return "rgb(244, 63, 94)";
+  return "rgb(14, 165, 233)";
 }
 
 function observerSemantics(cell: CellSnapshot): ObserverSemantics {

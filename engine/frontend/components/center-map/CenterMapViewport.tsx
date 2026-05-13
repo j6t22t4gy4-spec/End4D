@@ -22,6 +22,7 @@ type CenterMapViewportProps = {
   onSelectAgent?: (cell: CellSnapshot) => void;
   onSelectZone?: (zone: SelectedZone) => void;
   onSelectBand?: (band: SelectedBand) => void;
+  onClearSelection?: () => void;
   onJumpToT?: (t: number) => void;
 };
 
@@ -40,6 +41,7 @@ export function CenterMapViewport({
   onSelectAgent,
   onSelectZone,
   onSelectBand,
+  onClearSelection,
   onJumpToT,
 }: CenterMapViewportProps) {
   const [renderTime, setRenderTime] = useState(0);
@@ -77,29 +79,12 @@ export function CenterMapViewport({
     return () => window.cancelAnimationFrame(frame);
   }, [currentT]);
 
+  void mode;
+
   return (
-    <div className="grid gap-3">
-      <div className="flex flex-wrap items-center gap-2 px-1">
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-          {mode === "precision" ? "Focus: agents + anchors" : "Focus: blocs + flow"}
-        </span>
-        {visibleLayers.heat ? (
-          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">
-            Pressure field on
-          </span>
-        ) : null}
-        {visibleLayers.shock ? (
-          <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-rose-700">
-            Shock layer staged
-          </span>
-        ) : null}
-        {visibleLayers.drift ? (
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
-            Drift layer staged
-          </span>
-        ) : null}
-      </div>
+    <div className="h-full min-h-[640px]">
       <div
+        className="h-full min-h-[640px]"
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           if (rect.width <= 0 || rect.height <= 0) return;
@@ -126,6 +111,7 @@ export function CenterMapViewport({
           showAnchorLayer={visibleLayers.anchors}
           showDriftLayer={visibleLayers.drift}
           showClusterLayer={visibleLayers.clusters}
+          showAgentLayer={visibleLayers.agents}
           annotations={annotations}
           groundingItems={groundingItems}
           currentT={currentT}
@@ -138,6 +124,7 @@ export function CenterMapViewport({
           onSelectAgent={onSelectAgent}
           onSelectZone={onSelectZone}
           onSelectBand={onSelectBand}
+          onClearSelection={onClearSelection}
           onJumpToT={onJumpToT}
         />
       </div>

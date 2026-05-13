@@ -26,6 +26,10 @@ export type CenterMapSceneZone = {
   id: string;
   centerX: number;
   centerY: number;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
   width: number;
   height: number;
   avgPressure: number;

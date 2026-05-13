@@ -8,6 +8,7 @@ import type { CenterMapSceneAgent } from "@/components/center-map/scene/sceneTyp
 type ShockVisual = {
   id: string;
   container: Container;
+  glow: Graphics;
   outer: Graphics;
   middle: Graphics;
   core: Graphics;
@@ -22,6 +23,15 @@ export class ShockLayerPixi {
   readonly container = new Container();
 
   private visuals = new Map<string, ShockVisual>();
+
+  getFlashLevel(renderTime: number) {
+    let maxFlash = 0;
+    for (const visual of this.visuals.values()) {
+      const pulse = ((Math.sin(renderTime * (3.2 + visual.phase * 0.7) + visual.phase * 9) + 1) / 2);
+      maxFlash = Math.max(maxFlash, (0.03 + visual.emphasis * 0.08) * pulse);
+    }
+    return maxFlash;
+  }
 
   updateAnnotations(
     annotations: TimelineAnnotation[],
@@ -77,17 +87,20 @@ export class ShockLayerPixi {
     for (const visual of this.visuals.values()) {
       visual.container.position.set(visual.x, visual.y);
 
-      const baseOuter = 0.74 + ((renderTime * (0.42 + visual.phase * 0.08)) % 1) * 0.62;
-      const baseMiddle = 0.82 + ((renderTime * (0.55 + visual.phase * 0.09)) % 1) * 0.38;
-      const corePulse = 0.92 + ((Math.sin(renderTime * (3.2 + visual.phase)) + 1) / 2) * 0.22;
+      const baseGlow = 0.96 + ((Math.sin(renderTime * (1.3 + visual.phase * 0.18)) + 1) / 2) * 0.28;
+      const baseOuter = 0.74 + ((renderTime * (0.36 + visual.phase * 0.08)) % 1) * 0.56;
+      const baseMiddle = 0.82 + ((renderTime * (0.44 + visual.phase * 0.09)) % 1) * 0.34;
+      const corePulse = 0.99 + ((Math.sin(renderTime * (2.8 + visual.phase)) + 1) / 2) * 0.14;
 
+      visual.glow.scale.set(baseGlow);
       visual.outer.scale.set(baseOuter);
       visual.middle.scale.set(baseMiddle);
       visual.core.scale.set(corePulse);
 
-      visual.outer.alpha = Math.max(0, 0.46 - (baseOuter - 0.74) * 0.64) * (0.72 + visual.emphasis * 0.3);
-      visual.middle.alpha = Math.max(0, 0.42 - (baseMiddle - 0.82) * 0.54) * (0.68 + visual.emphasis * 0.26);
-      visual.core.alpha = Math.min(0.38, 0.14 + visual.emphasis * 0.2);
+      visual.glow.alpha = Math.min(0.18, 0.06 + visual.emphasis * 0.1);
+      visual.outer.alpha = Math.max(0, 0.34 - (baseOuter - 0.74) * 0.42) * (0.72 + visual.emphasis * 0.18);
+      visual.middle.alpha = Math.max(0, 0.28 - (baseMiddle - 0.82) * 0.38) * (0.68 + visual.emphasis * 0.14);
+      visual.core.alpha = Math.min(0.24, 0.1 + visual.emphasis * 0.12);
     }
   }
 
@@ -98,9 +111,11 @@ export class ShockLayerPixi {
 
   private createVisual(id: string, x: number, y: number, severity: string, emphasis: number) {
     const container = new Container();
+    const glow = new Graphics();
     const outer = new Graphics();
     const middle = new Graphics();
     const core = new Graphics();
+    container.addChild(glow);
     container.addChild(outer);
     container.addChild(middle);
     container.addChild(core);
@@ -108,6 +123,7 @@ export class ShockLayerPixi {
     const visual: ShockVisual = {
       id,
       container,
+      glow,
       outer,
       middle,
       core,
@@ -124,20 +140,26 @@ export class ShockLayerPixi {
 
   private redrawVisual(visual: ShockVisual) {
     const color = shockColor(visual.severity);
-    const outerRadius = 28 + visual.emphasis * 30;
-    const middleRadius = 18 + visual.emphasis * 18;
-    const coreRadius = 8 + visual.emphasis * 10;
+    const glowRadius = 16 + visual.emphasis * 24;
+    const outerRadius = 28 + visual.emphasis * 28;
+    const middleRadius = 18 + visual.emphasis * 16;
+    const coreRadius = 8 + visual.emphasis * 8;
+
+    visual.glow.clear();
+    visual.glow.beginFill(color, 0.1);
+    visual.glow.drawCircle(0, 0, glowRadius);
+    visual.glow.endFill();
 
     visual.outer.clear();
-    visual.outer.lineStyle(2, color, 0.5);
+    visual.outer.lineStyle(2, color, 0.38);
     visual.outer.drawCircle(0, 0, outerRadius);
 
     visual.middle.clear();
-    visual.middle.lineStyle(2, color, 0.62);
+    visual.middle.lineStyle(1.5, color, 0.42);
     visual.middle.drawCircle(0, 0, middleRadius);
 
     visual.core.clear();
-    visual.core.beginFill(color, 0.2);
+    visual.core.beginFill(color, 0.16);
     visual.core.drawCircle(0, 0, coreRadius);
     visual.core.endFill();
   }

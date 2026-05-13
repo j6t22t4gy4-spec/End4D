@@ -28,19 +28,19 @@ export function CenterMapToolbar({
   onClearSelection,
 }: CenterMapToolbarProps) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-2">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+        <span className="rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-white">
           {mode}
         </span>
-        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+        <span className="rounded-md bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-600">
           t={currentT}
         </span>
         {(Object.keys(visibleLayers) as Array<keyof CenterMapVisibleLayers>).map((key) => (
           <button
             key={key}
             type="button"
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium transition ${
               visibleLayers[key]
                 ? "border-sky-300 bg-sky-50 text-sky-900"
                 : "border-slate-200 bg-white text-slate-500"
@@ -52,16 +52,13 @@ export function CenterMapToolbar({
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <p className="text-xs text-slate-500">
-          {mode === "precision" ? "Micro-visible analysis layers" : "Meso-visible swarm layers"}
-        </p>
         {onClearSelection ? (
           <button
             type="button"
-            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600"
+            className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600"
             onClick={onClearSelection}
           >
-            Clear Focus
+            Clear
           </button>
         ) : null}
       </div>

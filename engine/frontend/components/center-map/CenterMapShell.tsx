@@ -21,11 +21,11 @@ function defaultVisibleLayers(mode: CenterMapShellProps["mode"]): CenterMapVisib
   return {
     agents: true,
     heat: true,
-    shock: true,
-    drift: true,
-    anchors: true,
-    labels: true,
-    clusters: true,
+    shock: false,
+    drift: false,
+    anchors: false,
+    labels: false,
+    clusters: false,
   };
 }
 
@@ -68,7 +68,7 @@ export function CenterMapShell({
   }, [cells, collectiveSummary, reviewSummary]);
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       <CenterMapToolbar
         mode={mode}
         currentT={currentT}
@@ -82,8 +82,8 @@ export function CenterMapShell({
         onClearSelection={onClearSelection}
       />
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm min-h-[480px]">
+      <div className="grid gap-2">
+        <div className="min-h-[640px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
           <CenterMapViewport
             mode={mode}
             cells={cells}
@@ -99,40 +99,29 @@ export function CenterMapShell({
             onSelectAgent={onSelectAgent}
             onSelectZone={onSelectZone}
             onSelectBand={onSelectBand}
+            onClearSelection={onClearSelection}
             onJumpToT={onJumpToT}
           />
         </div>
 
-        <div className="grid gap-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Center Map Readout
-            </p>
-            <div className="mt-3 grid gap-2">
-              <p className="text-sm text-slate-700">avg pressure {focusSummary.avgPressure}%</p>
-              <p className="text-sm text-slate-700">role fracture {focusSummary.roleFracture}%</p>
-              <p className="text-sm text-slate-700">zone drift {focusSummary.zoneDrift}%</p>
-              <p className="text-sm text-slate-700">
-                validation confidence {focusSummary.validationConfidence}
-              </p>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 text-xs text-slate-600">
+          <div className="flex flex-wrap items-center gap-3">
+            <span>pressure {focusSummary.avgPressure}%</span>
+            <span>fracture {focusSummary.roleFracture}%</span>
+            <span>drift {focusSummary.zoneDrift}%</span>
+            <span>confidence {focusSummary.validationConfidence}</span>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-              Layer Status
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
               {Object.entries(visibleLayers)
                 .filter(([, enabled]) => enabled)
                 .map(([key]) => (
                   <span
                     key={key}
-                    className="rounded-full bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700"
+                    className="rounded-md bg-sky-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-700"
                   >
                     {key}
                   </span>
                 ))}
-            </div>
           </div>
         </div>
       </div>
