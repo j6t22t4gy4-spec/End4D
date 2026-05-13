@@ -19,6 +19,9 @@ class SwarmConfig:
     shock_interval: int = 0
     packet_interval: int = 8
     agent_llm_sample_size: int = 32
+    min_interactions_per_step: int = 2
+    max_interactions_per_step: int = 10
+    interaction_sensitivity: float = 1.0
 
 
 @dataclass
@@ -80,4 +83,5 @@ class SwarmState:
     meso_groups: list[MesoGroupState] = field(default_factory=list)
     macro: MacroFieldState | None = None
     llm_packets: list[dict[str, Any]] = field(default_factory=list)
-
+    internal_interactions: int = 0
+    last_interactions_per_step: int = 0

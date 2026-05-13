@@ -105,3 +105,35 @@ def test_swarm_compact_runtime_keeps_large_scene_bounded():
     assert scene["agent_count"] == 5000
     assert len(scene["agents"]) <= 1000
     assert len(scene["pressure_grid"]["cells"]) == 576
+
+
+def test_swarm_adaptive_internal_interactions_scale_with_scenario_pressure():
+    quiet_state, quiet_trajectory = run_swarm_compact(
+        SwarmConfig(
+            agent_count=240,
+            meso_group_count=12,
+            steps=4,
+            policy_intensity=0.0,
+            min_interactions_per_step=1,
+            max_interactions_per_step=8,
+            interaction_sensitivity=0.5,
+        )
+    )
+    intense_state, intense_trajectory = run_swarm_compact(
+        SwarmConfig(
+            agent_count=240,
+            meso_group_count=12,
+            steps=4,
+            policy_intensity=1.0,
+            shock_interval=2,
+            min_interactions_per_step=1,
+            max_interactions_per_step=8,
+            interaction_sensitivity=2.0,
+        )
+    )
+
+    assert quiet_state.internal_interactions >= 4
+    assert intense_state.internal_interactions > quiet_state.internal_interactions
+    assert max(point["last_interactions_per_step"] for point in intense_trajectory) > max(
+        point["last_interactions_per_step"] for point in quiet_trajectory
+    )

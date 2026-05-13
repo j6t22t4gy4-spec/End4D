@@ -48,11 +48,15 @@ def apply_agent_interactions(
     interval: int = SOCIAL_INTERACTION_INTERVAL,
     radius: float = SOCIAL_RADIUS,
     max_neighbors: int = MAX_NEIGHBORS_PER_CELL,
+    force: bool = False,
 ) -> List[Cell]:
     """Append nearby-agent observations to cell memory at a fixed interval."""
     t_int = int(current_t)
-    if not cells or t_int <= 0 or t_int % interval != 0:
+    if not cells or current_t <= 0:
         return cells
+    if not force and (t_int <= 0 or t_int % interval != 0):
+        return cells
+    t_label = _format_t_label(current_t)
 
     grid = SpatialHashGrid(cells, cell_size=radius)
     out: List[Cell] = []
@@ -98,7 +102,7 @@ def apply_agent_interactions(
         else:
             alignment = "neutral"
         line = (
-            f"t={t_int} social_observation neighbors={len(neighbors)} "
+            f"t={t_label} social_observation neighbors={len(neighbors)} "
             f"roles=[{roles}] avg_neighbor_energy={avg_energy:.1f} alignment={alignment} "
             f"cluster_signal={quality['cluster_signal']} quality={quality['quality_score']:.2f}"
         )
@@ -129,7 +133,7 @@ def apply_agent_interactions(
             worldview_vec=worldview_vec,
         )
         observation_entry = memory_entry(
-            t=float(t_int),
+            t=float(current_t),
             kind="social_observation",
             summary=line,
             importance=float(quality["quality_score"]),
@@ -146,7 +150,7 @@ def apply_agent_interactions(
             tags=["interaction", "social"],
         )
         behavior = behavior_event(
-            t=float(t_int),
+            t=float(current_t),
             event_type="social_observation",
             source="engine.agent_interactions",
             summary=line,
@@ -167,9 +171,9 @@ def apply_agent_interactions(
             behavior=behavior,
             promote=float(quality["quality_score"]) >= 0.72,
         )
-        borrowed_summary = f"t={t_int} borrowed_signal={_salient_memory(source_neighbor)[:180]}"
+        borrowed_summary = f"t={t_label} borrowed_signal={_salient_memory(source_neighbor)[:180]}"
         borrowed_entry = memory_entry(
-            t=float(t_int),
+            t=float(current_t),
             kind="borrowed_signal",
             summary=borrowed_summary,
             importance=max(0.35, float(quality["quality_score"]) * 0.85),
@@ -179,9 +183,9 @@ def apply_agent_interactions(
         )
         updated = append_memory(updated, borrowed_entry, promote=False)
         belief_entry = memory_entry(
-            t=float(t_int),
+            t=float(current_t),
             kind="belief_update",
-            summary=f"t={t_int} {belief['belief_summary']}",
+            summary=f"t={t_label} {belief['belief_summary']}",
             importance=max(0.42, min(0.95, float(quality["quality_score"]) * 0.9)),
             source="engine.belief_dynamics",
             payload={
@@ -198,3 +202,9 @@ def apply_agent_interactions(
         )
         out.append(updated)
     return out
+
+
+def _format_t_label(current_t: float) -> str:
+    if abs(float(current_t) - int(current_t)) < 1e-6:
+        return str(int(current_t))
+    return f"{float(current_t):.2f}".rstrip("0").rstrip(".")

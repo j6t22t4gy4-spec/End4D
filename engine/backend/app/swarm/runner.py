@@ -81,17 +81,30 @@ def tick_swarm(
         )
         amplifiers = packet_amplifiers(packets)
 
-    agents = tick_micro_agents(
-        state.agents,
-        groups=previous_groups,
-        macro=current_macro,
-        rng=rng,
-    )
-    groups = aggregate_meso_groups(
-        agents,
-        previous=previous_groups,
-        packet_amplifiers=amplifiers,
-    )
+    interactions = _interaction_substeps(config=config, macro=current_macro)
+    agents = state.agents
+    groups = state.meso_groups
+    interaction_scale = 1.0 / max(1, interactions)
+    for substep in range(interactions):
+        internal_macro = _internal_macro(
+            base=current_macro,
+            config=config,
+            next_t=state.t + 1,
+            progress=(substep + 1) / interactions,
+        )
+        group_lookup = {group.group_id: group for group in groups}
+        agents = tick_micro_agents(
+            agents,
+            groups=group_lookup,
+            macro=internal_macro,
+            rng=rng,
+            interaction_scale=interaction_scale,
+        )
+        groups = aggregate_meso_groups(
+            agents,
+            previous=group_lookup,
+            packet_amplifiers=amplifiers if substep == 0 else None,
+        )
     groups = _attach_packet_summaries(groups, packets)
     macro = compute_macro_field(
         t=state.t + 1,
@@ -106,6 +119,8 @@ def tick_swarm(
         meso_groups=groups,
         macro=macro,
         llm_packets=[*state.llm_packets, *packets],
+        internal_interactions=state.internal_interactions + interactions,
+        last_interactions_per_step=interactions,
     )
 
 
@@ -125,6 +140,8 @@ def snapshot_swarm(state: SwarmState) -> SwarmSnapshot:
         "llm_mode": state.config.llm_mode,
         "llm_packet_count": len(state.llm_packets),
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
+        "internal_interactions": state.internal_interactions,
+        "last_interactions_per_step": state.last_interactions_per_step,
         "avg_pressure": macro.avg_pressure,
         "max_pressure": macro.max_pressure,
         "shock_strength": macro.shock_strength,
@@ -162,7 +179,43 @@ def _trajectory_point(state: SwarmState) -> dict[str, Any]:
         "shock_strength": macro.shock_strength,
         "llm_packet_count": len(state.llm_packets),
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
+        "internal_interactions": state.internal_interactions,
+        "last_interactions_per_step": state.last_interactions_per_step,
     }
+
+
+def _interaction_substeps(*, config: SwarmConfig, macro: MacroFieldState) -> int:
+    min_steps = max(1, int(config.min_interactions_per_step))
+    max_steps = max(min_steps, int(config.max_interactions_per_step))
+    pressure = max(macro.avg_pressure, macro.max_pressure * 0.7)
+    scenario_need = (
+        pressure * 0.42
+        + macro.rumor_pressure * 0.18
+        + macro.policy_wave * 0.28
+        + config.policy_intensity * 0.12
+    ) * max(0.1, float(config.interaction_sensitivity))
+    return max(min_steps, min(max_steps, min_steps + round((max_steps - min_steps) * min(1.0, scenario_need))))
+
+
+def _internal_macro(
+    *,
+    base: MacroFieldState,
+    config: SwarmConfig,
+    next_t: int,
+    progress: float,
+) -> MacroFieldState:
+    upcoming_shock = 0.0
+    if config.shock_interval and next_t > 0 and next_t % config.shock_interval == 0:
+        upcoming_shock = min(1.0, 0.35 + config.policy_intensity * 0.55)
+    shock_ramp = upcoming_shock * max(0.0, min(1.0, progress))
+    return MacroFieldState(
+        t=base.t,
+        avg_pressure=base.avg_pressure,
+        max_pressure=base.max_pressure,
+        shock_strength=round(shock_ramp, 4),
+        rumor_pressure=round(min(1.0, base.rumor_pressure + shock_ramp * 0.12), 4),
+        policy_wave=round(min(1.0, base.policy_wave + shock_ramp * 0.18), 4),
+    )
 
 
 def _attach_packet_summaries(

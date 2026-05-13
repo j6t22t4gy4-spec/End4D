@@ -42,6 +42,7 @@ def tick_micro_agents(
     groups: dict[str, MesoGroupState],
     macro: MacroFieldState,
     rng: random.Random,
+    interaction_scale: float = 1.0,
 ) -> list[SwarmAgent]:
     updated: list[SwarmAgent] = []
     for agent in agents:
@@ -54,8 +55,9 @@ def tick_micro_agents(
         jitter = 0.012 + agent_pressure * 0.045 + group_tension * 0.025
         vx = (agent.vx * 0.86) + pull_x + rng.uniform(-jitter, jitter)
         vy = (agent.vy * 0.86) + pull_y + rng.uniform(-jitter, jitter)
-        risk = _clip01(agent.risk + agent_pressure * 0.018 - agent.cooperation * 0.006)
-        cooperation = _clip01(agent.cooperation + (0.5 - group_tension) * 0.012 - agent_pressure * 0.014)
+        scale = max(0.1, float(interaction_scale))
+        risk = _clip01(agent.risk + (agent_pressure * 0.018 - agent.cooperation * 0.006) * scale)
+        cooperation = _clip01(agent.cooperation + ((0.5 - group_tension) * 0.012 - agent_pressure * 0.014) * scale)
         updated.append(
             SwarmAgent(
                 agent_id=agent.agent_id,

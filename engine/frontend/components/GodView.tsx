@@ -103,7 +103,7 @@ const LLM_PROVIDER_PRESETS = [
     label: "OpenAI",
     provider: "openai",
     baseUrl: "https://api.openai.com/v1",
-    models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+    models: ["gpt-5-nano", "gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
   },
   {
     id: "ollama",

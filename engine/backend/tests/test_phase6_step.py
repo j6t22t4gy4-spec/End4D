@@ -63,6 +63,45 @@ def test_graph_uses_engine_zone_layout_params():
     assert len(ys) >= 2
 
 
+def test_precision_step_runs_internal_interactions_inside_t():
+    cells = [
+        Cell(
+            cell_id=f"precision-agent-{i}",
+            x=float(i * 0.8),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=55.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.full(256, 0.04 * (i + 1)),
+            worldview_vec=np.full(384, 0.03 * (i + 1)),
+            role_key="citizen",
+            role_label="citizen",
+            action_state={"policy_sensitivity": 0.95, "mobility_bias": 0.65},
+        )
+        for i in range(4)
+    ]
+
+    out = step_loop_node(
+        {
+            "cells": cells,
+            "current_t": 0.0,
+            "t_max": 1.0,
+            "world_events": [],
+            "engine_params": {
+                "simulation_mode": "precision",
+                "min_interactions_per_step": 3,
+                "max_interactions_per_step": 3,
+            },
+        }
+    )
+
+    assert out["current_t"] == 1.0
+    assert all(int(cell.action_state.get("internal_interactions", 0)) == 3 for cell in out["cells"])
+    assert any("t=0." in line and "social_observation" in line for cell in out["cells"] for line in cell.memory)
+
+
 def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
     captured: dict[str, str | None] = {}
 

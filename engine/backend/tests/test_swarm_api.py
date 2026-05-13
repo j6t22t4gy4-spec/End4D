@@ -18,6 +18,8 @@ def test_swarm_run_endpoint_returns_lightweight_runtime_payload():
             "include_agent_sample": False,
             "scene_agent_limit": 64,
             "pressure_grid_size": 12,
+            "min_interactions_per_step": 2,
+            "max_interactions_per_step": 8,
         },
     )
 
@@ -28,6 +30,8 @@ def test_swarm_run_endpoint_returns_lightweight_runtime_payload():
     assert data["final"]["metrics"]["simulation_mode"] == "swarm"
     assert data["final"]["metrics"]["llm_mode"] == "packet"
     assert data["final"]["metrics"]["llm_packet_count"] > 0
+    assert data["final"]["metrics"]["internal_interactions"] >= 10
+    assert data["final"]["metrics"]["last_interactions_per_step"] >= 2
     assert data["final"]["agent_sample"] == []
     assert data["final"]["full_agents"] == []
     assert data["final"]["scene"]["agent_count"] == 160

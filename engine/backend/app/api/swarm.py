@@ -23,6 +23,9 @@ class SwarmRunRequest(BaseModel):
     shock_interval: conint(ge=0, le=10_000) = Field(default=8)
     packet_interval: conint(ge=1, le=10_000) = Field(default=8)
     agent_llm_sample_size: conint(ge=1, le=10_000) = Field(default=32)
+    min_interactions_per_step: conint(ge=1, le=100) = Field(default=2)
+    max_interactions_per_step: conint(ge=1, le=100) = Field(default=10)
+    interaction_sensitivity: float = Field(default=1.0, ge=0.1, le=5.0)
     include_agent_sample: bool = Field(default=True)
     agent_sample_size: conint(ge=0, le=256) = Field(default=24)
     scene_agent_limit: conint(ge=0, le=10_000) = Field(default=1200)
@@ -50,6 +53,9 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         shock_interval=int(req.shock_interval),
         packet_interval=int(req.packet_interval),
         agent_llm_sample_size=int(req.agent_llm_sample_size),
+        min_interactions_per_step=int(req.min_interactions_per_step),
+        max_interactions_per_step=int(req.max_interactions_per_step),
+        interaction_sensitivity=float(req.interaction_sensitivity),
     )
     started = time.perf_counter()
     state, trajectory = run_swarm_compact(config)
@@ -78,6 +84,8 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         "llm_mode": config.llm_mode,
         "llm_packet_count": len(final.llm_packets),
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in final.llm_packets),
+        "internal_interactions": final.internal_interactions,
+        "last_interactions_per_step": final.last_interactions_per_step,
         "avg_pressure": macro.avg_pressure,
         "max_pressure": macro.max_pressure,
         "shock_strength": macro.shock_strength,

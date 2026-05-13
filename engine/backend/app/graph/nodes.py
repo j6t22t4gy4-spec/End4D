@@ -114,19 +114,19 @@ def _step_loop_node(state: "SimulationState") -> dict:
     cells = apply_mutation(cells)
 
     cells = append_step_memory(cells, next_t)
-    cells = apply_agent_interactions(cells, next_t)
-    cells = update_spatial_positions(
+    cells, internal_group_state, internal_interactions = _apply_precision_internal_interactions(
         cells,
-        current_t=next_t,
+        current_t=current_t,
+        next_t=next_t,
         engine_params=state.get("engine_params"),
+        previous_group_state=state.get("group_state"),
     )
-    cells = update_emotions(cells, next_t)
     cells = update_thoughts_if_due(cells, next_t)
     cells = update_worldviews_if_due(cells, next_t)
     cells, pre_action_group_state = apply_collective_dynamics(
         cells,
         current_t=next_t,
-        previous_group_state=state.get("group_state"),
+        previous_group_state=internal_group_state or state.get("group_state"),
     )
     cells = update_action_states_if_due(cells, next_t)
     cells = apply_agent_dialogues_if_due(cells, next_t)
@@ -146,7 +146,7 @@ def _step_loop_node(state: "SimulationState") -> dict:
         current_t=next_t,
         previous_group_state=state.get("group_state") or pre_action_group_state,
     )
-    cells = [c.copy(t=next_t) for c in cells]
+    cells = [_stamp_precision_internal_metrics(c, next_t, internal_interactions) for c in cells]
 
     store = state.get("snapshot_store")
     snapshot_interval = get_snapshot_interval()
@@ -170,3 +170,94 @@ def _step_loop_node(state: "SimulationState") -> dict:
     out["coalition_history"] = [dict(item) for item in coalition_history]
     out["group_state"] = dict(group_state)
     return out
+
+
+def _apply_precision_internal_interactions(
+    cells: list,
+    *,
+    current_t: float,
+    next_t: float,
+    engine_params: dict | None,
+    previous_group_state: dict | None,
+) -> tuple[list, dict, int]:
+    params = dict(engine_params or {})
+    interactions = _precision_internal_interaction_count(
+        cells,
+        engine_params=params,
+        previous_group_state=previous_group_state,
+    )
+    group_state = dict(previous_group_state or {})
+    if interactions <= 1:
+        cells = apply_agent_interactions(cells, next_t)
+        cells = update_spatial_positions(cells, current_t=next_t, engine_params=params)
+        cells = update_emotions(cells, next_t)
+        cells, group_state = apply_collective_dynamics(
+            cells,
+            current_t=next_t,
+            previous_group_state=group_state,
+        )
+        return cells, group_state, 1
+
+    for idx in range(interactions):
+        progress = (idx + 1) / interactions
+        internal_t = float(current_t) + (float(next_t) - float(current_t)) * progress
+        cells = apply_agent_interactions(
+            cells,
+            internal_t,
+            interval=1,
+            radius=float(params.get("internal_interaction_radius", params.get("interaction_radius", 4.0))),
+            max_neighbors=int(params.get("internal_max_neighbors", 3)),
+            force=True,
+        )
+        cells = update_spatial_positions(cells, current_t=internal_t, engine_params=params)
+        cells = update_emotions(cells, internal_t)
+        cells, group_state = apply_collective_dynamics(
+            cells,
+            current_t=internal_t,
+            previous_group_state=group_state,
+        )
+    return cells, group_state, interactions
+
+
+def _precision_internal_interaction_count(
+    cells: list,
+    *,
+    engine_params: dict,
+    previous_group_state: dict | None,
+) -> int:
+    mode = str(engine_params.get("simulation_mode") or "precision").strip().lower()
+    if mode == "swarm":
+        return 1
+    min_steps = max(1, int(engine_params.get("min_interactions_per_step", 2)))
+    max_steps = max(min_steps, int(engine_params.get("max_interactions_per_step", 6)))
+    sensitivity = max(0.1, float(engine_params.get("interaction_sensitivity", 1.0)))
+    pressure = 0.0
+    fracture = 0.0
+    if previous_group_state:
+        groups = list((previous_group_state.get("groups") or {}).values()) if isinstance(previous_group_state, dict) else []
+        if groups:
+            pressure = max(float(group.get("avg_collective_pressure", group.get("pressure", 0.0)) or 0.0) for group in groups)
+            fracture = max(float(group.get("fracture_risk", 0.0) or 0.0) for group in groups)
+    local_density = _avg_action_value(cells, "local_density", 0.0)
+    policy = _avg_action_value(cells, "policy_sensitivity", 0.5)
+    scenario_need = min(1.0, (pressure * 0.32 + fracture * 0.28 + local_density * 0.16 + policy * 0.12) * sensitivity)
+    return max(min_steps, min(max_steps, min_steps + round((max_steps - min_steps) * scenario_need)))
+
+
+def _avg_action_value(cells: list, key: str, fallback: float) -> float:
+    if not cells:
+        return 0.0
+    values = []
+    for cell in cells:
+        try:
+            values.append(float(dict(cell.action_state).get(key, fallback) or fallback))
+        except (TypeError, ValueError):
+            values.append(float(fallback))
+    return sum(values) / max(1, len(values))
+
+
+def _stamp_precision_internal_metrics(cell, next_t: float, interactions: int):
+    action_state = dict(cell.action_state)
+    action_state["internal_interactions"] = int(interactions)
+    action_state["last_internal_interaction_t"] = float(next_t)
+    return cell.copy(t=next_t, action_state=action_state)
