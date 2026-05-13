@@ -1,4 +1,6 @@
-from app.swarm import SwarmConfig, run_swarm
+import time
+
+from app.swarm import SwarmConfig, project_swarm_scene, run_swarm, run_swarm_compact
 
 
 def test_swarm_runner_preserves_three_tier_shape():
@@ -73,3 +75,33 @@ def test_swarm_policy_shock_reaches_macro_field():
     shocks = [snapshot.macro.shock_strength for snapshot in snapshots]
     assert max(shocks) > 0
     assert snapshots[-1].macro.policy_wave > 0
+
+
+def test_swarm_compact_runtime_keeps_large_scene_bounded():
+    started = time.perf_counter()
+    state, trajectory = run_swarm_compact(
+        SwarmConfig(
+            agent_count=5000,
+            meso_group_count=48,
+            steps=8,
+            packet_interval=4,
+            policy_intensity=0.5,
+        )
+    )
+    elapsed = time.perf_counter() - started
+    assert elapsed < 3.0
+    assert len(state.agents) == 5000
+    assert len(trajectory) == 9
+    assert state.macro is not None
+
+    scene = project_swarm_scene(
+        t=state.t,
+        agents=state.agents,
+        groups=state.meso_groups,
+        macro=state.macro,
+        agent_limit=1000,
+        pressure_grid_size=24,
+    )
+    assert scene["agent_count"] == 5000
+    assert len(scene["agents"]) <= 1000
+    assert len(scene["pressure_grid"]["cells"]) == 576

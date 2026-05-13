@@ -5,7 +5,8 @@ keeps micro agents cheap, lets meso groups own most dynamics, and reserves LLM
 work for packet/strategic amplification.
 """
 
-from app.swarm.runner import run_swarm
+from app.swarm.projection import project_swarm_scene
+from app.swarm.runner import run_swarm, run_swarm_compact
 from app.swarm.types import (
     MacroFieldState,
     MesoGroupState,
@@ -23,4 +24,6 @@ __all__ = [
     "SwarmSnapshot",
     "SwarmState",
     "run_swarm",
+    "run_swarm_compact",
+    "project_swarm_scene",
 ]

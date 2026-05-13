@@ -37,6 +37,21 @@ def run_swarm(
     return snapshots
 
 
+def run_swarm_compact(
+    config: SwarmConfig | None = None,
+    *,
+    packet_provider: SwarmPacketProvider | None = None,
+) -> tuple[SwarmState, list[dict[str, Any]]]:
+    """Run Swarm without retaining full agent snapshots for every step."""
+    state = initialize_swarm(config or SwarmConfig())
+    trajectory = [_trajectory_point(state)]
+    provider = packet_provider or default_swarm_packet_provider
+    for _ in range(max(0, state.config.steps)):
+        state = tick_swarm(state, packet_provider=provider)
+        trajectory.append(_trajectory_point(state))
+    return state, trajectory
+
+
 def tick_swarm(
     state: SwarmState,
     *,
@@ -128,6 +143,26 @@ def snapshot_swarm(state: SwarmState) -> SwarmSnapshot:
 def _should_run_llm_packet(state: SwarmState) -> bool:
     interval = max(1, int(state.config.packet_interval))
     return state.t > 0 and state.t % interval == 0
+
+
+def _trajectory_point(state: SwarmState) -> dict[str, Any]:
+    macro = state.macro or MacroFieldState(
+        t=state.t,
+        avg_pressure=0.0,
+        max_pressure=0.0,
+        shock_strength=0.0,
+        rumor_pressure=0.0,
+        policy_wave=0.0,
+    )
+    return {
+        "t": state.t,
+        "avg_pressure": macro.avg_pressure,
+        "max_pressure": macro.max_pressure,
+        "policy_wave": macro.policy_wave,
+        "shock_strength": macro.shock_strength,
+        "llm_packet_count": len(state.llm_packets),
+        "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
+    }
 
 
 def _attach_packet_summaries(

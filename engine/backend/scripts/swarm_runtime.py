@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.swarm import SwarmConfig, run_swarm  # noqa: E402
+from app.swarm import SwarmConfig, project_swarm_scene, run_swarm_compact  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,6 +30,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shock-interval", type=int, default=8)
     parser.add_argument("--packet-interval", type=int, default=8)
     parser.add_argument("--agent-llm-sample-size", type=int, default=32)
+    parser.add_argument("--scene-agent-limit", type=int, default=1200)
+    parser.add_argument("--pressure-grid-size", type=int, default=32)
+    parser.add_argument("--include-full-agents", action="store_true")
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -48,32 +51,49 @@ def main() -> None:
         agent_llm_sample_size=max(1, args.agent_llm_sample_size),
     )
     start = time.perf_counter()
-    snapshots = run_swarm(config)
+    state, trajectory = run_swarm_compact(config)
     elapsed = time.perf_counter() - start
-    final = snapshots[-1]
+    macro = state.macro
+    if macro is None:
+        raise RuntimeError("Swarm runner returned no macro field")
+    scene = project_swarm_scene(
+        t=state.t,
+        agents=state.agents,
+        groups=state.meso_groups,
+        macro=macro,
+        agent_limit=max(0, args.scene_agent_limit),
+        pressure_grid_size=max(4, args.pressure_grid_size),
+    )
+    metrics = {
+        "simulation_mode": "swarm",
+        "agent_count": len(state.agents),
+        "meso_group_count": len(state.meso_groups),
+        "llm_mode": config.llm_mode,
+        "llm_packet_count": len(state.llm_packets),
+        "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
+        "avg_pressure": macro.avg_pressure,
+        "max_pressure": macro.max_pressure,
+        "shock_strength": macro.shock_strength,
+        "rumor_pressure": macro.rumor_pressure,
+        "policy_wave": macro.policy_wave,
+        "scene_agent_count": len(scene["agents"]),
+        "pressure_grid_cells": len(scene["pressure_grid"]["cells"]),
+        "full_agents_included": bool(args.include_full_agents),
+    }
     payload = {
         "config": asdict(config),
         "elapsed_sec": round(elapsed, 4),
         "steps_per_sec": round((config.steps / elapsed) if elapsed else 0.0, 4),
         "final": {
-            "t": final.t,
-            "metrics": final.metrics,
-            "macro": asdict(final.macro),
-            "top_groups": [asdict(group) for group in final.meso_groups[:8]],
-            "agent_sample": [asdict(agent) for agent in final.agents[:8]],
+            "t": state.t,
+            "metrics": metrics,
+            "macro": asdict(macro),
+            "top_groups": [asdict(group) for group in state.meso_groups[:8]],
+            "agent_sample": [asdict(agent) for agent in state.agents[:8]],
+            "full_agents": [asdict(agent) for agent in state.agents] if args.include_full_agents else [],
+            "scene": scene,
         },
-        "trajectory": [
-            {
-                "t": snapshot.t,
-                "avg_pressure": snapshot.macro.avg_pressure,
-                "max_pressure": snapshot.macro.max_pressure,
-                "policy_wave": snapshot.macro.policy_wave,
-                "shock_strength": snapshot.macro.shock_strength,
-                "llm_packet_count": snapshot.metrics["llm_packet_count"],
-                "llm_prompt_count": snapshot.metrics["llm_prompt_count"],
-            }
-            for snapshot in snapshots
-        ],
+        "trajectory": trajectory,
     }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -86,12 +106,13 @@ def main() -> None:
     )
     print(
         "Final field: "
-        f"avg_pressure={final.macro.avg_pressure:.3f}, "
-        f"max_pressure={final.macro.max_pressure:.3f}, "
-        f"policy_wave={final.macro.policy_wave:.3f}, "
-        f"llm_prompts={final.metrics['llm_prompt_count']}"
+        f"avg_pressure={macro.avg_pressure:.3f}, "
+        f"max_pressure={macro.max_pressure:.3f}, "
+        f"policy_wave={macro.policy_wave:.3f}, "
+        f"llm_prompts={metrics['llm_prompt_count']}, "
+        f"scene_agents={metrics['scene_agent_count']}"
     )
-    for group in final.meso_groups[:5]:
+    for group in state.meso_groups[:5]:
         print(
             f"- {group.group_id}: pressure={group.pressure:.3f}, "
             f"fracture={group.fracture_risk:.3f}, amplifier={group.llm_amplifier:.3f}"
