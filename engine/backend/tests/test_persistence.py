@@ -91,6 +91,14 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
                 role_label="citizen",
             )
         ],
+        scene_events=[
+            {
+                "scene_id": "scene-3-1",
+                "t": 3.0,
+                "scene_type": "interaction",
+                "summary": "citizen과 peer가 지역 우려를 교환",
+            }
+        ],
     )
     raw = json.loads((tmp_path / f"{wid}.json").read_text(encoding="utf-8"))
     assert raw["schema_version"] == "organic4d-file-envelope/v1"
@@ -99,6 +107,7 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert raw["payload"]["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"
     assert raw["payload"]["group_state"]["collective_signal"] == "realigning"
     assert raw["payload"]["snapshot_index"][0]["cell_count"] == 1
+    assert raw["payload"]["snapshots"][0]["scene_events"][0]["scene_id"] == "scene-3-1"
     assert raw["payload"]["snapshot_archive"]["archived_count"] == 0
 
     reloaded = WorldStore()
@@ -112,6 +121,7 @@ def test_disk_persistence_round_trip(monkeypatch, tmp_path):
     assert loaded_snap.cells[0].short_memory[0]["kind"] == "social_observation"
     assert loaded_snap.cells[0].behavior_log[0]["schema_version"] == "behavior-log/v1"
     assert loaded_snap.cells[0].relationship_state["peer-1"]["dialogue_count"] == 3
+    assert loaded_snap.scene_events[0]["summary"].startswith("citizen")
     assert loaded_snap.cells[0].zone_id == "zone-0"
     assert loaded_entry["config_version"]
     assert loaded_entry["coalition_state"]["citizen"]["block_key"] == "citizen:moderate:stable"

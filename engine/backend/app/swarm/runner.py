@@ -142,6 +142,8 @@ def snapshot_swarm(state: SwarmState) -> SwarmSnapshot:
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
         "internal_interactions": state.internal_interactions,
         "last_interactions_per_step": state.last_interactions_per_step,
+        "avg_persona_grounding": _avg_agent_metric(state.agents, "persona_grounding_score"),
+        "avg_scenario_relevance": _avg_agent_metric(state.agents, "scenario_relevance_score"),
         "avg_pressure": macro.avg_pressure,
         "max_pressure": macro.max_pressure,
         "shock_strength": macro.shock_strength,
@@ -181,7 +183,15 @@ def _trajectory_point(state: SwarmState) -> dict[str, Any]:
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
         "internal_interactions": state.internal_interactions,
         "last_interactions_per_step": state.last_interactions_per_step,
+        "avg_persona_grounding": _avg_agent_metric(state.agents, "persona_grounding_score"),
+        "avg_scenario_relevance": _avg_agent_metric(state.agents, "scenario_relevance_score"),
     }
+
+
+def _avg_agent_metric(agents: list, attr: str) -> float:
+    if not agents:
+        return 0.0
+    return round(sum(float(getattr(agent, attr, 0.0) or 0.0) for agent in agents) / len(agents), 4)
 
 
 def _interaction_substeps(*, config: SwarmConfig, macro: MacroFieldState) -> int:

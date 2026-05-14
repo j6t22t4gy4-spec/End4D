@@ -61,6 +61,42 @@ def test_swarm_run_endpoint_agent_mode_counts_sample_prompts():
     assert len(data["final"]["agent_sample"]) == 4
 
 
+def test_swarm_run_endpoint_accepts_persona_catalog_without_echoing_it():
+    response = client.post(
+        "/swarm/run",
+        json={
+            "agent_count": 90,
+            "meso_group_count": 9,
+            "steps": 2,
+            "scenario_prompt": "서울 자영업 규제와 물류 이동 제한",
+            "persona_catalog": [
+                {
+                    "persona_id": "p1",
+                    "persona_text": "서울의 자영업 상인",
+                    "role_key": "자영업 상인",
+                    "role_label": "자영업 상인",
+                    "attrs": {"occupation": "자영업", "district": "서울"},
+                },
+                {
+                    "persona_id": "p2",
+                    "persona_text": "대구의 물류 기사",
+                    "role_key": "물류 기사",
+                    "role_label": "물류 기사",
+                    "attrs": {"occupation": "물류", "district": "대구"},
+                },
+            ],
+            "scene_agent_limit": 12,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["config"]["persona_count"] == 2
+    assert "persona_catalog" not in data["config"]
+    assert data["final"]["metrics"]["avg_persona_grounding"] > 0.5
+    assert any(agent["role"] == "자영업 상인" for agent in data["final"]["scene"]["agents"])
+
+
 def test_swarm_run_endpoint_only_returns_full_agents_when_requested():
     response = client.post(
         "/swarm/run",

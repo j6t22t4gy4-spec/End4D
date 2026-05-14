@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, type WheelEvent } from "react";
 import {
   emotionToColorAndScale,
   type CellSnapshot,
+  type IntraTSceneEvent,
   type ReviewGroundingItem,
   type TimelineAnnotation,
 } from "@/lib/api";
@@ -31,6 +32,7 @@ type SimulationMap2DProps = {
   showAgentLayer?: boolean;
   annotations?: TimelineAnnotation[];
   groundingItems?: ReviewGroundingItem[];
+  sceneEvents?: IntraTSceneEvent[];
   currentT?: number;
   renderTime?: number;
   transitionPhase?: number;
@@ -126,6 +128,7 @@ export default function SimulationMap2D({
   showAgentLayer = true,
   annotations = [],
   groundingItems = [],
+  sceneEvents = [],
   currentT = 0,
   renderTime = 0,
   transitionPhase = 0,
@@ -142,8 +145,8 @@ export default function SimulationMap2D({
 }: SimulationMap2DProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
   const pixiScene = useMemo(
-    () => buildCenterMapScene({ cells, selectedAgentId }),
-    [cells, selectedAgentId]
+    () => buildCenterMapScene({ cells, selectedAgentId, sceneEvents }),
+    [cells, selectedAgentId, sceneEvents]
   );
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{

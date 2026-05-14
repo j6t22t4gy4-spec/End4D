@@ -4,7 +4,7 @@ import json
 import pytest
 
 from app.core.persona_dataset import PersonaSeed
-from app.core.world_genesis import apply_persona_distribution_to_plan, propose_world_from_prompt
+from app.core.world_genesis import apply_persona_distribution_to_plan, normalize_scenario_prompt, propose_world_from_prompt
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +24,17 @@ def test_genesis_returns_plan():
     assert p.nutrient_per_step > 0
     assert p.persona_country
     assert p.persona_source
+
+
+def test_normalize_scenario_prompt_expands_short_input():
+    scenario = normalize_scenario_prompt("금리")
+
+    assert scenario["raw_prompt"] == "금리"
+    assert "원문 시나리오: 금리" in scenario["scenario_prompt"]
+    assert "핵심 행위자" in scenario["scenario_prompt"]
+    assert "갈등/협력 축" in scenario["scenario_prompt"]
+    assert scenario["scenario_quality"]["was_expanded"] is True
+    assert scenario["scenario_quality"]["domain"] == "시장/금융"
 
 
 def test_genesis_long_horizon_keyword():

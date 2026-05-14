@@ -38,9 +38,25 @@ export type CenterMapSceneZone = {
   fractureSignals: number;
 };
 
+export type CenterMapSceneInteraction = {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  type: "positive" | "negative" | "hostile" | "dialogue";
+  intensity: number;
+  age: number;
+  fresh?: boolean;
+  sceneId?: string;
+};
+
 export type CenterMapScene = {
   width: number;
   height: number;
   agents: CenterMapSceneAgent[];
   zones: CenterMapSceneZone[];
+  interactions: CenterMapSceneInteraction[];
 };

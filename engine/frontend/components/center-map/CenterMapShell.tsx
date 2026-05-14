@@ -52,6 +52,7 @@ export function CenterMapShell({
   groundingItems = [],
   collectiveSummary,
   reviewSummary,
+  sceneEvents = [],
   locale = "ko",
   selectedAgentId = null,
   selectedZoneId = null,
@@ -113,6 +114,7 @@ export function CenterMapShell({
             currentT={currentT}
             annotations={annotations}
             groundingItems={groundingItems}
+            sceneEvents={sceneEvents}
             selectedAgentId={selectedAgentId}
             selectedZoneId={selectedZoneId}
             selectedBandKey={selectedBandKey}

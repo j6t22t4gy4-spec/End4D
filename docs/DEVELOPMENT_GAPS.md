@@ -68,13 +68,13 @@
 
 | 순위 | 작업 | 완료 기준 |
 |------|------|-----------|
-| 1 | Stream Payload Diet | observer payload에서 대형 vector 제거, compact DTO 테스트 추가 |
-| 2 | Run Progress & Heartbeat | `started`, `step`, `heartbeat`, `completed`, `error` event와 진행률/스피너 표시 |
-| 3 | Persona-aware Swarm Genesis | persona catalog 기반 role/zone/bloc/position seed, synthetic role은 fallback으로만 사용 |
-| 4 | Interaction Event Layer | t 내부 협의/충돌/전파 event 생성, top-K/sample/TTL로 제한 |
-| 5 | Pixi Interaction Visualization | interaction edge/pulse/ripple layer 추가, 협의/충돌 색상 분리 |
-| 6 | Thought/Action Grounding | locale-aware 한국어 summary, persona/scenario/recent interaction prompt 강화 |
-| 7 | Runtime Reliability | reconnect/resync, queue backpressure, timeout/error 메시지 개선 |
+| 1 | Stream Payload Diet | 완료: observer payload에서 대형 vector 제거, compact DTO 테스트 추가 |
+| 2 | Run Progress & Heartbeat | 완료: `started`, `step`, `heartbeat`, `done`, `error` event와 진행률/스피너 표시 |
+| 3 | Persona-aware Swarm Genesis | 완료: persona catalog 기반 role/zone/bloc/position seed, synthetic role은 fallback으로만 사용 |
+| 4 | Interaction Event Layer | 완료: t 내부 협의/충돌/전파 event 생성, top-K/sample/TTL로 제한 |
+| 5 | Pixi Interaction Visualization | 완료: interaction edge/pulse layer 추가, 협의/충돌 색상 분리 |
+| 6 | Thought/Action Grounding | 완료: locale-aware 한국어 summary, persona/scenario/recent interaction prompt 강화 |
+| 7 | Runtime Reliability | 완료: WebSocket ping/pong, heartbeat stale 감지, 1회 재연결, bounded stream queue/backpressure 적용 |
 
 ### 첫 번째 스프린트 완료 기준
 
@@ -88,10 +88,106 @@
 
 ---
 
+## 0.6 Intra-T Scene Stream 목표
+
+현재 가장 큰 체감 결손은 `t`가 너무 "순간 이동"처럼 느껴진다는 점이다. End4D의 `t`는 한 프레임이 아니라 **한 권의 책 / 한 장(chapter) / 하나의 기간**이어야 한다. 사용자는 지금처럼 timeline에서 `t=1 → t=2 → t=3`을 클릭해서 다음 장면으로 넘어가되, 선택된 `t` 내부에서는 동영상을 보듯 에이전트들이 계속 협의하고 충돌하고 전파하는 장면 스트림을 봐야 한다.
+
+### 핵심 철학
+
+```text
+t 선택 방식: 사용자가 현재처럼 discrete t를 클릭해서 이동
+t 내부 경험: 선택된 t 안에서 scene stream이 자동 재생됨
+t 의미: 순간 상태가 아니라, 한 기간 동안의 사회적 전개를 압축한 장면 묶음
+```
+
+비유:
+
+- `t=1`은 소설의 1권이다.
+- `t=1` 내부의 scene들은 1권 안의 장면, 대화, 갈등, 소문, 이동, 협상이다.
+- `t=2`는 그 장면들의 결과가 누적되어 넘어간 다음 권이다.
+
+따라서 엔진은 다음 구조를 목표로 한다.
+
+```text
+Timestep(t)
+├─ Scene 1: 상황 감지 / 지역 압력 상승
+├─ Scene 2: agent-agent 접촉
+├─ Scene 3: group 내부 협의
+├─ Scene 4: 갈등/협력/소문 전파
+├─ Scene 5: 정책/충격 해석
+├─ Scene 6: 행동 선택 조정
+└─ Commit: t+1 상태로 수렴
+```
+
+### 현재 문제 인식
+
+| 영역 | 문제 | 결과 |
+|------|------|------|
+| t 내부 전개 | internal substep은 있으나 scene/event stream으로 드러나지 않음 | t가 갑자기 건너뛰고 상태만 바뀌는 느낌 |
+| 전개 속도 | 계산 완료 시점에 step이 한꺼번에 밀려옴 | 특정 t만 와다다 강조되고 살아있는 흐름이 약함 |
+| 상태 변화 | scene 단위 누적이 아니라 t commit에서 급변해 보임 | 세계가 "살아 움직인다"보다 "업데이트된다"에 가까움 |
+| 관계 표현 | interaction edge는 생겼지만 scene timeline과 결합되지 않음 | 누가 왜 협의/충돌했는지 시간적 서사가 약함 |
+| Agent Stream | thought/action은 있으나 장면 로그가 약함 | 에이전트가 기간 안에서 무엇을 겪었는지 잘 안 보임 |
+
+### UX 원칙
+
+- 사용자는 timeline에서 `t`를 직접 선택한다.
+- 선택된 `t` 내부에서는 `scene 1/N → scene 2/N → ...`이 자동 재생된다.
+- 사용자는 scene 재생을 `pause / resume / speed`로 제어할 수 있다.
+- 실행 중에는 엔진이 internal substep을 계산하는 즉시 scene event를 내보낸다. 즉, 사용자는 사후 재생이 아니라 "지금 계산되고 있는 세계"를 전지적 관찰자처럼 본다.
+- 이미 계산된 snapshot을 다시 열어도 해당 `t`의 scene stream을 replay할 수 있어야 한다.
+- t 내부 scene은 너무 많은 raw event를 보여주지 않고, top-K narrative event로 압축한다.
+
+### 데이터 모델 목표
+
+| 필드 | 의미 |
+|------|------|
+| `scene_id` | `t=4.scene=03` 같은 안정적 ID |
+| `t` | 소속 timestep |
+| `scene_index` / `scene_count` | t 내부 장면 순서 |
+| `scene_type` | `observation`, `dialogue`, `group_deliberation`, `conflict`, `alignment`, `rumor`, `policy`, `movement`, `commit` |
+| `source_agent_ids` | 장면을 시작한 agent들 |
+| `target_agent_ids` | 영향을 받은 agent들 |
+| `source_group_id` / `target_group_id` | group/bloc 단위 관계 |
+| `summary` | 사용자가 읽을 수 있는 한 줄 장면 설명 |
+| `sentiment` | `positive`, `neutral`, `negative`, `hostile` |
+| `pressure_delta` | 장면이 압력에 준 영향 |
+| `relationship_delta` | 관계/협력/갈등 신호 |
+| `visual_hint` | field에서 선/pulse/ripple/heat update로 보여줄 힌트 |
+
+### 구현 체크리스트
+
+| 순위 | 작업 | 완료 기준 |
+|------|------|-----------|
+| 1 | `IntraTSceneEvent` 모델 정의 | 완료: `Snapshot.scene_events`, REST snapshot DTO, frontend `IntraTSceneEvent` 타입 추가 |
+| 2 | Scene Generator | 완료: 기존 internal interaction과 group pressure를 top-K scene event로 변환 |
+| 3 | Scene Accumulation | 완료: scene pressure/relationship delta를 참여 agent action_state와 collective_pressure에 소프트 누적 |
+| 4 | WebSocket Scene Stream | 완료: internal substep 계산 중 `scene` event를 즉시 보내고 `t`, `scene_index`, `scene_count`, `progress` 포함 |
+| 5 | Snapshot Scene Replay | 완료: snapshot 조회 응답에 `scene_events` 포함, 완료된 t에서도 관계선 replay 가능 |
+| 6 | Field Playback Layer | 완료: scene event를 CenterMap interaction layer에 연결하고 live/fresh scene pulse 강조 |
+| 7 | Agent/Group Scene Log | 완료: 실행 패널에 `t 내부 장면 스트림`, 선택 agent/group 기준 scene 필터 표시 |
+| 8 | Playback Controls | 완료: snapshot scene scrubber, pause/resume, speed, replay 버튼 추가 |
+| 9 | Narrative Quality Metrics | 완료: `scenes_per_t`, `agent_participation_rate`, `relationship_event_count`, `dead_timestep_rate`, `narrative_continuity_score` 저장/노출 |
+| 10 | Performance Guard | 완료: scene event top-K, WebSocket queue backpressure, frontend 최근 scene window 제한 적용 |
+
+### 첫 번째 스프린트 완료 기준
+
+- 하나의 `t` 안에서 최소 6~12개의 scene event가 생성된다.
+- WebSocket으로 `scene` event가 들어오며, UI가 `t=3 · scene 4/10`을 표시한다.
+- 필드에서 scene 순서에 맞춰 관계선/압력 변화가 순차적으로 보인다.
+- timeline에서 이미 끝난 t를 클릭해도 해당 t 내부 scene을 replay할 수 있다.
+- 실행 중에는 internal substep이 계산되는 즉시 scene이 들어와 "계산 중인 세계"처럼 보인다. 완료 후 snapshot 조회에서는 같은 scene을 replay한다.
+- 기존 `step` snapshot 의미는 유지한다. 즉 t 클릭/비교/리뷰 워크플로우는 깨지지 않는다.
+
+이 단계의 목표는 "더 많은 애니메이션"이 아니다. 목표는 **상태 사이의 빈 공간을 사회적 장면으로 채워, t가 기간처럼 느껴지게 만드는 것**이다.
+
+---
+
 ## 1. 핵심 결손 표
 
 | 영역 | 현재 상태 | 우선순위 | 문제 |
 |------|-----------|----------|------|
+| intra-t scene stream | 전무~초기 | 최상 | t 내부가 장면으로 재생되지 않아 timestep이 갑자기 건너뛰는 느낌 |
 | persona-aware Genesis | 부분 구현 | 최상 | 국가별 persona 분포가 role mix까지는 일부 반영되지만 zone seed, initial energy/z bias, 장기 초기 조건 반영은 더 필요 |
 | LLM runtime stability / live dominance | 초기 구현 | 최상 | provider 연결은 가능하지만 task별 success rate, fallback reason, degraded task가 충분히 보이지 않아 실제로 LLM이 주도하는지 판단하기 어려움 |
 | LLM 호출 입구 (Facade / Engine API) | 초기 구현 | 최상 | abstraction은 있지만 엔진 개발자가 `think()`, `decide_actions()`처럼 일관되게 쓰는 공통 입구가 더 필요 |

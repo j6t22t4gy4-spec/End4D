@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.api.interaction_events import compact_interaction_events
 from app.core.store import world_store
 from app.models.cell import Cell
 from pydantic import BaseModel, Field
@@ -43,6 +44,7 @@ def _cell_to_dict(c: Cell) -> dict:
         "short_memory": [dict(item) for item in c.short_memory],
         "long_memory": [dict(item) for item in c.long_memory],
         "behavior_log": [dict(item) for item in c.behavior_log],
+        "interaction_events": compact_interaction_events(c, limit=5),
         "action_state": dict(c.action_state),
     }
 
@@ -72,6 +74,7 @@ class CellResponse(BaseModel):
     short_memory: List[Dict[str, Any]] = Field(default_factory=list)
     long_memory: List[Dict[str, Any]] = Field(default_factory=list)
     behavior_log: List[Dict[str, Any]] = Field(default_factory=list)
+    interaction_events: List[Dict[str, Any]] = Field(default_factory=list)
     action_state: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -80,6 +83,8 @@ class SnapshotResponse(BaseModel):
     world_id: str
     t: float
     cells: List[CellResponse]
+    scene_events: List[Dict[str, Any]] = Field(default_factory=list)
+    scene_metrics: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SnapshotsListResponse(BaseModel):
@@ -107,7 +112,13 @@ def get_snapshots(
         if snap is None:
             raise HTTPException(status_code=404, detail="No snapshot available")
         cells = [CellResponse(**_cell_to_dict(c)) for c in snap.cells]
-        return SnapshotResponse(world_id=world_id, t=snap.t, cells=cells)
+        return SnapshotResponse(
+            world_id=world_id,
+            t=snap.t,
+            cells=cells,
+            scene_events=[dict(item) for item in getattr(snap, "scene_events", [])],
+            scene_metrics=dict(getattr(snap, "scene_metrics", {}) or {}),
+        )
 
     available_t = store.list_t()
     return SnapshotsListResponse(world_id=world_id, available_t=available_t)

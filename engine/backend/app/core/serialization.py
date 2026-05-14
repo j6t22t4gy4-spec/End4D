@@ -96,6 +96,8 @@ def snapshot_to_dict(snapshot: Snapshot) -> Dict[str, Any]:
         "t": float(snapshot.t),
         "created_at": _dt_to_str(snapshot.created_at),
         "cells": [cell_to_dict(cell) for cell in snapshot.cells],
+        "scene_events": [dict(item) for item in getattr(snapshot, "scene_events", [])],
+        "scene_metrics": dict(getattr(snapshot, "scene_metrics", {}) or {}),
     }
 
 
@@ -104,6 +106,8 @@ def snapshot_from_dict(data: Dict[str, Any]) -> Snapshot:
         world_id=str(data.get("world_id") or ""),
         t=float(data.get("t", 0.0)),
         cells=[cell_from_dict(item) for item in data.get("cells") or []],
+        scene_events=[dict(item) for item in data.get("scene_events") or []],
+        scene_metrics=dict(data.get("scene_metrics") or {}),
         created_at=_dt_from_str(data.get("created_at")),
     )
 

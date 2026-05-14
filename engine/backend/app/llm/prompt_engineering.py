@@ -44,6 +44,27 @@ def _collective_prompt_state(cell: Cell) -> str:
     )
 
 
+def _recent_behavior_context(cell: Cell, limit: int = 4) -> str:
+    items: list[str] = []
+    for item in reversed(list(cell.behavior_log or [])[-8:]):
+        summary = " ".join(str(item.get("summary") or "").split())
+        event_type = str(item.get("event_type") or "event").strip()
+        if summary:
+            items.append(f"{event_type}: {summary[:110]}")
+        if len(items) >= limit:
+            break
+    return " ; ".join(items) or "none"
+
+
+def _scenario_context(cell: Cell) -> str:
+    attrs = dict(cell.persona_attrs or {})
+    for key in ("scenario", "scenario_prompt", "context", "world_context"):
+        value = " ".join(str(attrs.get(key) or "").split())
+        if value:
+            return value[:320]
+    return "none"
+
+
 def build_thought_prompt(cell: Cell) -> str:
     language_label = "Korean" if get_ui_language() == "ko" else "English"
     ev = cell.emotion_vec
@@ -78,8 +99,18 @@ def build_thought_prompt(cell: Cell) -> str:
             ("reflection", reflection[:360]),
             ("persona", cell.persona_text[:240]),
             ("persona_attrs", _compact_persona_attrs(dict(cell.persona_attrs))[:240]),
+            ("scenario_context", _scenario_context(cell)),
+            ("collective_context", _collective_prompt_state(cell)),
+            ("recent_behavior", _recent_behavior_context(cell)),
             ("previous_thought", previous_thought[:220]),
             ("output_language", language_label),
+            (
+                "grounding_rules",
+                (
+                    f"Write in {language_label}. Mention the agent's role/zone pressure, one concrete concern, "
+                    "and one next-move consideration. Avoid generic phrases like 'reassessing goals'."
+                ),
+            ),
         ],
     )
 
@@ -98,6 +129,7 @@ def build_worldview_prompt(cell: Cell) -> str:
 
 
 def build_action_prompt(cell: Cell) -> str:
+    language_label = "Korean" if get_ui_language() == "ko" else "English"
     ev = cell.emotion_vec
     dom = int(np.argmax(np.abs(ev))) if ev.size else 0
     label = EMOTION_LABELS[dom] if dom < len(EMOTION_LABELS) else "neutral"
@@ -120,9 +152,20 @@ def build_action_prompt(cell: Cell) -> str:
                 ),
             ),
             ("persona", cell.persona_text[:220]),
+            ("persona_attrs", _compact_persona_attrs(dict(cell.persona_attrs))[:220]),
+            ("scenario_context", _scenario_context(cell)),
             ("recent_memory", reflection[:320]),
+            ("recent_behavior", _recent_behavior_context(cell)),
             ("worldview", worldview[:320]),
             ("collective_context", _collective_prompt_state(cell)),
+            (
+                "output_rules",
+                (
+                    "Return JSON only. In addition to the numeric fields, include action_reason, action_target, "
+                    f"and last_action_summary in {language_label}. The summary must be concrete: action + reason + target, "
+                    "grounded in persona, zone, recent behavior, and collective pressure."
+                ),
+            ),
         ],
     )
 

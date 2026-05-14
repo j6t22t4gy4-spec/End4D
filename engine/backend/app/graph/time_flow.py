@@ -53,6 +53,12 @@ def _create_initial_cells(
         label = str(persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
         attrs = dict(persona.get("attrs") or {})
+        if params.get("scenario_prompt") and not attrs.get("scenario_prompt"):
+            attrs["scenario_prompt"] = str(params.get("scenario_prompt") or "")
+        if params.get("raw_prompt") and not attrs.get("raw_prompt"):
+            attrs["raw_prompt"] = str(params.get("raw_prompt") or "")
+        if params.get("scenario_quality") and not attrs.get("scenario_quality"):
+            attrs["scenario_quality"] = dict(params.get("scenario_quality") or {})
         region_label = str(
             attrs.get("district")
             or attrs.get("province")
@@ -76,11 +82,14 @@ def _create_initial_cells(
             x = float(math.cos(theta) * radius)
             y = float(math.sin(theta) * radius)
         elif zone_layout == "swarm":
-            theta = (2.0 * math.pi * (i % max(8, zone_count * 3))) / max(8, zone_count * 3)
-            ring = 1.0 + (i // max(1, zone_count)) ** 0.5 * 0.18
-            radius = spacing * (1.8 + zone_index * 0.42) * ring
-            x = float(math.cos(theta + zone_index * 0.37) * radius + (i % 7) * 0.035)
-            y = float(math.sin(theta + zone_index * 0.37) * radius + (i % 11) * 0.025)
+            role_affinity = _stable_unit(rk)
+            zone_affinity = _stable_unit(zone_id or zone_label)
+            persona_affinity = _stable_unit(str(persona.get("persona_id") or persona_text or i))
+            theta = math.tau * ((zone_index / max(1, zone_count)) * 0.62 + role_affinity * 0.28 + persona_affinity * 0.10)
+            radius = spacing * (2.0 + zone_index * 0.52 + role_affinity * 1.2)
+            jitter = spacing * 0.28
+            x = float(math.cos(theta) * radius + math.cos(math.tau * persona_affinity) * jitter)
+            y = float(math.sin(theta) * radius + math.sin(math.tau * persona_affinity) * jitter)
         else:
             x = float(col * spacing)
             y = float(row * spacing)
@@ -272,6 +281,13 @@ def _contains_any(text: str, needles: List[str]) -> bool:
     if not text:
         return False
     return any(needle in text for needle in needles)
+
+
+def _stable_unit(text: Any) -> float:
+    value = 0
+    for char in str(text or ""):
+        value = (value * 131 + ord(char)) % 10_000
+    return value / 10_000.0
 
 
 # State: TypedDict 대신 dict 사용 (Cell 직렬화 이슈 회피)

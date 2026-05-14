@@ -79,6 +79,41 @@ def _wait_until_ready(url: str, *, timeout_s: float, name: str) -> None:
     raise RuntimeError(f"{name} did not become ready at {url} within {timeout_s:.0f}s")
 
 
+def _wait_until_service_ready(
+    url: str,
+    *,
+    timeout_s: float,
+    name: str,
+    process: ManagedProcess,
+) -> str:
+    """Wait for an HTTP health check, but accept an open port as degraded-ready.
+
+    On some local macOS launches the child Uvicorn process is already bound and
+    serving, while the parent process' urllib readiness probe can fail before a
+    request ever reaches FastAPI. In that case killing the healthy server is
+    worse than continuing with a clear warning.
+    """
+    deadline = time.time() + timeout_s
+    last_port_open = False
+    while time.time() < deadline:
+        code = process.popen.poll()
+        if code is not None:
+            raise RuntimeError(f"{name} exited early with status {code}")
+        if _request_ok(url):
+            return "health"
+        last_port_open = _service_port_open(url)
+        if last_port_open:
+            # Give /health a short grace period after bind, then continue.
+            time.sleep(1.0)
+            if _request_ok(url):
+                return "health"
+            return "port"
+        time.sleep(0.4)
+    if last_port_open:
+        return "port"
+    raise RuntimeError(f"{name} did not become ready at {url} within {timeout_s:.0f}s")
+
+
 def _port_open(host: str, port: int, timeout: float = 1.0) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -103,6 +138,13 @@ def _wait_until_port_open(url: str, *, timeout_s: float, name: str) -> None:
             return
         time.sleep(0.4)
     raise RuntimeError(f"{name} did not open port {host}:{port} within {timeout_s:.0f}s")
+
+
+def _service_port_open(url: str) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    return _port_open(host, port, timeout=0.5)
 
 
 def _latest_frontend_source_mtime() -> float:
@@ -174,6 +216,16 @@ def _spawn(name: str, command: List[str], cwd: Path, env: Dict[str, str]) -> Man
     return ManagedProcess(name, popen)
 
 
+def _merge_no_proxy(existing: Optional[str]) -> str:
+    values = [item.strip() for item in str(existing or "").split(",") if item.strip()]
+    required = ["127.0.0.1", "localhost", "::1"]
+    seen = {item.lower() for item in values}
+    for item in required:
+        if item.lower() not in seen:
+            values.append(item)
+    return ",".join(values)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Launch End4D locally like a desktop app.")
     parser.add_argument("--backend-port", type=int, default=8000)
@@ -186,7 +238,7 @@ def main() -> int:
         default="auto",
         help="Frontend run mode. 'auto' uses start only when the .next build is fresher than source files.",
     )
-    parser.add_argument("--backend-timeout", type=float, default=25.0)
+    parser.add_argument("--backend-timeout", type=float, default=45.0)
     parser.add_argument("--frontend-timeout", type=float, default=45.0)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
@@ -197,7 +249,12 @@ def main() -> int:
     frontend_url = f"http://127.0.0.1:{args.frontend_port}"
     api_url = args.frontend_api_url or f"http://127.0.0.1:{args.backend_port}"
 
-    if _request_ok(backend_url) or _request_ok(frontend_url):
+    if (
+        _request_ok(backend_url)
+        or _service_port_open(backend_url)
+        or _request_ok(frontend_url)
+        or _service_port_open(frontend_url)
+    ):
         print("Existing service detected on the target ports. Stop it first or use different ports.")
         return 2
 
@@ -217,15 +274,28 @@ def main() -> int:
 
     backend_env = os.environ.copy()
     backend_env.setdefault("ORGANIC4D_RUNTIME_PROFILE", args.runtime_profile)
+    backend_env["NO_PROXY"] = _merge_no_proxy(backend_env.get("NO_PROXY") or backend_env.get("no_proxy"))
+    backend_env["no_proxy"] = backend_env["NO_PROXY"]
 
     frontend_env = os.environ.copy()
     frontend_env["NEXT_PUBLIC_API_URL"] = api_url
+    frontend_env["NO_PROXY"] = _merge_no_proxy(frontend_env.get("NO_PROXY") or frontend_env.get("no_proxy"))
+    frontend_env["no_proxy"] = frontend_env["NO_PROXY"]
 
     print("Launching End4D local runtime...")
     backend = _spawn("backend", _backend_command(args.backend_port), BACKEND_DIR, backend_env)
     managed.append(backend)
-    _wait_until_ready(backend_url, timeout_s=args.backend_timeout, name="Backend")
-    print(f"Backend ready: {backend_url}")
+    backend_ready_mode = _wait_until_service_ready(
+        backend_url,
+        timeout_s=args.backend_timeout,
+        name="Backend",
+        process=backend,
+    )
+    if backend_ready_mode == "health":
+        print(f"Backend ready: {backend_url}")
+    else:
+        print(f"Backend port is open but /health did not answer yet: {backend_url}")
+        print("Continuing launch; open the app and refresh if the API panel is still warming up.")
 
     frontend_mode = args.frontend_mode
     if frontend_mode == "auto":

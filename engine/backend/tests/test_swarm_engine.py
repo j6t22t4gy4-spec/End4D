@@ -3,6 +3,34 @@ import time
 from app.swarm import SwarmConfig, project_swarm_scene, run_swarm, run_swarm_compact
 
 
+PERSONA_CATALOG = [
+    {
+        "persona_id": "p-market-1",
+        "persona_text": "서울의 자영업 상인. 임대료와 소비 위축에 민감하다.",
+        "role_key": "자영업 상인",
+        "role_label": "자영업 상인",
+        "country": "KR",
+        "attrs": {"occupation": "자영업", "district": "서울", "age": 43},
+    },
+    {
+        "persona_id": "p-public-1",
+        "persona_text": "부산의 공공기관 정책 담당자. 안정과 규제 집행을 중시한다.",
+        "role_key": "정책 담당자",
+        "role_label": "정책 담당자",
+        "country": "KR",
+        "attrs": {"occupation": "공무원", "district": "부산", "age": 52},
+    },
+    {
+        "persona_id": "p-logistics-1",
+        "persona_text": "대구의 물류 기사. 유가와 이동 제한 정책에 민감하다.",
+        "role_key": "물류 기사",
+        "role_label": "물류 기사",
+        "country": "KR",
+        "attrs": {"occupation": "물류", "district": "대구", "age": 31},
+    },
+]
+
+
 def test_swarm_runner_preserves_three_tier_shape():
     snapshots = run_swarm(
         SwarmConfig(
@@ -21,6 +49,39 @@ def test_swarm_runner_preserves_three_tier_shape():
     assert len(final.meso_groups) == 12
     assert final.macro.avg_pressure >= 0
     assert final.metrics["simulation_mode"] == "swarm"
+
+
+def test_swarm_seed_uses_persona_roles_zones_and_scenario_grounding():
+    state, _ = run_swarm_compact(
+        SwarmConfig(
+            agent_count=120,
+            meso_group_count=12,
+            steps=1,
+            scenario_prompt="서울 자영업과 물류 이동 제한 정책 충격",
+            persona_catalog=PERSONA_CATALOG,
+        )
+    )
+
+    roles = {agent.role for agent in state.agents}
+    zones = {agent.zone_label for agent in state.agents}
+    assert "자영업 상인" in roles
+    assert "정책 담당자" in roles
+    assert "서울" in zones
+    assert "부산" in zones
+    assert min(agent.persona_grounding_score for agent in state.agents) > 0.5
+    assert max(agent.scenario_relevance_score for agent in state.agents) > 0.3
+    assert state.macro is not None
+
+    scene = project_swarm_scene(
+        t=state.t,
+        agents=state.agents,
+        groups=state.meso_groups,
+        macro=state.macro,
+        agent_limit=24,
+        pressure_grid_size=8,
+    )
+    assert any(item["role"] == "자영업 상인" for item in scene["agents"])
+    assert any(item["zone"] == "zone-서울" for item in scene["agents"])
 
 
 def test_swarm_packet_mode_records_group_packets():

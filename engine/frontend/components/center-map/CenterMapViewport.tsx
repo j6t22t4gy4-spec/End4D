@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import SimulationMap2D from "@/components/SimulationMap2D";
-import type { CellSnapshot, ReviewGroundingItem, TimelineAnnotation } from "@/lib/api";
+import type { CellSnapshot, IntraTSceneEvent, ReviewGroundingItem, TimelineAnnotation } from "@/lib/api";
 import type { SelectedBand, SelectedZone } from "@/components/SimulationInspectorPanel";
 import type { CenterMapMode, CenterMapVisibleLayers } from "@/components/center-map/types";
 
@@ -15,6 +15,7 @@ type CenterMapViewportProps = {
   currentT: number;
   annotations?: TimelineAnnotation[];
   groundingItems?: ReviewGroundingItem[];
+  sceneEvents?: IntraTSceneEvent[];
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;
   selectedBandKey?: string | null;
@@ -35,6 +36,7 @@ export function CenterMapViewport({
   currentT,
   annotations = [],
   groundingItems = [],
+  sceneEvents = [],
   selectedAgentId = null,
   selectedZoneId = null,
   selectedBandKey = null,
@@ -117,6 +119,7 @@ export function CenterMapViewport({
           showAgentLayer={visibleLayers.agents}
           annotations={annotations}
           groundingItems={groundingItems}
+          sceneEvents={sceneEvents}
           currentT={currentT}
           renderTime={renderTime}
           transitionPhase={transitionPhase}

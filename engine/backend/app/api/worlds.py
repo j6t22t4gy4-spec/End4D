@@ -22,6 +22,7 @@ from app.core.store import world_store
 from app.core.world_genesis import (
     apply_genesis_overrides,
     apply_persona_distribution_to_plan,
+    normalize_scenario_prompt,
     propose_world_from_prompt,
 )
 
@@ -127,7 +128,11 @@ class DeleteWorldResponse(BaseModel):
 @router.post("", response_model=CreateWorldResponse)
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
-    plan = propose_world_from_prompt(req.prompt)
+    scenario = normalize_scenario_prompt(req.prompt)
+    raw_prompt = str(scenario["raw_prompt"])
+    scenario_prompt = str(scenario["scenario_prompt"])
+    scenario_quality = dict(scenario["scenario_quality"])
+    plan = propose_world_from_prompt(scenario_prompt)
     god_mode = dict(req.god_mode or {})
     god_enabled = bool(god_mode.get("enabled"))
     god_overrides = dict(god_mode.get("overrides") or {})
@@ -143,7 +148,7 @@ def create_world(req: CreateWorldRequest):
     personas = load_persona_seeds(
         country=plan.persona_country,
         count=plan.initial_cell_count,
-        seed_text=req.prompt,
+        seed_text=scenario_prompt,
     )
     plan, persona_bias = apply_persona_distribution_to_plan(plan, personas)
     persona_catalog = personas_to_dicts(personas)
@@ -155,6 +160,9 @@ def create_world(req: CreateWorldRequest):
     persona_source = persona_source_label(plan.persona_country) if persona_catalog else f"not_configured:{plan.persona_country}"
     persona_distribution_summary = dict(plan.persona_distribution_summary or {})
     inferred_engine_params = {
+        "raw_prompt": raw_prompt,
+        "scenario_prompt": scenario_prompt,
+        "scenario_quality": scenario_quality,
         "zone_count": int(persona_bias.get("zone_count", engine_params.get("zone_count", 1) or 1)),
         "zone_layout": str(persona_bias.get("zone_layout", engine_params.get("zone_layout", "grid"))),
         "regional_labels": list(persona_bias.get("regional_labels") or []),
@@ -177,6 +185,9 @@ def create_world(req: CreateWorldRequest):
         "nutrient_per_step": float(plan.nutrient_per_step),
         "persona_country": plan.persona_country,
         "persona_source": persona_source,
+        "raw_prompt": raw_prompt,
+        "scenario_prompt": scenario_prompt,
+        "scenario_quality": scenario_quality,
         "persona_distribution_summary": persona_distribution_summary,
         "engine_params": {
             **inferred_engine_params,
@@ -197,7 +208,7 @@ def create_world(req: CreateWorldRequest):
     world_id = world_store.create(
         t_max=plan.t_max,
         initial_cell_count=plan.initial_cell_count,
-        genesis_prompt=req.prompt,
+        genesis_prompt=raw_prompt,
         genesis_rationale=plan.rationale,
         role_catalog=role_catalog,
         t_step_semantic=plan.t_step_semantic,

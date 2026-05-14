@@ -2,7 +2,8 @@
 import numpy as np
 
 from app.core.inject_handlers import apply_inject_to_cells
-from app.llm.actions import update_action_states_if_due
+from app.llm.actions import _heuristic_action_state, _parse_action_state, update_action_states_if_due
+from app.llm.thought import _summarize_thought_text
 from app.models.cell import Cell
 
 
@@ -20,7 +21,10 @@ def _cell(role: str = "citizen") -> Cell:
         worldview_vec=np.zeros(384),
         role_key=role,
         role_label=role,
-        persona_text=f"{role} persona",
+        persona_text=f"{role} persona focused on neighborhood survival and policy tradeoffs",
+        persona_attrs={"district": "서울", "occupation": role, "scenario": "임대료 급등과 지역 규제 충격"},
+        zone_id="zone-seoul",
+        zone_label="서울 상권",
     )
 
 
@@ -110,3 +114,48 @@ def test_policy_shift_records_collective_policy_effect(monkeypatch):
     assert action_state["collective_influence_applied"] is True
     assert "fracture" in action_state["group_pressure_reason"]
     assert action_state["fracture_signal_received"] is True
+
+
+def test_action_summary_is_grounded_and_localized(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_UI_LANGUAGE", "ko")
+    cell = _cell("자영업 상인").copy(
+        action_state={
+            "collective_pressure": 0.62,
+            "collective_pressure_bucket": "watch",
+            "collective_signal": "fracturing",
+        },
+        behavior_log=[
+            {
+                "event_type": "social_observation",
+                "summary": "근처 노동자 그룹과 임대료 정책을 두고 긴장이 높아짐",
+            }
+        ],
+    )
+
+    fallback = _heuristic_action_state(cell)
+    assert "행동:" in str(fallback["last_action_summary"])
+    assert "이유:" in str(fallback["last_action_summary"])
+    assert "대상:" in str(fallback["last_action_summary"])
+    assert "heuristic adaptive stance" not in str(fallback["last_action_summary"])
+
+    parsed = _parse_action_state(
+        '{"strategy_summary":"adaptive planning","resource_bias":0.6,"risk_tolerance":0.5,'
+        '"cooperation_bias":0.5,"policy_sensitivity":0.5,"mobility_bias":0.4}',
+        cell,
+    )
+    assert "서울 상권" in str(parsed["last_action_summary"])
+    assert "자영업 상인" in str(parsed["last_action_summary"])
+
+
+def test_thought_summary_regrounds_generic_english_in_korean(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_UI_LANGUAGE", "ko")
+    cell = _cell("정책 담당자").copy(
+        action_state={"collective_pressure": 0.7, "collective_pressure_bucket": "elevated"},
+        behavior_log=[{"event_type": "agent_dialogue", "summary": "주민 대표가 규제 완화를 요구함"}],
+    )
+
+    summary = _summarize_thought_text("reassessing immediate goals and constraints", cell)
+
+    assert "정책 담당자" in summary
+    assert "서울 상권" in summary
+    assert "reassessing" not in summary.lower()

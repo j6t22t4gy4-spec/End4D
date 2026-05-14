@@ -94,6 +94,9 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
         ),
         expected_keys=(
             "strategy_summary",
+            "action_reason",
+            "action_target",
+            "last_action_summary",
             "resource_bias",
             "risk_tolerance",
             "cooperation_bias",

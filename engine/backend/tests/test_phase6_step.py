@@ -1,10 +1,12 @@
 """Phase 6: 스텝 루프에 Emotion·Thought·메모리 연동."""
+import json
 import os
 
 import numpy as np
 import pytest
 
 from app.api.run import _build_live_observer_cells
+from app.api.snapshots import _cell_to_dict
 from app.core.snapshot import SnapshotStore
 from app.graph.nodes import step_loop_node
 from app.graph.time_flow import _create_initial_cells, create_time_flow_graph
@@ -63,6 +65,46 @@ def test_graph_uses_engine_zone_layout_params():
     assert len(ys) >= 2
 
 
+def test_swarm_zone_layout_uses_persona_role_and_region_affinity():
+    personas = [
+        {
+            "persona_id": "persona-seoul-market",
+            "persona_text": "서울의 자영업 상인",
+            "role_key": "자영업 상인",
+            "role_label": "자영업 상인",
+            "country": "KR",
+            "attrs": {"occupation": "자영업", "district": "서울"},
+        },
+        {
+            "persona_id": "persona-busan-public",
+            "persona_text": "부산의 정책 담당자",
+            "role_key": "정책 담당자",
+            "role_label": "정책 담당자",
+            "country": "KR",
+            "attrs": {"occupation": "공무원", "district": "부산"},
+        },
+    ]
+
+    cells = _create_initial_cells(
+        count=8,
+        role_catalog=["fallback"],
+        persona_catalog=personas,
+        engine_params={
+            "simulation_mode": "swarm",
+            "zone_count": 4,
+            "zone_layout": "swarm",
+            "regional_labels": ["서울", "부산"],
+        },
+    )
+
+    assert {cell.role_key for cell in cells} == {"자영업 상인", "정책 담당자"}
+    assert {"서울", "부산"}.issubset({cell.zone_label for cell in cells})
+    assert all("persona_prior_summary" in cell.action_state for cell in cells)
+    seoul_positions = {(round(cell.x, 2), round(cell.y, 2)) for cell in cells if cell.zone_label == "서울"}
+    busan_positions = {(round(cell.x, 2), round(cell.y, 2)) for cell in cells if cell.zone_label == "부산"}
+    assert seoul_positions != busan_positions
+
+
 def test_precision_step_runs_internal_interactions_inside_t():
     cells = [
         Cell(
@@ -100,6 +142,91 @@ def test_precision_step_runs_internal_interactions_inside_t():
     assert out["current_t"] == 1.0
     assert all(int(cell.action_state.get("internal_interactions", 0)) == 3 for cell in out["cells"])
     assert any("t=0." in line and "social_observation" in line for cell in out["cells"] for line in cell.memory)
+    assert out["scene_events"]
+    assert out["scene_events"][0]["scene_count"] == len(out["scene_events"])
+    assert all(0.0 < float(event["scene_progress"]) <= 1.0 for event in out["scene_events"])
+    assert any(event["scene_type"] == "interaction" for event in out["scene_events"])
+    assert out["scene_metrics"]["scenes_per_t"] == len(out["scene_events"])
+    assert out["scene_metrics"]["relationship_event_count"] >= 1
+    assert any("scene_participation_count" in cell.action_state for cell in out["cells"])
+
+
+def test_precision_step_emits_live_scene_events_during_internal_interactions():
+    emitted = []
+    cells = [
+        Cell(
+            cell_id=f"live-scene-agent-{i}",
+            x=float(i * 0.7),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=55.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.full(256, 0.03 * (i + 1)),
+            worldview_vec=np.full(384, 0.02 * (i + 1)),
+            role_key="citizen",
+            role_label="citizen",
+            action_state={"policy_sensitivity": 0.95, "mobility_bias": 0.65},
+        )
+        for i in range(4)
+    ]
+
+    out = step_loop_node(
+        {
+            "cells": cells,
+            "current_t": 0.0,
+            "t_max": 1.0,
+            "world_events": [],
+            "engine_params": {
+                "simulation_mode": "precision",
+                "min_interactions_per_step": 3,
+                "max_interactions_per_step": 3,
+            },
+            "scene_event_sink": emitted.append,
+        }
+    )
+
+    assert emitted
+    assert out["scene_events_live_emitted"] is True
+    assert all(event["live_computed"] is True for event in emitted)
+    assert all(0.0 < float(event["scene_progress"]) <= 1.0 for event in emitted)
+
+
+def test_snapshot_store_keeps_intra_t_scene_events():
+    store = SnapshotStore()
+    cells = [
+        Cell(
+            cell_id="scene-agent-0",
+            x=0.0,
+            y=0.0,
+            z=0.0,
+            t=1.0,
+            energy=50.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.zeros(256),
+            worldview_vec=np.zeros(384),
+        )
+    ]
+    store.save(
+        1.0,
+        cells,
+        scene_events=[
+            {
+                "scene_id": "scene-1",
+                "t": 1.0,
+                "scene_index": 1,
+                "scene_count": 1,
+                "scene_type": "interaction",
+                "summary": "agent 협의 장면",
+            }
+        ],
+    )
+
+    snap = store.get(1.0)
+    assert snap is not None
+    assert snap.scene_events[0]["scene_id"] == "scene-1"
 
 
 def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
@@ -319,6 +446,89 @@ def test_live_observer_sampling_balances_focus_and_zone_coverage():
     assert "zone" in focuses or len(zones) >= 3
     assert len(zones) >= 2
     assert all("observer_score" in cell["action_state"] for cell in observer_cells)
+    assert all("gene_vec" not in cell for cell in observer_cells)
+    assert all("thought_vec" not in cell for cell in observer_cells)
+    assert all("worldview_vec" not in cell for cell in observer_cells)
+    assert all(cell["action_state"].get("stream_payload") == "compact-v1" for cell in observer_cells)
+    assert len(json.dumps(observer_cells)) < 32_000
+
+
+def test_live_observer_includes_compact_interaction_events():
+    cells = [
+        Cell(
+            cell_id=f"interaction-{idx}",
+            x=float(idx * 0.5),
+            y=0.0,
+            z=0.0,
+            t=1.0,
+            energy=50.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.full(256, 0.1),
+            worldview_vec=np.full(384, 0.1),
+            role_key="citizen",
+            role_label="citizen",
+            behavior_log=[
+                {
+                    "t": 0.5,
+                    "event_type": "social_observation",
+                    "summary": "t=0.5 social_observation neighbors=1 alignment=ally",
+                    "quality_score": 0.82,
+                    "payload": {
+                        "neighbor_ids": [f"interaction-{1 if idx == 0 else 0}"],
+                        "alignment": "ally",
+                        "cluster_signal": "forming_cluster",
+                    },
+                }
+            ]
+            if idx < 2
+            else [],
+        )
+        for idx in range(3)
+    ]
+
+    observer_cells, _ = _build_live_observer_cells(cells, limit=3)
+    events = [event for cell in observer_cells for event in cell.get("interaction_events", [])]
+    assert events
+    assert events[0]["type"] == "positive"
+    assert events[0]["source_id"].startswith("interaction-")
+    assert events[0]["target_ids"]
+
+
+def test_snapshot_cell_response_keeps_interaction_events():
+    cell = Cell(
+        cell_id="snapshot-interaction-0",
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        t=4.0,
+        energy=50.0,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.full(256, 0.1),
+        worldview_vec=np.full(384, 0.1),
+        behavior_log=[
+            {
+                "t": 4.0,
+                "event_type": "social_observation",
+                "summary": "t=4.0 social_observation neighbors=1 alignment=tension",
+                "quality_score": 0.74,
+                "payload": {
+                    "neighbor_ids": ["snapshot-interaction-1"],
+                    "alignment": "tension",
+                    "cluster_signal": "ideological_tension",
+                    "thought_similarity": -0.12,
+                    "worldview_similarity": -0.08,
+                },
+            }
+        ],
+    )
+
+    payload = _cell_to_dict(cell)
+
+    assert payload["interaction_events"]
+    assert payload["interaction_events"][0]["type"] == "hostile"
+    assert payload["interaction_events"][0]["target_ids"] == ["snapshot-interaction-1"]
 
 
 def test_thought_continuity_prefers_semantic_similarity(monkeypatch):

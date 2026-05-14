@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llm-mode", choices=["packet", "agent"], default="packet")
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--policy-intensity", type=float, default=0.35)
+    parser.add_argument("--scenario-prompt", type=str, default="")
     parser.add_argument("--shock-interval", type=int, default=8)
     parser.add_argument("--packet-interval", type=int, default=8)
     parser.add_argument("--agent-llm-sample-size", type=int, default=32)
@@ -55,6 +56,7 @@ def main() -> None:
         min_interactions_per_step=max(1, args.min_interactions_per_step),
         max_interactions_per_step=max(1, args.max_interactions_per_step),
         interaction_sensitivity=max(0.1, args.interaction_sensitivity),
+        scenario_prompt=str(args.scenario_prompt or ""),
     )
     start = time.perf_counter()
     state, trajectory = run_swarm_compact(config)
@@ -79,6 +81,8 @@ def main() -> None:
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in state.llm_packets),
         "internal_interactions": state.internal_interactions,
         "last_interactions_per_step": state.last_interactions_per_step,
+        "avg_persona_grounding": round(sum(agent.persona_grounding_score for agent in state.agents) / max(1, len(state.agents)), 4),
+        "avg_scenario_relevance": round(sum(agent.scenario_relevance_score for agent in state.agents) / max(1, len(state.agents)), 4),
         "avg_pressure": macro.avg_pressure,
         "max_pressure": macro.max_pressure,
         "shock_strength": macro.shock_strength,

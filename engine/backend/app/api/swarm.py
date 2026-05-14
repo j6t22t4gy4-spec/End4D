@@ -26,6 +26,9 @@ class SwarmRunRequest(BaseModel):
     min_interactions_per_step: conint(ge=1, le=100) = Field(default=2)
     max_interactions_per_step: conint(ge=1, le=100) = Field(default=10)
     interaction_sensitivity: float = Field(default=1.0, ge=0.1, le=5.0)
+    scenario_prompt: str = Field(default="", max_length=16_000)
+    role_catalog: list[str] = Field(default_factory=list)
+    persona_catalog: list[dict[str, Any]] = Field(default_factory=list)
     include_agent_sample: bool = Field(default=True)
     agent_sample_size: conint(ge=0, le=256) = Field(default=24)
     scene_agent_limit: conint(ge=0, le=10_000) = Field(default=1200)
@@ -56,6 +59,9 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         min_interactions_per_step=int(req.min_interactions_per_step),
         max_interactions_per_step=int(req.max_interactions_per_step),
         interaction_sensitivity=float(req.interaction_sensitivity),
+        scenario_prompt=str(req.scenario_prompt or ""),
+        role_catalog=[str(item) for item in req.role_catalog[:128]],
+        persona_catalog=[dict(item) for item in req.persona_catalog[:5000]],
     )
     started = time.perf_counter()
     state, trajectory = run_swarm_compact(config)
@@ -86,6 +92,8 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         "llm_prompt_count": sum(int(packet.get("prompt_count") or 0) for packet in final.llm_packets),
         "internal_interactions": final.internal_interactions,
         "last_interactions_per_step": final.last_interactions_per_step,
+        "avg_persona_grounding": _avg_agent_metric(final.agents, "persona_grounding_score"),
+        "avg_scenario_relevance": _avg_agent_metric(final.agents, "scenario_relevance_score"),
         "avg_pressure": macro.avg_pressure,
         "max_pressure": macro.max_pressure,
         "shock_strength": macro.shock_strength,
@@ -96,7 +104,7 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         "full_agents_included": bool(req.include_full_agents),
     }
     return SwarmRunResponse(
-        config=asdict(config),
+        config=_response_config(config),
         elapsed_sec=round(elapsed, 4),
         steps_per_sec=round((config.steps / elapsed) if elapsed else 0.0, 4),
         final={
@@ -110,3 +118,17 @@ def run_swarm_endpoint(req: SwarmRunRequest) -> SwarmRunResponse:
         },
         trajectory=trajectory,
     )
+
+
+def _avg_agent_metric(agents: list[Any], attr: str) -> float:
+    if not agents:
+        return 0.0
+    return round(sum(float(getattr(agent, attr, 0.0) or 0.0) for agent in agents) / len(agents), 4)
+
+
+def _response_config(config: SwarmConfig) -> dict[str, Any]:
+    payload = asdict(config)
+    payload.pop("persona_catalog", None)
+    payload["persona_count"] = len(config.persona_catalog)
+    payload["scenario_prompt_preview"] = config.scenario_prompt[:240]
+    return payload

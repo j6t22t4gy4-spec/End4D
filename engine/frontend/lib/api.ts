@@ -15,10 +15,10 @@ export type CellSnapshot = {
   z: number;
   t: number;
   energy: number;
-  gene_vec: number[];
+  gene_vec?: number[];
   emotion_vec: number[];
-  thought_vec: number[];
-  worldview_vec: number[];
+  thought_vec?: number[];
+  worldview_vec?: number[];
   role_key?: string;
   role_label?: string;
   persona_id?: string;
@@ -32,7 +32,42 @@ export type CellSnapshot = {
   short_memory?: Array<Record<string, unknown>>;
   long_memory?: Array<Record<string, unknown>>;
   behavior_log?: Array<Record<string, unknown>>;
+  interaction_events?: Array<Record<string, unknown>>;
   action_state?: Record<string, unknown>;
+};
+
+export type IntraTSceneEvent = {
+  scene_id: string;
+  t: number;
+  start_t?: number;
+  scene_t?: number;
+  scene_index?: number;
+  scene_count?: number;
+  scene_type: string;
+  interaction_type?: "positive" | "negative" | "hostile" | "dialogue" | string;
+  source_id?: string;
+  source_label?: string;
+  target_ids?: string[];
+  target_label?: string;
+  group_ids?: string[];
+  summary?: string;
+  sentiment?: string;
+  pressure_delta?: number;
+  relationship_delta?: number;
+  visual_hint?: Record<string, unknown>;
+};
+
+export type IntraTSceneMetrics = {
+  t?: number;
+  start_t?: number;
+  scenes_per_t?: number;
+  agent_participation_rate?: number;
+  relationship_event_count?: number;
+  hostile_event_count?: number;
+  positive_event_count?: number;
+  dead_timestep_rate?: number;
+  narrative_continuity_score?: number;
+  pressure_delta_abs_sum?: number;
 };
 
 export type AgentInterviewResponse = {
@@ -52,6 +87,8 @@ export type SnapshotResponse = {
   world_id: string;
   t: number;
   cells: CellSnapshot[];
+  scene_events?: IntraTSceneEvent[];
+  scene_metrics?: IntraTSceneMetrics;
 };
 
 export type SnapshotsListResponse = {

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from .cell import Cell
 
@@ -25,6 +25,8 @@ class Snapshot:
     world_id: str
     t: float
     cells: List[Cell] = field(default_factory=list)
+    scene_events: List[dict[str, Any]] = field(default_factory=list)
+    scene_metrics: dict[str, Any] = field(default_factory=dict)
     created_at: Optional[datetime] = None
 
     def __post_init__(self):

@@ -22,6 +22,9 @@ class SwarmConfig:
     min_interactions_per_step: int = 2
     max_interactions_per_step: int = 10
     interaction_sensitivity: float = 1.0
+    scenario_prompt: str = ""
+    role_catalog: list[str] = field(default_factory=list)
+    persona_catalog: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -38,6 +41,13 @@ class SwarmAgent:
     risk: float
     pressure: float = 0.0
     role: str = "agent"
+    zone_id: str = "zone-0"
+    zone_label: str = "Zone 0"
+    persona_id: str = ""
+    persona_text: str = ""
+    persona_attrs: dict[str, Any] = field(default_factory=dict)
+    persona_grounding_score: float = 0.0
+    scenario_relevance_score: float = 0.0
 
 
 @dataclass

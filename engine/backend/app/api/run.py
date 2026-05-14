@@ -9,11 +9,13 @@ from __future__ import annotations
 import asyncio
 import queue
 from concurrent.futures import ThreadPoolExecutor
+import time
 from typing import Union
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 import numpy as np
 
+from app.api.interaction_events import compact_interaction_events
 from app.core.store import world_store
 from app.core.ws_manager import ws_manager
 from app.graph.time_flow import create_time_flow_graph
@@ -33,6 +35,7 @@ FOCUS_WEIGHTS = {
 
 
 def _serialize_live_cell(cell: Cell) -> dict:
+    action_state = dict(cell.action_state)
     return {
         "cell_id": cell.cell_id,
         "x": float(cell.x),
@@ -40,25 +43,106 @@ def _serialize_live_cell(cell: Cell) -> dict:
         "z": float(cell.z),
         "t": float(cell.t),
         "energy": float(cell.energy),
-        "gene_vec": [float(v) for v in cell.gene_vec.tolist()],
+        # Live stream payload must stay compact. Large vectors are available
+        # through snapshot/detail APIs, not the WebSocket observer stream.
         "emotion_vec": [float(v) for v in cell.emotion_vec.tolist()],
-        "thought_vec": [float(v) for v in cell.thought_vec.tolist()],
-        "worldview_vec": [float(v) for v in cell.worldview_vec.tolist()],
         "role_key": cell.role_key,
         "role_label": cell.role_label,
         "persona_id": cell.persona_id,
-        "persona_text": cell.persona_text,
+        "persona_text": cell.persona_text[:240],
         "persona_country": cell.persona_country,
-        "persona_attrs": dict(cell.persona_attrs),
+        "persona_attrs": _compact_persona_attrs(dict(cell.persona_attrs)),
         "zone_id": cell.zone_id,
         "zone_label": cell.zone_label,
         "zone_influence": float(cell.zone_influence),
         "zone_friction": float(cell.zone_friction),
-        "short_memory": [dict(item) for item in cell.short_memory[-6:]],
-        "long_memory": [dict(item) for item in cell.long_memory[-4:]],
-        "behavior_log": [dict(item) for item in cell.behavior_log[-10:]],
-        "action_state": dict(cell.action_state),
+        "short_memory": [_compact_memory_item(item) for item in cell.short_memory[-2:]],
+        "long_memory": [_compact_memory_item(item) for item in cell.long_memory[-1:]],
+        "behavior_log": [_compact_memory_item(item) for item in cell.behavior_log[-4:]],
+        "interaction_events": compact_interaction_events(cell),
+        "action_state": _compact_action_state(action_state),
     }
+
+
+def _compact_persona_attrs(attrs: dict) -> dict:
+    keep = (
+        "age",
+        "gender",
+        "occupation",
+        "district",
+        "province",
+        "region",
+        "education_level",
+        "household_type",
+    )
+    return {key: attrs[key] for key in keep if key in attrs}
+
+
+def _compact_memory_item(item: dict) -> dict:
+    summary = str(item.get("summary") or item.get("event_type") or "")[:220]
+    return {
+        key: value
+        for key, value in {
+            "t": item.get("t"),
+            "kind": item.get("kind") or item.get("event_type"),
+            "event_type": item.get("event_type"),
+            "summary": summary,
+            "importance": item.get("importance"),
+            "quality_score": item.get("quality_score"),
+        }.items()
+        if value is not None and value != ""
+    }
+
+
+def _compact_action_state(action_state: dict) -> dict:
+    keep = (
+        "last_thought_summary",
+        "last_thought_t",
+        "thought_continuity_score",
+        "thought_continuity_state",
+        "last_action_summary",
+        "action_reason",
+        "action_target",
+        "action_locale",
+        "strategy_summary",
+        "planned_action",
+        "observer_focus",
+        "observer_score",
+        "observer_focus_scores",
+        "last_spatial_shift",
+        "local_density",
+        "mobility_state",
+        "mobility_bias",
+        "cooperation_bias",
+        "policy_sensitivity",
+        "resource_bias",
+        "risk_tolerance",
+        "collective_pressure",
+        "collective_pressure_bucket",
+        "collective_signal",
+        "collective_bias_effect",
+        "collective_influence_applied",
+        "decision_pressure_delta",
+        "fracture_signal_received",
+        "role_group_id",
+        "role_group_label",
+        "role_group_cohesion",
+        "role_group_tension",
+        "role_group_fracture_risk",
+        "role_group_drift_velocity",
+        "zone_group_id",
+        "zone_group_label",
+        "zone_group_cohesion",
+        "zone_group_tension",
+        "zone_group_fracture_risk",
+        "zone_group_drift_velocity",
+        "internal_interactions",
+        "last_internal_interaction_t",
+        "persona_prior_summary",
+    )
+    compact = {key: action_state[key] for key in keep if key in action_state}
+    compact["stream_payload"] = "compact-v1"
+    return compact
 
 
 def _normalized_metric(value: float, maximum: float) -> float:
@@ -234,6 +318,31 @@ def _run_stream_producer(
     graph = create_time_flow_graph()
     try:
         nps = world_store.get_nutrient_per_step(world_id)
+        started_at = time.time()
+        _queue_put(msg_queue, {
+            "type": "started",
+            "t": 0.0,
+            "t_max": float(t_max),
+            "progress": 0.0,
+            "cell_count": int(initial_cell_count),
+            "heartbeat_at": started_at,
+            "message": "simulation started",
+        })
+        def emit_live_scene(scene_event: dict) -> None:
+            scene_t = float(scene_event.get("t") or scene_event.get("scene_t") or 0.0)
+            progress_t = max(0.0, min(float(t_max), scene_t))
+            _queue_put(msg_queue, {
+                "type": "scene",
+                "t": float(scene_event.get("t") or scene_t),
+                "t_max": float(t_max),
+                "progress": _normalized_metric(progress_t, float(t_max)),
+                "scene_event": dict(scene_event),
+                "scene_index": int(scene_event.get("scene_index") or 0),
+                "scene_count": int(scene_event.get("scene_count") or 0),
+                "heartbeat_at": time.time(),
+                "message": "scene computed",
+            })
+
         for chunk in graph.stream(
             {
                 "t_max": t_max,
@@ -247,11 +356,14 @@ def _run_stream_producer(
                 "world_events": list(entry["world"].nutrients),
                 "snapshot_store": store,
                 "nutrient_per_step": nps,
+                "scene_event_sink": emit_live_scene,
             },
             config={"recursion_limit": int(t_max) + 50},
         ):
             if "step_loop" in chunk:
                 s = chunk["step_loop"]
+                current_t = float(s["current_t"])
+                progress = _normalized_metric(current_t, float(t_max))
                 world_store.update_coalition_state(
                     world_id,
                     coalition_state=s.get("coalition_state"),
@@ -262,14 +374,41 @@ def _run_stream_producer(
                     group_state=s.get("group_state"),
                 )
                 observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
-                msg_queue.put({
+                scene_events = [dict(item) for item in s.get("scene_events") or []]
+                if not s.get("scene_events_live_emitted"):
+                    for scene_event in scene_events:
+                        _queue_put(msg_queue, {
+                            "type": "scene",
+                            "t": current_t,
+                            "t_max": float(t_max),
+                            "progress": progress,
+                            "scene_event": scene_event,
+                            "scene_index": int(scene_event.get("scene_index") or 0),
+                            "scene_count": int(scene_event.get("scene_count") or len(scene_events)),
+                            "heartbeat_at": time.time(),
+                            "message": "scene replay",
+                        })
+                _queue_put(msg_queue, {
                     "type": "step",
-                    "t": s["current_t"],
+                    "t": current_t,
+                    "t_max": float(t_max),
+                    "progress": progress,
                     "cell_count": len(s["cells"]),
                     "observer_cells": observer_cells,
                     "observer_total_cells": len(s["cells"]),
                     "observer_sampled": observer_sampled,
                     "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
+                    "scene_events": scene_events,
+                    "scene_metrics": dict(s.get("scene_metrics") or {}),
+                    "heartbeat_at": time.time(),
+                })
+                _queue_put(msg_queue, {
+                    "type": "heartbeat",
+                    "t": current_t,
+                    "t_max": float(t_max),
+                    "progress": progress,
+                    "cell_count": len(s["cells"]),
+                    "heartbeat_at": time.time(),
                 })
             elif "init" in chunk:
                 s = chunk["init"]
@@ -278,18 +417,41 @@ def _run_stream_producer(
                     group_state=s.get("group_state"),
                 )
                 observer_cells, observer_sampled = _build_live_observer_cells(s["cells"])
-                msg_queue.put({
+                _queue_put(msg_queue, {
                     "type": "step",
                     "t": 0.0,
+                    "t_max": float(t_max),
+                    "progress": 0.0,
                     "cell_count": len(s["cells"]),
                     "observer_cells": observer_cells,
                     "observer_total_cells": len(s["cells"]),
                     "observer_sampled": observer_sampled,
                     "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
+                    "heartbeat_at": time.time(),
                 })
-        msg_queue.put({"type": "done"})
+        _queue_put(msg_queue, {"type": "done", "t": float(t_max), "t_max": float(t_max), "progress": 1.0, "heartbeat_at": time.time()}, force=True)
     except Exception as e:
-        msg_queue.put({"type": "error", "message": str(e)})
+        _queue_put(msg_queue, {"type": "error", "message": str(e)}, force=True)
+
+
+def _queue_put(msg_queue: queue.Queue, message: dict, *, force: bool = False) -> None:
+    """Bound stream queue growth so slow/disconnected clients do not exhaust memory."""
+    try:
+        msg_queue.put_nowait(message)
+        return
+    except queue.Full:
+        pass
+    if not force and message.get("type") == "heartbeat":
+        return
+    try:
+        msg_queue.get_nowait()
+    except queue.Empty:
+        pass
+    try:
+        msg_queue.put_nowait(message)
+    except queue.Full:
+        if force:
+            msg_queue.put(message, timeout=1.0)
 
 
 async def _stream_consumer(world_id: str, msg_queue: queue.Queue) -> None:
@@ -330,7 +492,7 @@ def run_simulation(
 
     if req.stream:
         world_store.set_status(world_id, "running")
-        msg_queue = queue.Queue()
+        msg_queue = queue.Queue(maxsize=256)
         _executor.submit(
             _run_stream_producer,
             world_id,

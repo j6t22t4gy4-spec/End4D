@@ -59,9 +59,22 @@ class SnapshotStore:
         for t in to_archive:
             self._archive_t(t)
 
-    def save(self, t: float, cells: List[Cell]) -> Snapshot:
+    def save(
+        self,
+        t: float,
+        cells: List[Cell],
+        *,
+        scene_events: Optional[List[Dict[str, Any]]] = None,
+        scene_metrics: Optional[Dict[str, Any]] = None,
+    ) -> Snapshot:
         """t 시점 스냅샷 저장."""
-        snap = Snapshot(world_id=self.world_id, t=t, cells=list(cells))
+        snap = Snapshot(
+            world_id=self.world_id,
+            t=t,
+            cells=list(cells),
+            scene_events=[dict(item) for item in (scene_events or [])],
+            scene_metrics=dict(scene_metrics or {}),
+        )
         self._snapshots[t] = snap
         self._index[float(t)] = self._build_index_entry(snap)
         self._trim()

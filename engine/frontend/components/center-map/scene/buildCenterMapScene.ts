@@ -1,6 +1,6 @@
 "use client";
 
-import { emotionToColorAndScale, type CellSnapshot } from "@/lib/api";
+import { emotionToColorAndScale, type CellSnapshot, type IntraTSceneEvent } from "@/lib/api";
 import {
   CENTER_MAP_SCENE_HEIGHT,
   CENTER_MAP_SCENE_PADDING,
@@ -11,11 +11,13 @@ import {
 type BuildCenterMapSceneArgs = {
   cells: CellSnapshot[];
   selectedAgentId?: string | null;
+  sceneEvents?: IntraTSceneEvent[];
 };
 
 export function buildCenterMapScene({
   cells,
   selectedAgentId = null,
+  sceneEvents = [],
 }: BuildCenterMapSceneArgs): CenterMapScene {
   if (!cells.length) {
     return {
@@ -23,6 +25,7 @@ export function buildCenterMapScene({
       height: CENTER_MAP_SCENE_HEIGHT,
       agents: [],
       zones: [],
+      interactions: [],
     };
   }
 
@@ -59,9 +62,11 @@ export function buildCenterMapScene({
     }
   >();
 
+  const projected = new Map<string, { x: number; y: number }>();
   const agents = cells.map((cell) => {
     const px = projectX(cell.x);
     const py = projectY(cell.y);
+    projected.set(cell.cell_id, { x: px, y: py });
     const zoneId = String(cell.zone_id ?? "zone-0");
     const zone = zoneAcc.get(zoneId) ?? {
       id: zoneId,
@@ -108,6 +113,68 @@ export function buildCenterMapScene({
     };
   });
 
+  const cellInteractions = cells.flatMap((cell) => {
+    const source = projected.get(cell.cell_id);
+    if (!source) return [];
+    return (cell.interaction_events ?? []).flatMap((event, eventIndex) => {
+      const targetIds = Array.isArray(event.target_ids) ? event.target_ids : [];
+      const eventType = normalizeInteractionType(event.type);
+      const quality = Math.max(0.15, Math.min(1, Number(event.quality ?? 0.5)));
+      const eventT = Number(event.t ?? cell.t);
+      const age = Math.max(0, Math.min(1, Math.abs(Number(cell.t ?? 0) - eventT)));
+      return targetIds.flatMap((targetId, targetIndex) => {
+        const target = projected.get(String(targetId));
+        if (!target) return [];
+        return [
+          {
+            id: `${cell.cell_id}-${String(targetId)}-${eventIndex}-${targetIndex}`,
+            sourceId: cell.cell_id,
+            targetId: String(targetId),
+            x0: source.x,
+            y0: source.y,
+            x1: target.x,
+            y1: target.y,
+            type: eventType,
+            intensity: quality,
+            age,
+          },
+        ];
+      });
+    });
+  });
+  const sceneInteractions = sceneEvents.flatMap((event, eventIndex) => {
+    const sourceId = String(event.source_id ?? "");
+    const source = projected.get(sourceId);
+    if (!source) return [];
+    const targetIds = Array.isArray(event.target_ids) ? event.target_ids : [];
+    const eventType = normalizeInteractionType(event.interaction_type);
+    const intensity = Math.max(
+      0.25,
+      Math.min(1, Math.abs(Number(event.pressure_delta ?? 0)) * 4 + Math.abs(Number(event.relationship_delta ?? 0)) * 3 + 0.35)
+    );
+    return targetIds.flatMap((targetId, targetIndex) => {
+      const target = projected.get(String(targetId));
+      if (!target) return [];
+      return [
+        {
+          id: `scene-${String(event.scene_id ?? eventIndex)}-${String(targetId)}-${targetIndex}`,
+          sourceId,
+          targetId: String(targetId),
+          x0: source.x,
+          y0: source.y,
+          x1: target.x,
+          y1: target.y,
+          type: eventType,
+          intensity,
+          age: Math.max(0, 1 - Number(event.scene_index ?? 1) / Math.max(1, Number(event.scene_count ?? 1))),
+          fresh: Boolean((event.visual_hint as Record<string, unknown> | undefined)?.pulse) || Boolean((event as Record<string, unknown>).live_computed),
+          sceneId: String(event.scene_id ?? ""),
+        },
+      ];
+    });
+  });
+  const interactions = [...sceneInteractions, ...cellInteractions].slice(0, 128);
+
   return {
     width: CENTER_MAP_SCENE_WIDTH,
     height: CENTER_MAP_SCENE_HEIGHT,
@@ -127,9 +194,18 @@ export function buildCenterMapScene({
       count: zone.count,
       fractureSignals: zone.fractureSignals,
     })),
+    interactions,
   };
 }
 
 function rgbToHex(rgb: [number, number, number]) {
   return ((rgb[0] ?? 0) << 16) | ((rgb[1] ?? 0) << 8) | (rgb[2] ?? 0);
+}
+
+function normalizeInteractionType(value: unknown): "positive" | "negative" | "hostile" | "dialogue" {
+  const raw = String(value ?? "dialogue");
+  if (raw === "positive" || raw === "negative" || raw === "hostile" || raw === "dialogue") return raw;
+  if (raw === "alignment") return "positive";
+  if (raw === "conflict") return "hostile";
+  return "dialogue";
 }

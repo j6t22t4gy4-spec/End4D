@@ -33,6 +33,10 @@ def project_swarm_scene(
                 "y": round(agent.y, 4),
                 "p": round(agent.pressure, 4),
                 "r": round(agent.risk, 4),
+                "role": agent.role,
+                "zone": agent.zone_id,
+                "pg": round(agent.persona_grounding_score, 4),
+                "sr": round(agent.scenario_relevance_score, 4),
             }
             for agent in sampled_agents
         ],

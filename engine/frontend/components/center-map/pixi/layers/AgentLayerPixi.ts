@@ -9,6 +9,7 @@ import type {
 
 type AgentVisual = {
   container: Container;
+  transitionTrail: Graphics;
   halo: Graphics;
   hoverGlow: Graphics;
   fractureAura: Graphics;
@@ -26,6 +27,7 @@ type AgentVisual = {
   hovered: boolean;
   fractureSignal: boolean;
   phase: number;
+  transitionEnergy: number;
 };
 
 export class AgentLayerPixi {
@@ -52,8 +54,12 @@ export class AgentLayerPixi {
         continue;
       }
 
+      const targetShift = Math.hypot(agent.x - existing.targetX, agent.y - existing.targetY);
       existing.targetX = agent.x;
       existing.targetY = agent.y;
+      if (targetShift > 0.35) {
+        existing.transitionEnergy = Math.min(1, existing.transitionEnergy + Math.min(1, targetShift / 42));
+      }
       const needsRedraw =
         existing.radius !== agent.radius ||
         existing.color !== agent.color ||
@@ -74,9 +80,7 @@ export class AgentLayerPixi {
     }
   }
 
-  animate(renderTime: number, pointerField: PointerField) {
-    void renderTime;
-
+  animate(renderTime: number, pointerField: PointerField, transitionPhase = 0) {
     const pointerPushX = pointerField.active ? (pointerField.x - 0.5) * 3.5 : 0;
     const pointerPushY = pointerField.active ? (pointerField.y - 0.5) * 3 : 0;
     const hoveredVisual = Array.from(this.visuals.values()).find((visual) => visual.hovered);
@@ -96,9 +100,17 @@ export class AgentLayerPixi {
         selectedIsolation && !visual.selected
           ? 0.42 + neighborFocus * 0.7
           : 1;
-      const lerpGain = visual.selected ? 0.21 : visual.hovered ? 0.19 : 0.16;
+      const targetDistance = Math.hypot(visual.targetX - visual.x, visual.targetY - visual.y);
+      const transitionBoost = Math.max(transitionPhase, visual.transitionEnergy);
+      const lerpGain = Math.min(
+        0.42,
+        (visual.selected ? 0.21 : visual.hovered ? 0.19 : 0.16) +
+          transitionBoost * 0.16 +
+          Math.min(0.08, targetDistance / 900)
+      );
       visual.x += (visual.targetX - visual.x) * lerpGain;
       visual.y += (visual.targetY - visual.y) * lerpGain;
+      visual.transitionEnergy = Math.max(0, visual.transitionEnergy * 0.9 - 0.012);
 
       const driftWeight = visual.hovered || visual.selected ? 0.08 : 0.025;
 
@@ -141,6 +153,8 @@ export class AgentLayerPixi {
 
       visual.ring.scale.set(visual.selected ? 1.12 : visual.hovered ? 1.08 : 1);
       visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal ? 0.78 : 0.0;
+
+      this.drawTransitionTrail(visual, renderTime, transitionBoost, targetDistance);
     }
   }
 
@@ -179,12 +193,14 @@ export class AgentLayerPixi {
 
   private createVisual(agent: CenterMapSceneAgent) {
     const container = new Container();
+    const transitionTrail = new Graphics();
     const halo = new Graphics();
     const hoverGlow = new Graphics();
     const fractureAura = new Graphics();
     const ring = new Graphics();
     const core = new Graphics();
 
+    container.addChild(transitionTrail);
     container.addChild(halo);
     container.addChild(hoverGlow);
     container.addChild(fractureAura);
@@ -193,6 +209,7 @@ export class AgentLayerPixi {
 
     const visual: AgentVisual = {
       container,
+      transitionTrail,
       halo,
       hoverGlow,
       fractureAura,
@@ -210,6 +227,7 @@ export class AgentLayerPixi {
       hovered: false,
       fractureSignal: agent.fractureSignal,
       phase: Math.random(),
+      transitionEnergy: 0,
     };
     this.redrawVisual(visual);
     container.position.set(agent.x, agent.y);
@@ -250,5 +268,29 @@ export class AgentLayerPixi {
     visual.core.beginFill(visual.color, 0.96);
     visual.core.drawCircle(0, 0, visual.radius + (visual.hovered ? 1.4 : visual.selected ? 1.9 : 0));
     visual.core.endFill();
+  }
+
+  private drawTransitionTrail(
+    visual: AgentVisual,
+    renderTime: number,
+    transitionBoost: number,
+    targetDistance: number
+  ) {
+    visual.transitionTrail.clear();
+    if (transitionBoost <= 0.02 || targetDistance <= 0.6) return;
+    const dx = visual.targetX - visual.x;
+    const dy = visual.targetY - visual.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const ux = dx / len;
+    const uy = dy / len;
+    const tail = Math.min(28, 8 + targetDistance * 0.38);
+    const shimmer = 0.65 + 0.35 * Math.sin(renderTime * 0.018 + visual.phase * 6.28);
+    visual.transitionTrail.lineStyle(
+      Math.min(1.6, 0.65 + transitionBoost * 0.85),
+      visual.color,
+      Math.min(0.34, transitionBoost * 0.28 * shimmer)
+    );
+    visual.transitionTrail.moveTo(-ux * tail, -uy * tail);
+    visual.transitionTrail.lineTo(-ux * (visual.radius + 2), -uy * (visual.radius + 2));
   }
 }

@@ -5,6 +5,7 @@ import type {
   CollectiveDynamicsSummary,
   ReviewGroundingItem,
   ReviewSummaryResponse,
+  IntraTSceneEvent,
   TimelineAnnotation,
 } from "@/lib/api";
 import type { UiLocale } from "@/lib/ui-language";
@@ -33,6 +34,7 @@ export type CenterMapShellProps = {
   groundingItems?: ReviewGroundingItem[];
   collectiveSummary: CollectiveDynamicsSummary | null;
   reviewSummary: ReviewSummaryResponse | null;
+  sceneEvents?: IntraTSceneEvent[];
   locale?: UiLocale;
   selectedAgentId?: string | null;
   selectedZoneId?: string | null;

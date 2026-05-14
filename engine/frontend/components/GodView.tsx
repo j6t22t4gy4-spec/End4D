@@ -44,6 +44,8 @@ import {
   type LocalRuntimeStatus,
   type ReviewSummaryResponse,
   type RuntimeLlmTestResponse,
+  type IntraTSceneEvent,
+  type IntraTSceneMetrics,
   verifyRuntimeDataPack,
 } from "@/lib/api";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
@@ -177,6 +179,11 @@ export default function GodView({
   const [currentT, setCurrentT] = useState(0);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshotCells, setSnapshotCells] = useState<CellSnapshot[]>([]);
+  const [snapshotSceneEvents, setSnapshotSceneEvents] = useState<IntraTSceneEvent[]>([]);
+  const [snapshotSceneMetrics, setSnapshotSceneMetrics] = useState<IntraTSceneMetrics | null>(null);
+  const [sceneReplayPaused, setSceneReplayPaused] = useState(false);
+  const [sceneReplayIndex, setSceneReplayIndex] = useState(0);
+  const [sceneReplaySpeed, setSceneReplaySpeed] = useState(1);
   const [visibleCells, setVisibleCells] = useState<CellSnapshot[]>([]);
   const [visualStats, setVisualStats] = useState<{
     totalCells: number;
@@ -284,8 +291,10 @@ export default function GodView({
     liveT,
     liveCellCount,
     liveObserver,
+    liveSceneStream,
     isRunning,
     streamError,
+    streamStatus,
     runWithWebSocketStream,
     runSync,
     disconnectWebSocket,
@@ -720,6 +729,8 @@ export default function GodView({
       if (availableT.length === 0 && worldId) {
         setVisibleCells([]);
         setSnapshotCells([]);
+        setSnapshotSceneEvents([]);
+        setSnapshotSceneMetrics(null);
         setVisualStats(null);
       }
       return;
@@ -735,6 +746,10 @@ export default function GodView({
           simulationMode === "swarm" ? 20000 : undefined
         );
         setSnapshotCells(snap.cells);
+        setSnapshotSceneEvents(snap.scene_events ?? []);
+        setSnapshotSceneMetrics(snap.scene_metrics ?? null);
+        setSceneReplayIndex(Math.min(1, (snap.scene_events ?? []).length));
+        setSceneReplayPaused(false);
         setVisibleCells(cells);
         setVisualStats({ totalCells, sampled });
       })
@@ -758,6 +773,20 @@ export default function GodView({
 
   const renderedSnapshotCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : snapshotCells;
   const renderedVisibleCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : visibleCells;
+  const renderedSceneEvents = shouldUseLiveObserver
+    ? liveSceneStream.events
+    : snapshotSceneEvents.slice(0, Math.max(0, Math.min(snapshotSceneEvents.length, sceneReplayIndex)));
+  const renderedSceneMetrics = shouldUseLiveObserver ? liveSceneStream.metrics : snapshotSceneMetrics;
+
+  useEffect(() => {
+    if (shouldUseLiveObserver || sceneReplayPaused || snapshotSceneEvents.length === 0) return;
+    if (sceneReplayIndex >= snapshotSceneEvents.length) return;
+    const delay = Math.max(120, 520 / Math.max(0.5, sceneReplaySpeed));
+    const timer = window.setTimeout(() => {
+      setSceneReplayIndex((value) => Math.min(snapshotSceneEvents.length, value + 1));
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [sceneReplayIndex, sceneReplayPaused, sceneReplaySpeed, shouldUseLiveObserver, snapshotSceneEvents.length]);
   const renderedVisualStats = shouldUseLiveObserver
     ? {
         totalCells: liveObserver?.totalCells ?? renderedVisibleCells.length,
@@ -932,9 +961,26 @@ export default function GodView({
           isRunning={isRunning}
           liveT={liveT}
           liveCellCount={liveCellCount}
+          streamStatus={streamStatus}
           onRunStream={handleRunStream}
           onRunSync={handleRunSync}
           compact
+        />
+        <IntraTScenePanel
+          locale={locale}
+          sceneStream={liveSceneStream}
+          snapshotEvents={snapshotSceneEvents}
+          snapshotMetrics={snapshotSceneMetrics}
+          renderedMetrics={renderedSceneMetrics}
+          isRunning={isRunning}
+          replayIndex={sceneReplayIndex}
+          replayPaused={sceneReplayPaused}
+          replaySpeed={sceneReplaySpeed}
+          onReplayIndexChange={setSceneReplayIndex}
+          onReplayPausedChange={setSceneReplayPaused}
+          onReplaySpeedChange={setSceneReplaySpeed}
+          selectedAgentId={selectedAgent?.cell_id ?? null}
+          selectedGroupId={selectedZone?.zoneId ?? selectedAgent?.role_key ?? null}
         />
         <InjectPanel
           locale={locale}
@@ -1014,6 +1060,7 @@ export default function GodView({
       isKo,
       isRunning,
       liveCellCount,
+      liveSceneStream,
       liveT,
       locale,
       reviewInjectPreset,
@@ -2064,6 +2111,7 @@ export default function GodView({
               groundingItems={flattenReviewGrounding(reviewSummary?.grounding ?? {})}
               collectiveSummary={renderedCollectiveSummary}
               reviewSummary={reviewSummary}
+              sceneEvents={renderedSceneEvents}
               locale={locale}
               selectedAgentId={selectedAgent?.cell_id ?? null}
               selectedZoneId={selectedZone?.zoneId ?? null}
@@ -2203,6 +2251,7 @@ function RunPanel({
   isRunning,
   liveT,
   liveCellCount,
+  streamStatus,
   onRunStream,
   onRunSync,
   compact = false,
@@ -2212,12 +2261,25 @@ function RunPanel({
   isRunning: boolean;
   liveT: number | null;
   liveCellCount: number | null;
+  streamStatus?: {
+    phase: string;
+    progress: number;
+    t: number | null;
+    tMax: number | null;
+    lastHeartbeatAt: number | null;
+    message: string;
+  };
   onRunStream: () => Promise<void>;
   onRunSync: () => Promise<void>;
   compact?: boolean;
 }) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
+  const progress = Math.max(0, Math.min(1, Number(streamStatus?.progress ?? 0)));
+  const heartbeatAge =
+    streamStatus?.lastHeartbeatAt && isRunning
+      ? Math.max(0, Math.round((Date.now() - streamStatus.lastHeartbeatAt) / 1000))
+      : null;
   return (
     <AppPanel
       title={isKo ? "실행" : "Execution"}
@@ -2252,17 +2314,195 @@ function RunPanel({
       </div>
       <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
         {isRunning ? (
-          <>
-            {isKo ? "실행 중 · stream active" : "Running · stream active"}
-            {liveT != null ? ` · t ${liveT.toFixed(1)}` : ""}
-            {liveCellCount != null ? ` · ${liveCellCount} cells` : ""}
-          </>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+              <span>
+                {isKo ? "실행 중 · stream active" : "Running · stream active"}
+                {liveT != null ? ` · t ${liveT.toFixed(1)}` : ""}
+                {streamStatus?.tMax != null ? ` / ${streamStatus.tMax.toFixed(0)}` : ""}
+                {liveCellCount != null ? ` · ${liveCellCount} cells` : ""}
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${Math.round(progress * 100)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>{Math.round(progress * 100)}%</span>
+              <span>
+                {heartbeatAge != null
+                  ? isKo
+                    ? `heartbeat ${heartbeatAge}s 전`
+                    : `heartbeat ${heartbeatAge}s ago`
+                  : streamStatus?.phase ?? "starting"}
+              </span>
+            </div>
+          </div>
         ) : (
           strings.runtimeReadyLocal
         )}
       </div>
     </AppPanel>
   );
+}
+
+function IntraTScenePanel({
+  locale = "ko",
+  sceneStream,
+  snapshotEvents,
+  snapshotMetrics,
+  renderedMetrics,
+  isRunning,
+  replayIndex,
+  replayPaused,
+  replaySpeed,
+  onReplayIndexChange,
+  onReplayPausedChange,
+  onReplaySpeedChange,
+  selectedAgentId = null,
+  selectedGroupId = null,
+}: {
+  locale?: UiLocale;
+  sceneStream: { currentT: number | null; events: IntraTSceneEvent[]; latestEvent: IntraTSceneEvent | null };
+  snapshotEvents: IntraTSceneEvent[];
+  snapshotMetrics: IntraTSceneMetrics | null;
+  renderedMetrics: IntraTSceneMetrics | null;
+  isRunning: boolean;
+  replayIndex: number;
+  replayPaused: boolean;
+  replaySpeed: number;
+  onReplayIndexChange: (value: number) => void;
+  onReplayPausedChange: (value: boolean) => void;
+  onReplaySpeedChange: (value: number) => void;
+  selectedAgentId?: string | null;
+  selectedGroupId?: string | null;
+}) {
+  const isKo = locale === "ko";
+  const sourceEvents = isRunning ? sceneStream.events : snapshotEvents.slice(0, replayIndex);
+  const focusedEvents = filterSceneEvents(sourceEvents, selectedAgentId, selectedGroupId);
+  const events = focusedEvents.slice(-8).reverse();
+  const latest = isRunning ? sceneStream.latestEvent : sourceEvents[sourceEvents.length - 1] ?? null;
+  const metrics = renderedMetrics ?? snapshotMetrics;
+  const progress =
+    latest?.scene_index && latest?.scene_count
+      ? Math.max(0, Math.min(1, Number(latest.scene_index) / Math.max(1, Number(latest.scene_count))))
+      : snapshotEvents.length
+        ? Math.max(0, Math.min(1, replayIndex / snapshotEvents.length))
+        : 0;
+  return (
+    <AppPanel
+      title={isKo ? "t 내부 장면 스트림" : "Intra-T Scene Stream"}
+      subtitle={
+        isKo
+          ? "선택한 t는 그대로 유지하고, 그 안의 상호작용을 장면처럼 재생합니다"
+          : "Keep discrete t selection while replaying its internal interaction beats"
+      }
+      bodyClassName="space-y-3"
+    >
+      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+        <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+          <span>
+            {sceneStream.currentT != null ? `t ${sceneStream.currentT.toFixed(0)}` : isKo ? "대기 중" : "idle"}
+            {latest?.scene_index && latest?.scene_count ? ` · scene ${latest.scene_index}/${latest.scene_count}` : ""}
+          </span>
+          <span className={isRunning ? "text-emerald-600" : "text-slate-400"}>
+            {isRunning ? (isKo ? "재생 중" : "playing") : isKo ? "정지" : "paused"}
+          </span>
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${Math.round(progress * 100)}%` }} />
+        </div>
+      </div>
+      {!isRunning && snapshotEvents.length ? (
+        <div className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+          <input
+            type="range"
+            min={0}
+            max={snapshotEvents.length}
+            value={Math.max(0, Math.min(snapshotEvents.length, replayIndex))}
+            onChange={(event) => onReplayIndexChange(Number(event.target.value))}
+            className="w-full accent-sky-500"
+            aria-label={isKo ? "장면 스크러버" : "Scene scrubber"}
+          />
+          <div className="flex items-center gap-1">
+            <button type="button" className="app-button app-button--ghost px-2 py-1 text-xs" onClick={() => onReplayPausedChange(!replayPaused)}>
+              {replayPaused ? (isKo ? "재생" : "Play") : isKo ? "정지" : "Pause"}
+            </button>
+            <button type="button" className="app-button app-button--ghost px-2 py-1 text-xs" onClick={() => {
+              onReplayIndexChange(0);
+              onReplayPausedChange(false);
+            }}>
+              {isKo ? "다시" : "Replay"}
+            </button>
+            <button
+              type="button"
+              className="app-button app-button--ghost px-2 py-1 text-xs"
+              onClick={() => onReplaySpeedChange(replaySpeed >= 2 ? 0.5 : replaySpeed + 0.5)}
+            >
+              {replaySpeed.toFixed(1)}x
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {metrics ? (
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <MetricPill label={isKo ? "장면" : "Scenes"} value={String(metrics.scenes_per_t ?? sourceEvents.length)} />
+          <MetricPill label={isKo ? "참여율" : "Participation"} value={`${Math.round(Number(metrics.agent_participation_rate ?? 0) * 100)}%`} />
+          <MetricPill label={isKo ? "연속성" : "Continuity"} value={`${Math.round(Number(metrics.narrative_continuity_score ?? 0) * 100)}%`} />
+        </div>
+      ) : null}
+      {events.length ? (
+        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+          {events.map((event) => (
+            <div key={`${event.scene_id}-${event.scene_index}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                <span>{sceneToneLabel(event.interaction_type, isKo)}</span>
+                <span>{event.scene_index ?? "-"} / {event.scene_count ?? "-"}</span>
+              </div>
+              <p className="mt-1 text-sm leading-5 text-slate-700">{event.summary || (isKo ? "장면 요약 없음" : "No scene summary")}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-500">
+          {isKo
+            ? "실행을 시작하면 한 t 내부의 협의, 긴장, 압력 변화가 장면 단위로 표시됩니다."
+            : "Run the simulation to see conversations, tension, and pressure shifts inside each t."}
+        </p>
+      )}
+    </AppPanel>
+  );
+}
+
+function MetricPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className="mt-1 font-semibold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function filterSceneEvents(events: IntraTSceneEvent[], selectedAgentId?: string | null, selectedGroupId?: string | null) {
+  if (!selectedAgentId && !selectedGroupId) return events;
+  return events.filter((event) => {
+    const agentMatch =
+      selectedAgentId &&
+      (event.source_id === selectedAgentId || (event.target_ids ?? []).includes(selectedAgentId));
+    const groupMatch = selectedGroupId && (event.group_ids ?? []).includes(selectedGroupId);
+    return agentMatch || groupMatch;
+  });
+}
+
+function sceneToneLabel(type: IntraTSceneEvent["interaction_type"], isKo: boolean): string {
+  if (type === "positive") return isKo ? "협력" : "positive";
+  if (type === "negative") return isKo ? "갈등" : "negative";
+  if (type === "hostile") return isKo ? "적대" : "hostile";
+  if (type === "dialogue") return isKo ? "대화" : "dialogue";
+  return isKo ? "압력" : "pressure";
 }
 
 function GenesisMeta({ locale = "ko", lastGenesis }: { locale?: UiLocale; lastGenesis: CreateWorldResult }) {

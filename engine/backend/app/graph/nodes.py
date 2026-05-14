@@ -7,13 +7,14 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from app.core.agent_interactions import apply_agent_interactions
 from app.core.collective_dynamics import apply_collective_dynamics, compute_group_state
 from app.core.emotion import update_emotions
 from app.core.memory_step import append_step_memory
 from app.core.policy_events import apply_active_policies
+from app.core.scene_events import build_intra_t_scene_events, compute_scene_quality_metrics
 from app.core.social_elevation import refresh_social_elevation
 from app.core.spatial_dynamics import update_spatial_positions
 from app.core.settings import get_snapshot_interval
@@ -114,12 +115,13 @@ def _step_loop_node(state: "SimulationState") -> dict:
     cells = apply_mutation(cells)
 
     cells = append_step_memory(cells, next_t)
-    cells, internal_group_state, internal_interactions = _apply_precision_internal_interactions(
+    cells, internal_group_state, internal_interactions, live_scene_events = _apply_precision_internal_interactions(
         cells,
         current_t=current_t,
         next_t=next_t,
         engine_params=state.get("engine_params"),
         previous_group_state=state.get("group_state"),
+        scene_event_sink=state.get("scene_event_sink") if callable(state.get("scene_event_sink")) else None,
     )
     cells = update_thoughts_if_due(cells, next_t)
     cells = update_worldviews_if_due(cells, next_t)
@@ -147,12 +149,28 @@ def _step_loop_node(state: "SimulationState") -> dict:
         previous_group_state=state.get("group_state") or pre_action_group_state,
     )
     cells = [_stamp_precision_internal_metrics(c, next_t, internal_interactions) for c in cells]
+    final_scene_events = build_intra_t_scene_events(
+        cells,
+        current_t=current_t,
+        next_t=next_t,
+        internal_interactions=internal_interactions,
+        group_state=group_state,
+        limit=4,
+    )
+    scene_events = _merge_scene_events(live_scene_events, final_scene_events, internal_interactions=internal_interactions)
+    cells = _apply_scene_accumulation(cells, scene_events, next_t=next_t)
+    scene_metrics = compute_scene_quality_metrics(
+        scene_events,
+        cells,
+        current_t=current_t,
+        next_t=next_t,
+    )
 
     store = state.get("snapshot_store")
     snapshot_interval = get_snapshot_interval()
     should_save_snapshot = int(next_t) == int(float(state.get("t_max", next_t))) or int(next_t) % snapshot_interval == 0
     if store is not None and should_save_snapshot:
-        store.save(next_t, cells)
+        store.save(next_t, cells, scene_events=scene_events, scene_metrics=scene_metrics)
 
     out: dict = {
         "cells": cells,
@@ -169,6 +187,9 @@ def _step_loop_node(state: "SimulationState") -> dict:
     out["coalition_state"] = dict(coalition_state)
     out["coalition_history"] = [dict(item) for item in coalition_history]
     out["group_state"] = dict(group_state)
+    out["scene_events"] = [dict(item) for item in scene_events]
+    out["scene_metrics"] = dict(scene_metrics)
+    out["scene_events_live_emitted"] = bool(live_scene_events)
     return out
 
 
@@ -179,7 +200,8 @@ def _apply_precision_internal_interactions(
     next_t: float,
     engine_params: dict | None,
     previous_group_state: dict | None,
-) -> tuple[list, dict, int]:
+    scene_event_sink: Optional[Callable[[dict[str, Any]], None]] = None,
+) -> tuple[list, dict, int, list[dict[str, Any]]]:
     params = dict(engine_params or {})
     interactions = _precision_internal_interaction_count(
         cells,
@@ -187,6 +209,8 @@ def _apply_precision_internal_interactions(
         previous_group_state=previous_group_state,
     )
     group_state = dict(previous_group_state or {})
+    scene_events: list[dict[str, Any]] = []
+    emitted_keys: set[tuple[str, str, str]] = set()
     if interactions <= 1:
         cells = apply_agent_interactions(cells, next_t)
         cells = update_spatial_positions(cells, current_t=next_t, engine_params=params)
@@ -196,7 +220,18 @@ def _apply_precision_internal_interactions(
             current_t=next_t,
             previous_group_state=group_state,
         )
-        return cells, group_state, 1
+        _collect_live_scene_events(
+            cells,
+            current_t=current_t,
+            next_t=next_t,
+            scene_t=next_t,
+            interactions=1,
+            group_state=group_state,
+            scene_events=scene_events,
+            emitted_keys=emitted_keys,
+            scene_event_sink=scene_event_sink,
+        )
+        return cells, group_state, 1, scene_events
 
     for idx in range(interactions):
         progress = (idx + 1) / interactions
@@ -216,7 +251,134 @@ def _apply_precision_internal_interactions(
             current_t=internal_t,
             previous_group_state=group_state,
         )
-    return cells, group_state, interactions
+        _collect_live_scene_events(
+            cells,
+            current_t=current_t,
+            next_t=next_t,
+            scene_t=internal_t,
+            interactions=interactions,
+            group_state=group_state,
+            scene_events=scene_events,
+            emitted_keys=emitted_keys,
+            scene_event_sink=scene_event_sink,
+        )
+    return cells, group_state, interactions, scene_events
+
+
+def _collect_live_scene_events(
+    cells: list,
+    *,
+    current_t: float,
+    next_t: float,
+    scene_t: float,
+    interactions: int,
+    group_state: dict,
+    scene_events: list[dict[str, Any]],
+    emitted_keys: set[tuple[str, str, str]],
+    scene_event_sink: Optional[Callable[[dict[str, Any]], None]],
+) -> None:
+    batch = build_intra_t_scene_events(
+        cells,
+        current_t=current_t,
+        next_t=next_t,
+        internal_interactions=interactions,
+        group_state=group_state,
+        limit=3,
+    )
+    for event in batch:
+        key = (
+            str(event.get("source_id") or ""),
+            ",".join(str(item) for item in event.get("target_ids") or []),
+            str(event.get("interaction_type") or event.get("scene_type") or ""),
+        )
+        if key in emitted_keys:
+            continue
+        emitted_keys.add(key)
+        event = dict(event)
+        event["scene_t"] = float(scene_t)
+        event["scene_progress"] = _scene_progress(current_t=current_t, next_t=next_t, scene_t=scene_t)
+        event["scene_index"] = len(scene_events) + 1
+        event["scene_count"] = max(1, min(12, interactions * 3))
+        event["live_computed"] = True
+        event["scene_id"] = f"live-scene-{_safe_t(next_t)}-{event['scene_index']}"
+        scene_events.append(event)
+        if scene_event_sink is not None:
+            scene_event_sink(dict(event))
+        if len(scene_events) >= 12:
+            return
+
+
+def _merge_scene_events(
+    live_events: list[dict[str, Any]],
+    final_events: list[dict[str, Any]],
+    *,
+    internal_interactions: int,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for event in [*live_events, *final_events]:
+        key = (
+            str(event.get("source_id") or ""),
+            ",".join(str(item) for item in event.get("target_ids") or []),
+            str(event.get("interaction_type") or event.get("scene_type") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(dict(event))
+        if len(merged) >= 12:
+            break
+    merged.sort(key=lambda item: float(item.get("scene_progress", 0.0) or 0.0))
+    scene_count = len(merged)
+    for idx, event in enumerate(merged, start=1):
+        event["scene_index"] = idx
+        event["scene_count"] = scene_count
+        event["internal_interactions"] = int(max(1, internal_interactions))
+    return merged
+
+
+def _apply_scene_accumulation(cells: list, scene_events: list[dict[str, Any]], *, next_t: float) -> list:
+    if not cells or not scene_events:
+        return cells
+    deltas: dict[str, dict[str, float]] = {}
+    counts: dict[str, int] = {}
+    for event in scene_events:
+        involved = [str(event.get("source_id") or "")]
+        involved.extend(str(item) for item in event.get("target_ids") or [])
+        pressure_delta = float(event.get("pressure_delta") or 0.0)
+        relationship_delta = float(event.get("relationship_delta") or 0.0)
+        for cell_id in {item for item in involved if item}:
+            bucket = deltas.setdefault(cell_id, {"pressure": 0.0, "relationship": 0.0})
+            bucket["pressure"] += pressure_delta
+            bucket["relationship"] += relationship_delta
+            counts[cell_id] = counts.get(cell_id, 0) + 1
+
+    out = []
+    for cell in cells:
+        delta = deltas.get(cell.cell_id)
+        if not delta:
+            out.append(cell)
+            continue
+        action_state = dict(cell.action_state)
+        previous_pressure = float(action_state.get("collective_pressure", 0.0) or 0.0)
+        scene_pressure = float(delta["pressure"])
+        scene_relationship = float(delta["relationship"])
+        action_state["scene_pressure_delta"] = round(scene_pressure, 4)
+        action_state["scene_relationship_delta"] = round(scene_relationship, 4)
+        action_state["scene_participation_count"] = int(counts.get(cell.cell_id, 0))
+        action_state["last_scene_t"] = float(next_t)
+        action_state["collective_pressure"] = max(0.0, min(1.0, previous_pressure + scene_pressure * 0.12))
+        out.append(cell.copy(action_state=action_state))
+    return out
+
+
+def _scene_progress(*, current_t: float, next_t: float, scene_t: float) -> float:
+    span = max(1e-6, float(next_t) - float(current_t))
+    return max(0.04, min(0.96, round((float(scene_t) - float(current_t)) / span, 4)))
+
+
+def _safe_t(value: float) -> str:
+    return f"{float(value):.2f}".replace(".", "-")
 
 
 def _precision_internal_interaction_count(

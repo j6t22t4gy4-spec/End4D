@@ -84,6 +84,21 @@ def test_create_world_with_god_mode_overrides():
     assert data["simulation_config"]["engine_params"]["z_scale"] == 14.0
 
 
+def test_create_world_normalizes_short_prompt_for_simulation():
+    r = client.post("/worlds", json={"prompt": "금리"})
+    assert r.status_code == 200
+    data = r.json()
+    config = data["simulation_config"]
+    params = config["engine_params"]
+
+    assert params["raw_prompt"] == "금리"
+    assert "원문 시나리오: 금리" in params["scenario_prompt"]
+    assert "핵심 행위자" in params["scenario_prompt"]
+    assert params["scenario_quality"]["was_expanded"] is True
+    assert params["scenario_quality"]["domain"] == "시장/금융"
+    assert config["scenario_prompt"] == params["scenario_prompt"]
+
+
 def test_create_world_with_swarm_mode_allows_large_agent_pool():
     r = client.post(
         "/worlds",
