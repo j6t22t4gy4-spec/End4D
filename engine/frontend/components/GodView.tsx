@@ -2463,6 +2463,14 @@ function IntraTScenePanel({
                 <span>{event.scene_index ?? "-"} / {event.scene_count ?? "-"}</span>
               </div>
               <p className="mt-1 text-sm leading-5 text-slate-700">{event.summary || (isKo ? "장면 요약 없음" : "No scene summary")}</p>
+              {event.narrative_reason ? (
+                <p className="mt-1 text-xs leading-5 text-slate-500">{event.narrative_reason}</p>
+              ) : null}
+              {event.scenario_relevance ? (
+                <p className="mt-1 rounded-xl bg-white px-2 py-1 text-[11px] leading-4 text-slate-500">
+                  {isKo ? "시나리오" : "Scenario"}: {event.scenario_relevance}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

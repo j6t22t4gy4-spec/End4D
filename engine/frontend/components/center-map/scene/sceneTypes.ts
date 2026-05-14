@@ -51,6 +51,8 @@ export type CenterMapSceneInteraction = {
   age: number;
   fresh?: boolean;
   sceneId?: string;
+  pressureDelta?: number;
+  salience?: number;
 };
 
 export type CenterMapScene = {

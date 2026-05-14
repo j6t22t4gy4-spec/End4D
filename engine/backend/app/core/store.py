@@ -197,6 +197,33 @@ class WorldStore:
         self._worlds[world_id]["group_state"] = dict(group_state)
         self._persist(world_id)
 
+    def update_runtime_config(
+        self,
+        world_id: str,
+        *,
+        engine_params: Optional[dict] = None,
+        role_catalog: Optional[list] = None,
+    ) -> None:
+        if world_id not in self._worlds:
+            return
+        entry = self._worlds[world_id]
+        if engine_params is not None:
+            params = dict(engine_params)
+            entry["engine_params"] = params
+            config = dict(entry.get("simulation_config") or {})
+            config["engine_params"] = params
+            config["scenario_prompt"] = str(params.get("scenario_prompt") or config.get("scenario_prompt") or "")
+            config["scenario_quality"] = dict(params.get("scenario_quality") or config.get("scenario_quality") or {})
+            entry["simulation_config"] = config
+        if role_catalog is not None:
+            roles = [str(role).strip() for role in list(role_catalog or []) if str(role).strip()]
+            if roles:
+                entry["role_catalog"] = roles
+                config = dict(entry.get("simulation_config") or {})
+                config["role_catalog"] = roles
+                entry["simulation_config"] = config
+        self._persist(world_id)
+
     def get_review_cache(self, world_id: str) -> dict:
         entry = self.get(world_id)
         if entry is None:

@@ -17,6 +17,7 @@ import numpy as np
 
 from app.api.interaction_events import compact_interaction_events
 from app.core.store import world_store
+from app.core.world_genesis import refine_scenario_for_runtime
 from app.core.ws_manager import ws_manager
 from app.graph.time_flow import create_time_flow_graph
 from app.models.cell import Cell
@@ -318,6 +319,14 @@ def _run_stream_producer(
     graph = create_time_flow_graph()
     try:
         nps = world_store.get_nutrient_per_step(world_id)
+        engine_params = refine_scenario_for_runtime(
+            engine_params=world_store.get_engine_params(world_id),
+            role_catalog=world_store.get_role_catalog(world_id),
+            persona_catalog=world_store.get_persona_catalog(world_id),
+            simulation_mode=str(world_store.get_engine_params(world_id).get("simulation_mode") or "precision"),
+        )
+        role_catalog = list(engine_params.get("scenario_actor_roles") or world_store.get_role_catalog(world_id))
+        world_store.update_runtime_config(world_id, engine_params=engine_params, role_catalog=role_catalog)
         started_at = time.time()
         _queue_put(msg_queue, {
             "type": "started",
@@ -327,6 +336,7 @@ def _run_stream_producer(
             "cell_count": int(initial_cell_count),
             "heartbeat_at": started_at,
             "message": "simulation started",
+            "scenario_director_mode": str(engine_params.get("scenario_director_mode") or ""),
         })
         def emit_live_scene(scene_event: dict) -> None:
             scene_t = float(scene_event.get("t") or scene_event.get("scene_t") or 0.0)
@@ -347,9 +357,9 @@ def _run_stream_producer(
             {
                 "t_max": t_max,
                 "initial_cell_count": initial_cell_count,
-                "role_catalog": world_store.get_role_catalog(world_id),
+                "role_catalog": role_catalog,
                 "persona_catalog": world_store.get_persona_catalog(world_id),
-                "engine_params": world_store.get_engine_params(world_id),
+                "engine_params": engine_params,
                 "coalition_state": dict(entry.get("coalition_state") or {}),
                 "coalition_history": list(entry.get("coalition_history") or []),
                 "group_state": dict(entry.get("group_state") or {}),
@@ -507,13 +517,21 @@ def run_simulation(
     try:
         graph = create_time_flow_graph()
         nps = world_store.get_nutrient_per_step(world_id)
+        engine_params = refine_scenario_for_runtime(
+            engine_params=world_store.get_engine_params(world_id),
+            role_catalog=world_store.get_role_catalog(world_id),
+            persona_catalog=world_store.get_persona_catalog(world_id),
+            simulation_mode=str(world_store.get_engine_params(world_id).get("simulation_mode") or "precision"),
+        )
+        role_catalog = list(engine_params.get("scenario_actor_roles") or world_store.get_role_catalog(world_id))
+        world_store.update_runtime_config(world_id, engine_params=engine_params, role_catalog=role_catalog)
         result = graph.invoke(
             {
                 "t_max": world.t_max,
                 "initial_cell_count": initial_cell_count,
-                "role_catalog": world_store.get_role_catalog(world_id),
+                "role_catalog": role_catalog,
                 "persona_catalog": world_store.get_persona_catalog(world_id),
-                "engine_params": world_store.get_engine_params(world_id),
+                "engine_params": engine_params,
                 "coalition_state": dict(entry.get("coalition_state") or {}),
                 "coalition_history": list(entry.get("coalition_history") or []),
                 "group_state": dict(entry.get("group_state") or {}),

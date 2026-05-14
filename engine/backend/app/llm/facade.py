@@ -156,6 +156,24 @@ class LLMFacade:
         out = self._run_task([prompt], task="genesis")
         return out[0] if out else prompt
 
+    def direct_scenario(self, payload: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
+        prompt = (
+            f"prompt_version={get_prompt_version('genesis')}:scenario-director\n"
+            "Act as a scenario director for a live social simulation. Rewrite the scenario only for runtime execution, "
+            "not for user-facing world creation. Return compact JSON only with these keys: "
+            "scenario_prompt, actor_roles, initial_zones, placement_logic, conflict_axes, initial_scene_beats, "
+            "role_assignment_policy, pressure_seeds, rationale.\n"
+            "Requirements:\n"
+            "- actor_roles must be scenario-specific social roles, not generic producer/consumer/regulator unless truly needed.\n"
+            "- initial_zones must describe socially meaningful starting areas/blocs.\n"
+            "- placement_logic must explain who starts near whom, who starts separated, and why.\n"
+            "- initial_scene_beats must list 4-8 concrete early tensions/interactions.\n"
+            "- Keep Korean if the source scenario is Korean.\n"
+            f"Runtime payload:\n{payload}\n"
+        )
+        texts, meta = self._run_task_with_meta([prompt], task="genesis")
+        return (texts[0] if texts else prompt), meta
+
     def summarize_review(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         prompt = build_review_summary_prompt(payload)
         compact_retry_used = False

@@ -105,6 +105,43 @@ def test_swarm_zone_layout_uses_persona_role_and_region_affinity():
     assert seoul_positions != busan_positions
 
 
+def test_scenario_director_roles_and_positions_shape_initial_cells():
+    personas = [
+        {
+            "persona_id": "tenant-0",
+            "persona_text": "서울 청년 세입자. 월세와 금리 부담에 민감하다.",
+            "role_key": "기존 역할",
+            "role_label": "기존 역할",
+            "attrs": {"occupation": "청년 세입자", "district": "서울"},
+        },
+        {
+            "persona_id": "landlord-0",
+            "persona_text": "소형 임대인. 대출 금리 비용을 걱정한다.",
+            "role_key": "기존 역할",
+            "role_label": "기존 역할",
+            "attrs": {"occupation": "임대인", "district": "부산"},
+        },
+    ]
+
+    cells = _create_initial_cells(
+        count=8,
+        role_catalog=["fallback"],
+        persona_catalog=personas,
+        engine_params={
+            "scenario_actor_roles": ["청년 세입자", "소형 임대인", "정책 중재자"],
+            "scenario_initial_zones": ["임차인 밀집지", "자산 보유 bloc", "정책 중재권"],
+            "scenario_conflict_axes": ["주거비 부담", "자산 기대"],
+            "zone_layout": "scenario_social_field",
+            "zone_spacing": 1.4,
+        },
+    )
+
+    assert {"청년 세입자", "소형 임대인"}.issubset({cell.role_key for cell in cells})
+    assert {"임차인 밀집지", "자산 보유 bloc", "정책 중재권"}.intersection({cell.zone_label for cell in cells})
+    unique_positions = {(round(cell.x, 2), round(cell.y, 2)) for cell in cells}
+    assert len(unique_positions) > 4
+
+
 def test_precision_step_runs_internal_interactions_inside_t():
     cells = [
         Cell(
@@ -120,7 +157,13 @@ def test_precision_step_runs_internal_interactions_inside_t():
             worldview_vec=np.full(384, 0.03 * (i + 1)),
             role_key="citizen",
             role_label="citizen",
-            action_state={"policy_sensitivity": 0.95, "mobility_bias": 0.65},
+            persona_attrs={"occupation": "청년 세입자", "district": "서울", "scenario_prompt": "금리 인상과 주거 보조금 충격"},
+            action_state={
+                "policy_sensitivity": 0.95,
+                "mobility_bias": 0.65,
+                "last_thought_summary": "월세 부담과 보조금 조건을 동시에 재평가함",
+                "last_action_summary": "지역 임대인과 정책 담당자에게 조건 조정을 요구",
+            },
         )
         for i in range(4)
     ]
@@ -146,6 +189,12 @@ def test_precision_step_runs_internal_interactions_inside_t():
     assert out["scene_events"][0]["scene_count"] == len(out["scene_events"])
     assert all(0.0 < float(event["scene_progress"]) <= 1.0 for event in out["scene_events"])
     assert any(event["scene_type"] == "interaction" for event in out["scene_events"])
+    interaction = next(event for event in out["scene_events"] if event["scene_type"] == "interaction")
+    assert "시나리오 연결" in interaction["summary"]
+    assert "월세 부담" in interaction["summary"] or "조건 조정" in interaction["summary"]
+    assert interaction["narrative_reason"]
+    assert interaction["scenario_relevance"]
+    assert interaction["agent_context"]["source"]["persona"]
     assert out["scene_metrics"]["scenes_per_t"] == len(out["scene_events"])
     assert out["scene_metrics"]["relationship_event_count"] >= 1
     assert any("scene_participation_count" in cell.action_state for cell in out["cells"])

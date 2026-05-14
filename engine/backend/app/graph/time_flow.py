@@ -44,13 +44,21 @@ def _create_initial_cells(
     regional_labels = [str(label).strip() for label in params.get("regional_labels") or [] if str(label).strip()]
     region_zone_map = {label: idx for idx, label in enumerate(regional_labels[:zone_count])}
     initial_bias = dict(params.get("persona_initial_bias") or {})
+    scenario_roles = [str(role).strip() for role in params.get("scenario_actor_roles") or [] if str(role).strip()]
+    scenario_zones = [str(zone).strip() for zone in params.get("scenario_initial_zones") or regional_labels if str(zone).strip()]
+    if scenario_roles:
+        roles = scenario_roles
+    if scenario_zones:
+        zone_count = max(1, min(max_zones, len(scenario_zones)))
+        regional_labels = scenario_zones[:zone_count]
+        region_zone_map = {label: idx for idx, label in enumerate(regional_labels)}
 
     cells = []
     grid_width = max(1, math.ceil(count ** 0.5))
     for i in range(count):
         persona = personas[i % len(personas)] if personas else {}
-        rk = str(persona.get("role_key") or roles[i % len(roles)])
-        label = str(persona.get("role_label") or rk)
+        rk = _scenario_role_for_persona(persona, roles, i=i, scenario_roles=scenario_roles)
+        label = str(rk if scenario_roles else persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
         attrs = dict(persona.get("attrs") or {})
         if params.get("scenario_prompt") and not attrs.get("scenario_prompt"):
@@ -66,9 +74,22 @@ def _create_initial_cells(
             or persona.get("zone_label")
             or ""
         ).strip()
-        zone_index = region_zone_map.get(region_label, i % zone_count)
+        zone_index = _scenario_zone_index(
+            persona=persona,
+            role_key=rk,
+            region_label=region_label,
+            zone_count=zone_count,
+            region_zone_map=region_zone_map,
+            scenario_zones=scenario_zones,
+            i=i,
+        )
         zone_id = str(persona.get("zone_id") or f"zone-{zone_index}")
-        zone_label = str(persona.get("zone_label") or region_label or f"Zone {zone_index}")
+        zone_label = str(
+            persona.get("zone_label")
+            or (scenario_zones[zone_index] if scenario_zones and zone_index < len(scenario_zones) else "")
+            or region_label
+            or f"Zone {zone_index}"
+        )
         zone_influence = float(persona.get("zone_influence", 1.0 + zone_influence_step * zone_index))
         zone_friction = float(persona.get("zone_friction", zone_friction_step * zone_index))
         row = i // grid_width
@@ -84,12 +105,35 @@ def _create_initial_cells(
         elif zone_layout == "swarm":
             role_affinity = _stable_unit(rk)
             zone_affinity = _stable_unit(zone_id or zone_label)
-            persona_affinity = _stable_unit(str(persona.get("persona_id") or persona_text or i))
+            persona_affinity = _stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
             theta = math.tau * ((zone_index / max(1, zone_count)) * 0.62 + role_affinity * 0.28 + persona_affinity * 0.10)
             radius = spacing * (2.0 + zone_index * 0.52 + role_affinity * 1.2)
             jitter = spacing * 0.28
             x = float(math.cos(theta) * radius + math.cos(math.tau * persona_affinity) * jitter)
             y = float(math.sin(theta) * radius + math.sin(math.tau * persona_affinity) * jitter)
+        elif zone_layout == "scenario_social_field":
+            role_affinity = _stable_unit(rk)
+            zone_affinity = _stable_unit(zone_id or zone_label)
+            persona_affinity = _stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
+            conflict_axis = _stable_unit("|".join(str(item) for item in params.get("scenario_conflict_axes") or []))
+            theta = math.tau * ((zone_index / max(1, zone_count)) + role_affinity * 0.12 + conflict_axis * 0.06)
+            radius = spacing * (2.1 + zone_index * 0.38 + (0.35 if _role_is_policy(rk) else 0.0))
+            boundary_pull = 0.55 if _role_is_bridge(rk) else 0.0
+            jitter = spacing * (0.36 + persona_affinity * 0.2)
+            individual_theta = math.tau * ((i * 0.61803398875) % 1.0)
+            individual_radius = spacing * (0.18 + 0.05 * (i % 5))
+            x = float(
+                math.cos(theta) * radius
+                + math.cos(math.tau * (persona_affinity + zone_affinity)) * jitter
+                + math.cos(individual_theta) * individual_radius
+                + boundary_pull
+            )
+            y = float(
+                math.sin(theta) * radius
+                + math.sin(math.tau * (persona_affinity + role_affinity)) * jitter
+                + math.sin(individual_theta) * individual_radius
+                - boundary_pull
+            )
         else:
             x = float(col * spacing)
             y = float(row * spacing)
@@ -200,6 +244,94 @@ def _seed_action_state_from_persona(
             if isinstance(value, (int, float))
         },
     }
+
+
+def _scenario_role_for_persona(persona: dict, roles: List[str], *, i: int, scenario_roles: List[str]) -> str:
+    if not roles:
+        return "agent"
+    if not scenario_roles:
+        return str(persona.get("role_key") or roles[i % len(roles)])
+    attrs = dict(persona.get("attrs") or {})
+    haystack = " ".join(
+        str(value)
+        for value in (
+            persona.get("role_key"),
+            persona.get("role_label"),
+            persona.get("persona_text"),
+            attrs.get("occupation"),
+            attrs.get("hobbies_and_interests"),
+            attrs.get("district"),
+            attrs.get("province"),
+            attrs.get("region"),
+            attrs.get("values"),
+        )
+        if value
+    ).lower()
+    scored = []
+    for idx, role in enumerate(scenario_roles):
+        role_tokens = _role_tokens(role)
+        overlap = sum(1 for token in role_tokens if token and token in haystack)
+        stable = _stable_unit(f"{persona.get('persona_id') or i}:{role}")
+        scored.append((overlap, stable, -idx, role))
+    scored.sort(reverse=True)
+    if scored and scored[0][0] > 0:
+        return str(scored[0][3])
+    return str(scenario_roles[i % len(scenario_roles)])
+
+
+def _scenario_zone_index(
+    *,
+    persona: dict,
+    role_key: str,
+    region_label: str,
+    zone_count: int,
+    region_zone_map: Dict[str, int],
+    scenario_zones: List[str],
+    i: int,
+) -> int:
+    if zone_count <= 0:
+        return 0
+    if region_label in region_zone_map:
+        return int(region_zone_map[region_label]) % zone_count
+    if not scenario_zones:
+        return i % zone_count
+    attrs = dict(persona.get("attrs") or {})
+    haystack = " ".join(
+        str(value)
+        for value in (
+            role_key,
+            persona.get("persona_text"),
+            attrs.get("occupation"),
+            attrs.get("district"),
+            attrs.get("province"),
+            attrs.get("region"),
+            attrs.get("values"),
+        )
+        if value
+    ).lower()
+    scored = []
+    for idx, zone in enumerate(scenario_zones[:zone_count]):
+        tokens = _role_tokens(zone)
+        overlap = sum(1 for token in tokens if token and token in haystack)
+        scored.append((overlap, _stable_unit(f"{role_key}:{zone}:{i}"), -idx, idx))
+    scored.sort(reverse=True)
+    if scored and scored[0][0] > 0:
+        return int(scored[0][3]) % zone_count
+    return int((_stable_unit(f"{role_key}:{persona.get('persona_id') or i}") * zone_count)) % zone_count
+
+
+def _role_tokens(value: Any) -> List[str]:
+    return [token.lower() for token in re.findall(r"[A-Za-z가-힣0-9]{2,}", str(value or ""))]
+
+
+def _role_is_policy(role: str) -> bool:
+    text = str(role or "").lower()
+    return any(token in text for token in ("정책", "정부", "규제", "공공", "policy", "government", "regulator"))
+
+
+def _role_is_bridge(role: str) -> bool:
+    text = str(role or "").lower()
+    return any(token in text for token in ("중재", "조정", "관측", "시민", "media", "observer", "broker", "mediator"))
 
 
 def _persona_priors(attrs: Dict[str, Any]) -> Dict[str, Any]:

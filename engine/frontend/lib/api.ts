@@ -51,6 +51,9 @@ export type IntraTSceneEvent = {
   target_label?: string;
   group_ids?: string[];
   summary?: string;
+  narrative_reason?: string;
+  scenario_relevance?: string;
+  agent_context?: Record<string, unknown>;
   sentiment?: string;
   pressure_delta?: number;
   relationship_delta?: number;

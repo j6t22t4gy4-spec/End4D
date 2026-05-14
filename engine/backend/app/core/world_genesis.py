@@ -101,8 +101,196 @@ def normalize_scenario_prompt(prompt: str) -> Dict[str, Any]:
     }
 
 
+def refine_scenario_for_runtime(
+    *,
+    engine_params: Dict[str, Any],
+    role_catalog: list[str],
+    persona_catalog: list[dict],
+    simulation_mode: str = "precision",
+) -> Dict[str, Any]:
+    """Run an optional LLM scenario-director pass immediately before execution.
+
+    World creation remains fast and heuristic. When live LLM cognition is
+    connected, this pass rewrites the scenario for runtime role assignment and
+    initial social placement. If the provider is disabled or returns invalid
+    JSON, the original engine params are preserved.
+    """
+    params = dict(engine_params or {})
+    if params.get("scenario_director_applied"):
+        return params
+
+    raw_prompt = str(params.get("raw_prompt") or params.get("scenario_prompt") or "").strip()
+    scenario_prompt = str(params.get("scenario_prompt") or raw_prompt or "일반 사회 변화 시나리오")
+    fallback = _heuristic_runtime_director(
+        raw_prompt=raw_prompt,
+        scenario_prompt=scenario_prompt,
+        role_catalog=role_catalog,
+        persona_catalog=persona_catalog,
+        simulation_mode=simulation_mode,
+    )
+
+    if not get_llm_chat_enabled():
+        return _merge_runtime_director(params, fallback, mode="heuristic", fallback_reason="llm_disabled")
+
+    payload = {
+        "raw_prompt": raw_prompt,
+        "current_scenario_prompt": scenario_prompt,
+        "current_role_catalog": list(role_catalog or []),
+        "persona_preview": _persona_preview(persona_catalog),
+        "simulation_mode": simulation_mode,
+        "current_scenario_quality": dict(params.get("scenario_quality") or {}),
+    }
+    try:
+        text, meta = llm_facade.direct_scenario(payload)
+    except Exception as exc:
+        return _merge_runtime_director(params, fallback, mode="heuristic", fallback_reason=f"provider_error:{type(exc).__name__}")
+
+    parsed = _extract_json_object(text)
+    if not parsed:
+        return _merge_runtime_director(params, fallback, mode="heuristic", fallback_reason="invalid_director_json")
+
+    director = _normalize_runtime_director_payload(parsed, fallback=fallback)
+    director["llm_meta"] = {
+        "provider": str(meta.get("provider") or ""),
+        "model": str(meta.get("model") or ""),
+        "fallback_reason": str(meta.get("fallback_reason") or ""),
+        "prompt_count_sent": int(meta.get("prompt_count_sent", 0) or 0),
+    }
+    return _merge_runtime_director(params, director, mode="llm", fallback_reason=str(meta.get("fallback_reason") or ""))
+
+
 def _tokens(text: str) -> set[str]:
     return {token.lower() for token in re.findall(r"[A-Za-z가-힣0-9]{2,}", str(text or ""))}
+
+
+def _heuristic_runtime_director(
+    *,
+    raw_prompt: str,
+    scenario_prompt: str,
+    role_catalog: list[str],
+    persona_catalog: list[dict],
+    simulation_mode: str,
+) -> dict[str, Any]:
+    domain = _infer_domain(scenario_prompt or raw_prompt)
+    actors = _infer_actor_set(scenario_prompt or raw_prompt, domain=domain)
+    zones = _runtime_zones_for_domain(domain)
+    return {
+        "scenario_prompt": scenario_prompt,
+        "actor_roles": actors[:8] or list(role_catalog or ["시민/가계", "정책 담당자", "시장 참여자"]),
+        "initial_zones": zones,
+        "placement_logic": (
+            "이해관계가 가까운 행위자는 같은 zone/bloc에 배치하고, 비용 부담자와 정책 집행자는 인접하지만 분리된 위치에서 시작한다."
+            if simulation_mode != "swarm"
+            else "역할별 bloc 중심을 만들되, 갈등 축이 있는 bloc은 서로 가까운 경계에 배치해 초반 상호작용 밀도를 높인다."
+        ),
+        "conflict_axes": _infer_conflict_axes(scenario_prompt or raw_prompt, domain=domain),
+        "initial_scene_beats": [
+            f"{actors[0]}가 초기 충격을 해석하고 주변 집단과 정보를 교환",
+            f"{actors[min(1, len(actors)-1)]}가 비용/혜택 배분을 두고 긴장 신호를 형성",
+            "정책 담당자와 현장 집단 사이의 신뢰/불신이 관계선으로 드러남",
+            "지역/zone별 압력 차이가 이동성과 협력 선택을 흔듦",
+        ],
+        "role_assignment_policy": "persona의 occupation/region/value와 scenario actor role의 토큰을 매칭해 가장 가까운 역할을 부여한다.",
+        "pressure_seeds": {
+            "sensitive_roles": actors[:4],
+            "separation_axes": _infer_conflict_axes(scenario_prompt or raw_prompt, domain=domain)[:3],
+        },
+        "rationale": "runtime heuristic director fallback",
+    }
+
+
+def _runtime_zones_for_domain(domain: str) -> list[str]:
+    mapping = {
+        "주거/부동산": ["임차인 밀집지", "자산 보유 bloc", "정책 집행 구역", "금융/대출 압력권"],
+        "노동/고용": ["노동자 네트워크", "고용주 bloc", "취약 구직자 구역", "정책 중재 구역"],
+        "시장/금융": ["투자자 기대권", "소비자 압력권", "규제기관 주변", "가격 충격 전파권"],
+        "기후/에너지": ["전환 비용권", "산업체 bloc", "환경 여론권", "정책 보조권"],
+        "기술/플랫폼": ["플랫폼 중심부", "사용자/노동자 경계", "규제 감시권", "데이터 접근권"],
+        "교통/물류": ["물류 노동 경계", "통근자 밀집권", "지역 상권권", "정책 통제권"],
+    }
+    return mapping.get(domain, ["수혜 집단권", "비용 부담권", "정책 중재권", "시장 반응권"])
+
+
+def _persona_preview(persona_catalog: list[dict], limit: int = 12) -> list[dict[str, Any]]:
+    preview = []
+    for item in list(persona_catalog or [])[:limit]:
+        attrs = dict(item.get("attrs") or {})
+        preview.append(
+            {
+                "persona_id": str(item.get("persona_id") or ""),
+                "role_key": str(item.get("role_key") or ""),
+                "role_label": str(item.get("role_label") or ""),
+                "persona_text": str(item.get("persona_text") or "")[:220],
+                "attrs": {
+                    key: attrs[key]
+                    for key in ("occupation", "district", "province", "region", "age", "gender", "values")
+                    if key in attrs
+                },
+            }
+        )
+    return preview
+
+
+def _normalize_runtime_director_payload(payload: dict[str, Any], *, fallback: dict[str, Any]) -> dict[str, Any]:
+    scenario_prompt = str(payload.get("scenario_prompt") or fallback.get("scenario_prompt") or "").strip()
+    actor_roles = _string_list(payload.get("actor_roles"), fallback=fallback.get("actor_roles") or [])
+    initial_zones = _string_list(payload.get("initial_zones"), fallback=fallback.get("initial_zones") or [])
+    conflict_axes = _string_list(payload.get("conflict_axes"), fallback=fallback.get("conflict_axes") or [])
+    initial_scene_beats = _string_list(payload.get("initial_scene_beats"), fallback=fallback.get("initial_scene_beats") or [])
+    return {
+        "scenario_prompt": scenario_prompt or str(fallback.get("scenario_prompt") or ""),
+        "actor_roles": actor_roles[:10],
+        "initial_zones": initial_zones[:12],
+        "placement_logic": str(payload.get("placement_logic") or fallback.get("placement_logic") or ""),
+        "conflict_axes": conflict_axes[:8],
+        "initial_scene_beats": initial_scene_beats[:10],
+        "role_assignment_policy": str(payload.get("role_assignment_policy") or fallback.get("role_assignment_policy") or ""),
+        "pressure_seeds": dict(payload.get("pressure_seeds") or fallback.get("pressure_seeds") or {}),
+        "rationale": str(payload.get("rationale") or fallback.get("rationale") or ""),
+    }
+
+
+def _string_list(value: Any, *, fallback: Any) -> list[str]:
+    raw = value if isinstance(value, list) else fallback
+    out = [str(item).strip() for item in list(raw or []) if str(item).strip()]
+    return out
+
+
+def _merge_runtime_director(
+    params: dict[str, Any],
+    director: dict[str, Any],
+    *,
+    mode: str,
+    fallback_reason: str,
+) -> dict[str, Any]:
+    scenario_quality = dict(params.get("scenario_quality") or {})
+    scenario_quality.update(
+        {
+            "runtime_director_mode": mode,
+            "runtime_director_fallback_reason": fallback_reason,
+            "runtime_actor_roles": list(director.get("actor_roles") or []),
+            "runtime_initial_zones": list(director.get("initial_zones") or []),
+        }
+    )
+    merged = dict(params)
+    merged.update(
+        {
+            "scenario_prompt": str(director.get("scenario_prompt") or params.get("scenario_prompt") or ""),
+            "scenario_quality": scenario_quality,
+            "scenario_director_applied": True,
+            "scenario_director_mode": mode,
+            "scenario_director": dict(director),
+            "scenario_actor_roles": list(director.get("actor_roles") or []),
+            "scenario_initial_zones": list(director.get("initial_zones") or []),
+            "scenario_placement_logic": str(director.get("placement_logic") or ""),
+            "scenario_conflict_axes": list(director.get("conflict_axes") or []),
+            "scenario_initial_scene_beats": list(director.get("initial_scene_beats") or []),
+            "zone_layout": "scenario_social_field",
+            "zone_count": max(3, min(24, len(list(director.get("initial_zones") or [])) or int(params.get("zone_count", 4) or 4))),
+            "regional_labels": list(director.get("initial_zones") or params.get("regional_labels") or []),
+        }
+    )
+    return merged
 
 
 def _specificity_score(text: str, tokens: set[str]) -> float:

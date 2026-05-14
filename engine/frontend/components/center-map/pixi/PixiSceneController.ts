@@ -71,6 +71,7 @@ export class PixiSceneController {
     this.clusterLayer.updateZones(scene.zones);
     this.pressureLayer.updateAgents(scene.agents);
     this.interactionLayer.updateInteractions(scene.interactions);
+    this.pressureLayer.updateInteractions(scene.interactions, performance.now());
     this.agentLayer.updateAgents(scene.agents);
   }
 

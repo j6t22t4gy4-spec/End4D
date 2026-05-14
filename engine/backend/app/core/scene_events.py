@@ -158,6 +158,12 @@ def _interaction_scenes(
                     "target_label": _agent_label(target) if target is not None else target_id,
                     "group_ids": _groups_for(source, target),
                     "summary": _interaction_summary(source, target, event_type, payload),
+                    "narrative_reason": _interaction_reason(source, target, event_type, payload),
+                    "scenario_relevance": _scenario_relevance(source, target),
+                    "agent_context": {
+                        "source": _agent_context(source),
+                        "target": _agent_context(target),
+                    },
                     "sentiment": _sentiment(event_type),
                     "pressure_delta": _pressure_delta(payload, event_type, quality),
                     "relationship_delta": _relationship_delta(event_type, quality),
@@ -251,34 +257,172 @@ def _interaction_type(payload: dict[str, Any]) -> str:
 def _interaction_summary(source: Cell, target: Cell | None, event_type: str, payload: dict[str, Any]) -> str:
     source_label = _agent_label(source)
     target_label = _agent_label(target) if target is not None else "주변 행위자"
+    source_stance = _agent_stance(source)
+    target_stance = _agent_stance(target)
+    scenario = _scenario_relevance(source, target)
+    pressure = _pressure_phrase(source, target)
     if event_type == "positive":
-        verb = "협력 신호를 교환"
+        verb = "협력 가능성을 확인"
     elif event_type == "negative":
-        verb = "입장 차이를 확인"
+        verb = "이해관계 차이를 드러냄"
     elif event_type == "hostile":
-        verb = "긴장 높은 충돌 신호를 남김"
+        verb = "높은 긴장 속에서 충돌 신호를 남김"
     else:
-        verb = "상황 정보를 교환"
+        verb = "상황 정보를 교환하며 다음 선택을 탐색"
     cluster = str(payload.get("cluster_signal") or "")
-    suffix = f" · {cluster}" if cluster else ""
-    return f"{source_label}와 {target_label}이 {verb}{suffix}"
+    fragments = [f"{source_label}와 {target_label}이 {verb}"]
+    if source_stance:
+        fragments.append(f"{source_label} 쪽 맥락: {source_stance}")
+    if target_stance and target_stance != source_stance:
+        fragments.append(f"{target_label} 쪽 맥락: {target_stance}")
+    if scenario:
+        fragments.append(f"시나리오 연결: {scenario}")
+    if pressure:
+        fragments.append(f"압력 배경: {pressure}")
+    if cluster:
+        fragments.append(f"신호: {cluster}")
+    return " · ".join(_compact_fragment(fragment, 120) for fragment in fragments if fragment)
+
+
+def _interaction_reason(source: Cell, target: Cell | None, event_type: str, payload: dict[str, Any]) -> str:
+    source_reason = _recent_action_or_thought(source)
+    target_reason = _recent_action_or_thought(target)
+    belief_shift = abs(float(payload.get("belief_shift") or 0.0))
+    if event_type == "positive":
+        outcome = "공통 이해관계가 커져 협력 쪽으로 기울었습니다"
+    elif event_type == "hostile":
+        outcome = "신념 차이와 압력 신호가 겹치며 갈등이 증폭됐습니다"
+    elif event_type == "negative":
+        outcome = "서로의 우선순위가 어긋나며 조정 비용이 커졌습니다"
+    else:
+        outcome = "불확실성을 줄이기 위해 정보를 교환했습니다"
+    details = [outcome]
+    if source_reason:
+        details.append(f"source: {source_reason}")
+    if target_reason and target_reason != source_reason:
+        details.append(f"target: {target_reason}")
+    if belief_shift >= 0.08:
+        details.append(f"belief shift {belief_shift:.2f}")
+    return " · ".join(_compact_fragment(detail, 120) for detail in details)
 
 
 def _pressure_summary(group: dict[str, Any], *, pressure: float, tension: float, fracture: float) -> str:
     label = str(group.get("group_label") or group.get("label") or "집단")
+    drift = float(group.get("drift_velocity", 0.0) or 0.0)
+    cohesion = float(group.get("cohesion", 0.0) or 0.0)
     if fracture >= 0.55:
-        return f"{label} 내부의 분열 위험이 높아졌습니다."
+        return f"{label} 내부의 분열 위험이 높아졌습니다. cohesion {cohesion:.2f}, tension {tension:.2f}, drift {drift:.2f}."
     if tension >= 0.45:
-        return f"{label}의 긴장이 장면 후반부에 뚜렷해졌습니다."
+        return f"{label}의 긴장이 장면 후반부에 뚜렷해졌습니다. pressure {pressure:.2f}, fracture {fracture:.2f}."
     if pressure >= 0.45:
-        return f"{label}에 집단 압력이 누적되고 있습니다."
-    return f"{label}의 압력장이 완만하게 재정렬됩니다."
+        return f"{label}에 집단 압력이 누적되고 있습니다. drift {drift:.2f}가 다음 선택을 흔듭니다."
+    return f"{label}의 압력장이 완만하게 재정렬됩니다. cohesion {cohesion:.2f}, pressure {pressure:.2f}."
 
 
 def _agent_label(cell: Cell | None) -> str:
     if cell is None:
         return "agent"
     return str(cell.role_label or cell.role_key or cell.persona_id or cell.cell_id or "agent")
+
+
+def _agent_context(cell: Cell | None) -> dict[str, Any]:
+    if cell is None:
+        return {}
+    action = dict(cell.action_state or {})
+    attrs = dict(cell.persona_attrs or {})
+    return {
+        "role": _agent_label(cell),
+        "zone": str(cell.zone_label or cell.zone_id or ""),
+        "persona": _persona_phrase(cell),
+        "thought": _compact_fragment(str(action.get("last_thought_summary") or ""), 180),
+        "action": _compact_fragment(str(action.get("last_action_summary") or action.get("strategy_summary") or ""), 180),
+        "policy_sensitivity": round(float(action.get("policy_sensitivity", 0.0) or 0.0), 3),
+        "collective_pressure": round(float(action.get("collective_pressure", 0.0) or 0.0), 3),
+        "district": str(attrs.get("district") or attrs.get("region") or attrs.get("province") or ""),
+    }
+
+
+def _agent_stance(cell: Cell | None) -> str:
+    if cell is None:
+        return ""
+    action = dict(cell.action_state or {})
+    thought = str(action.get("last_thought_summary") or "").strip()
+    action_summary = str(action.get("last_action_summary") or action.get("strategy_summary") or "").strip()
+    persona = _persona_phrase(cell)
+    if thought and action_summary:
+        return _compact_fragment(f"{persona}; 생각={thought}; 행동={action_summary}", 190)
+    if action_summary:
+        return _compact_fragment(f"{persona}; 행동={action_summary}", 170)
+    if thought:
+        return _compact_fragment(f"{persona}; 생각={thought}", 170)
+    return _compact_fragment(persona, 140)
+
+
+def _persona_phrase(cell: Cell | None) -> str:
+    if cell is None:
+        return ""
+    attrs = dict(cell.persona_attrs or {})
+    parts = [
+        str(attrs.get("occupation") or cell.role_label or cell.role_key or "").strip(),
+        str(attrs.get("district") or attrs.get("province") or attrs.get("region") or cell.zone_label or "").strip(),
+    ]
+    age = attrs.get("age")
+    if age not in (None, ""):
+        parts.append(f"{age}세")
+    values = attrs.get("values")
+    if values:
+        parts.append(str(values))
+    text = ", ".join(part for part in parts if part)
+    if text:
+        return text
+    return str(cell.persona_text or cell.persona_id or cell.cell_id or "")[:120]
+
+
+def _scenario_relevance(source: Cell | None, target: Cell | None) -> str:
+    for cell in (source, target):
+        if cell is None:
+            continue
+        attrs = dict(cell.persona_attrs or {})
+        scenario = str(attrs.get("scenario_prompt") or attrs.get("raw_prompt") or "").strip()
+        if scenario:
+            return _compact_fragment(scenario, 150)
+    return ""
+
+
+def _pressure_phrase(source: Cell | None, target: Cell | None) -> str:
+    phrases = []
+    for cell in (source, target):
+        if cell is None:
+            continue
+        action = dict(cell.action_state or {})
+        pressure = float(action.get("collective_pressure", 0.0) or 0.0)
+        tension = float(action.get("role_group_tension", action.get("zone_group_tension", 0.0)) or 0.0)
+        fracture = float(action.get("role_group_fracture_risk", action.get("zone_group_fracture_risk", 0.0)) or 0.0)
+        if max(pressure, tension, fracture) >= 0.18:
+            phrases.append(f"{_agent_label(cell)} pressure {pressure:.2f}/tension {tension:.2f}/fracture {fracture:.2f}")
+    return _compact_fragment("; ".join(phrases), 160)
+
+
+def _recent_action_or_thought(cell: Cell | None) -> str:
+    if cell is None:
+        return ""
+    action = dict(cell.action_state or {})
+    for key in ("last_action_summary", "strategy_summary", "last_thought_summary", "action_reason", "persona_prior_summary"):
+        value = str(action.get(key) or "").strip()
+        if value:
+            return _compact_fragment(value, 140)
+    for item in reversed(list(cell.short_memory or [])[-4:]):
+        value = str(item.get("summary") or "").strip()
+        if value:
+            return _compact_fragment(value, 140)
+    return ""
+
+
+def _compact_fragment(value: str, limit: int) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
 
 
 def _groups_for(source: Cell, target: Cell | None) -> list[str]:

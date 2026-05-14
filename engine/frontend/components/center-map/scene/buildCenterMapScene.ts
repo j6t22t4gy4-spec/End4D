@@ -148,9 +148,19 @@ export function buildCenterMapScene({
     if (!source) return [];
     const targetIds = Array.isArray(event.target_ids) ? event.target_ids : [];
     const eventType = normalizeInteractionType(event.interaction_type);
+    const pressureDelta = Number(event.pressure_delta ?? 0);
+    const relationshipDelta = Number(event.relationship_delta ?? 0);
+    const hasNarrative = Boolean(event.narrative_reason || event.scenario_relevance);
     const intensity = Math.max(
       0.25,
-      Math.min(1, Math.abs(Number(event.pressure_delta ?? 0)) * 4 + Math.abs(Number(event.relationship_delta ?? 0)) * 3 + 0.35)
+      Math.min(
+        1,
+        Math.abs(pressureDelta) * 4.6
+          + Math.abs(relationshipDelta) * 3.4
+          + (eventType === "hostile" ? 0.28 : eventType === "negative" ? 0.18 : eventType === "positive" ? 0.12 : 0.04)
+          + (hasNarrative ? 0.16 : 0)
+          + 0.28
+      )
     );
     return targetIds.flatMap((targetId, targetIndex) => {
       const target = projected.get(String(targetId));
@@ -169,6 +179,8 @@ export function buildCenterMapScene({
           age: Math.max(0, 1 - Number(event.scene_index ?? 1) / Math.max(1, Number(event.scene_count ?? 1))),
           fresh: Boolean((event.visual_hint as Record<string, unknown> | undefined)?.pulse) || Boolean((event as Record<string, unknown>).live_computed),
           sceneId: String(event.scene_id ?? ""),
+          pressureDelta,
+          salience: intensity,
         },
       ];
     });

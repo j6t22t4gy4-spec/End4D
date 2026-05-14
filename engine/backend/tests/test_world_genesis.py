@@ -4,7 +4,7 @@ import json
 import pytest
 
 from app.core.persona_dataset import PersonaSeed
-from app.core.world_genesis import apply_persona_distribution_to_plan, normalize_scenario_prompt, propose_world_from_prompt
+from app.core.world_genesis import apply_persona_distribution_to_plan, normalize_scenario_prompt, propose_world_from_prompt, refine_scenario_for_runtime
 
 
 @pytest.fixture(autouse=True)
@@ -35,6 +35,41 @@ def test_normalize_scenario_prompt_expands_short_input():
     assert "갈등/협력 축" in scenario["scenario_prompt"]
     assert scenario["scenario_quality"]["was_expanded"] is True
     assert scenario["scenario_quality"]["domain"] == "시장/금융"
+
+
+def test_refine_scenario_for_runtime_uses_llm_director(monkeypatch):
+    monkeypatch.setattr("app.core.world_genesis.get_llm_chat_enabled", lambda: True)
+
+    def fake_direct_scenario(payload):
+        return (
+            """
+            {
+              "scenario_prompt": "청년 세입자와 임대인, 금리 충격을 둘러싼 실행용 시나리오",
+              "actor_roles": ["청년 세입자", "소형 임대인", "정책 중재자", "금융기관"],
+              "initial_zones": ["임차인 밀집지", "자산 보유 bloc", "정책 중재권"],
+              "placement_logic": "세입자와 임대인은 가까운 경계에, 정책 중재자는 사이에 배치",
+              "conflict_axes": ["주거비 부담", "자산 기대", "정책 신뢰"],
+              "initial_scene_beats": ["세입자가 조건 조정을 요구", "임대인이 금리 비용을 전가"],
+              "role_assignment_policy": "occupation과 scenario role 토큰을 매칭",
+              "pressure_seeds": {"sensitive_roles": ["청년 세입자"]},
+              "rationale": "director test"
+            }
+            """,
+            {"provider": "stub-test", "model": "director", "prompt_count_sent": 1},
+        )
+
+    monkeypatch.setattr("app.core.world_genesis.llm_facade.direct_scenario", fake_direct_scenario)
+    refined = refine_scenario_for_runtime(
+        engine_params={"raw_prompt": "금리와 월세", "scenario_prompt": "원문 시나리오: 금리와 월세"},
+        role_catalog=["생산자", "소비자"],
+        persona_catalog=[],
+        simulation_mode="precision",
+    )
+
+    assert refined["scenario_director_mode"] == "llm"
+    assert refined["scenario_actor_roles"][0] == "청년 세입자"
+    assert refined["zone_layout"] == "scenario_social_field"
+    assert refined["scenario_quality"]["runtime_director_mode"] == "llm"
 
 
 def test_genesis_long_horizon_keyword():
