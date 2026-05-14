@@ -27,6 +27,7 @@ LLM_TASK_NAMES = (
     "session_review_query",
     "agent_interview",
     "agent_interview_diff",
+    "world_chat",
 )
 
 LLM_RUNTIME_PROFILES = ("rules-first", "balanced", "llm-first")
@@ -49,6 +50,7 @@ _TASK_PRIORITY_DEFAULTS = {
     "session_review_query": 1,
     "agent_interview": 1,
     "agent_interview_diff": 1,
+    "world_chat": 1,
 }
 
 

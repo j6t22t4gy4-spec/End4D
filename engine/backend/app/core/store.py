@@ -133,6 +133,7 @@ class WorldStore:
             "coalition_history": [],
             "group_state": {},
             "review_cache": {},
+            "chat_sessions": {},
         }
         session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
@@ -235,6 +236,36 @@ class WorldStore:
             return
         self._worlds[world_id]["review_cache"] = dict(review_cache)
         self._persist(world_id)
+
+    def append_chat_message(
+        self,
+        world_id: str,
+        *,
+        session_id: str,
+        message: dict,
+        context: Optional[dict] = None,
+    ) -> dict:
+        entry = self.get(world_id)
+        if entry is None:
+            return {}
+        sessions = dict(entry.get("chat_sessions") or {})
+        session = dict(sessions.get(session_id) or {})
+        messages = [dict(item) for item in list(session.get("messages") or [])]
+        messages.append(dict(message))
+        session.update(
+            {
+                "session_id": session_id,
+                "world_id": world_id,
+                "context": dict(context or session.get("context") or {}),
+                "messages": messages,
+                "created_at": str(session.get("created_at") or message.get("created_at") or ""),
+                "updated_at": str(message.get("created_at") or ""),
+            }
+        )
+        sessions[session_id] = session
+        entry["chat_sessions"] = sessions
+        self._persist(world_id)
+        return session
 
     def get_initial_cell_count(self, world_id: str) -> int:
         """초기 세포 수."""

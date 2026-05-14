@@ -11,7 +11,7 @@ from typing import Any
 from app.models.cell import Cell
 
 
-MAX_SCENES_PER_T = 12
+MAX_SCENES_PER_T = 18
 
 
 def build_intra_t_scene_events(
@@ -322,7 +322,12 @@ def _pressure_summary(group: dict[str, Any], *, pressure: float, tension: float,
 def _agent_label(cell: Cell | None) -> str:
     if cell is None:
         return "agent"
-    return str(cell.role_label or cell.role_key or cell.persona_id or cell.cell_id or "agent")
+    attrs = dict(cell.persona_attrs or {})
+    name = str(attrs.get("agent_name") or attrs.get("display_name") or "").strip()
+    role = str(cell.role_label or cell.role_key or "agent").strip() or "agent"
+    if name:
+        return name if "(" in name else f"{name}({role})"
+    return str(role or cell.persona_id or cell.cell_id or "agent")
 
 
 def _agent_context(cell: Cell | None) -> dict[str, Any]:
@@ -331,7 +336,8 @@ def _agent_context(cell: Cell | None) -> dict[str, Any]:
     action = dict(cell.action_state or {})
     attrs = dict(cell.persona_attrs or {})
     return {
-        "role": _agent_label(cell),
+        "role": str(cell.role_label or cell.role_key or ""),
+        "identity": _agent_label(cell),
         "zone": str(cell.zone_label or cell.zone_id or ""),
         "persona": _persona_phrase(cell),
         "thought": _compact_fragment(str(action.get("last_thought_summary") or ""), 180),
@@ -363,7 +369,7 @@ def _persona_phrase(cell: Cell | None) -> str:
         return ""
     attrs = dict(cell.persona_attrs or {})
     parts = [
-        str(attrs.get("occupation") or cell.role_label or cell.role_key or "").strip(),
+        str(attrs.get("identity_summary") or attrs.get("occupation") or cell.role_label or cell.role_key or "").strip(),
         str(attrs.get("district") or attrs.get("province") or attrs.get("region") or cell.zone_label or "").strip(),
     ]
     age = attrs.get("age")

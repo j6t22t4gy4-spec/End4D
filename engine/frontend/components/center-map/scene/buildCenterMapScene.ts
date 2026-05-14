@@ -104,6 +104,16 @@ export function buildCenterMapScene({
         0,
         Math.min(1, Number(cell.action_state?.collective_pressure ?? 0))
       ),
+      heat: Math.max(
+        0,
+        Math.min(
+          1,
+          Number(cell.action_state?.local_density ?? 0) * 0.34 +
+            Number(cell.action_state?.scene_participation_count ?? 0) * 0.16 +
+            Number(cell.action_state?.observer_score ?? 0) * 0.22 +
+            Number(cell.action_state?.last_spatial_shift ?? 0) * 0.02
+        )
+      ),
       observerScore: Math.max(
         0,
         Math.min(1, Number(cell.action_state?.observer_score ?? 0))

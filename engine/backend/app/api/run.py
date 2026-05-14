@@ -352,6 +352,9 @@ def _run_stream_producer(
                 "heartbeat_at": time.time(),
                 "message": "scene computed",
             })
+            scene_delay_ms = max(0.0, min(80.0, float(engine_params.get("scene_stream_delay_ms", 0.0) or 0.0)))
+            if scene_delay_ms > 0:
+                time.sleep(scene_delay_ms / 1000.0)
 
         for chunk in graph.stream(
             {

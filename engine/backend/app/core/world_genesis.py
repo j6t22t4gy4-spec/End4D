@@ -237,6 +237,7 @@ def _normalize_runtime_director_payload(payload: dict[str, Any], *, fallback: di
     initial_zones = _string_list(payload.get("initial_zones"), fallback=fallback.get("initial_zones") or [])
     conflict_axes = _string_list(payload.get("conflict_axes"), fallback=fallback.get("conflict_axes") or [])
     initial_scene_beats = _string_list(payload.get("initial_scene_beats"), fallback=fallback.get("initial_scene_beats") or [])
+    pressure_seeds = _mapping_dict(payload.get("pressure_seeds"), fallback=fallback.get("pressure_seeds") or {})
     return {
         "scenario_prompt": scenario_prompt or str(fallback.get("scenario_prompt") or ""),
         "actor_roles": actor_roles[:10],
@@ -245,15 +246,42 @@ def _normalize_runtime_director_payload(payload: dict[str, Any], *, fallback: di
         "conflict_axes": conflict_axes[:8],
         "initial_scene_beats": initial_scene_beats[:10],
         "role_assignment_policy": str(payload.get("role_assignment_policy") or fallback.get("role_assignment_policy") or ""),
-        "pressure_seeds": dict(payload.get("pressure_seeds") or fallback.get("pressure_seeds") or {}),
+        "pressure_seeds": pressure_seeds,
         "rationale": str(payload.get("rationale") or fallback.get("rationale") or ""),
     }
 
 
 def _string_list(value: Any, *, fallback: Any) -> list[str]:
-    raw = value if isinstance(value, list) else fallback
-    out = [str(item).strip() for item in list(raw or []) if str(item).strip()]
+    if isinstance(value, str):
+        raw = re.split(r"[,;\n]+", value)
+    else:
+        raw = value if isinstance(value, list) else fallback
+    out = []
+    for item in list(raw or []):
+        if isinstance(item, dict):
+            item = (
+                item.get("name")
+                or item.get("label")
+                or item.get("role")
+                or item.get("zone")
+                or item.get("axis")
+                or item.get("beat")
+                or item.get("title")
+                or item.get("description")
+                or ""
+            )
+        text = str(item).strip()
+        if text:
+            out.append(text)
     return out
+
+
+def _mapping_dict(value: Any, *, fallback: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(fallback, dict):
+        return dict(fallback)
+    return {}
 
 
 def _merge_runtime_director(

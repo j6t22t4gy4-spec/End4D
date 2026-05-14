@@ -15,6 +15,7 @@ from app.api.runtime import router as runtime_router
 from app.api.sessions import router as sessions_router
 from app.api.review import router as review_router
 from app.api.swarm import router as swarm_router
+from app.api.chat import router as chat_router
 
 app = FastAPI(title="Organic4D Engine", version="0.1.0")
 
@@ -38,6 +39,7 @@ app.include_router(runtime_router)
 app.include_router(sessions_router)
 app.include_router(review_router)
 app.include_router(swarm_router)
+app.include_router(chat_router)
 
 
 @app.get("/health")

@@ -17,7 +17,6 @@ type PixiStageHostProps = {
   scene: CenterMapScene;
   annotations: TimelineAnnotation[];
   currentT: number;
-  renderTime: number;
   transitionPhase: number;
   pointerField: PointerField;
   layerVisibility?: PixiLayerVisibility | undefined;
@@ -30,6 +29,8 @@ export type PixiLayerVisibility = {
   agents: boolean;
   clusters: boolean;
   pressure: boolean;
+  heatmap: boolean;
+  interactions: boolean;
   shocks: boolean;
 };
 
@@ -47,7 +48,6 @@ export function PixiStageHost({
   scene,
   annotations,
   currentT,
-  renderTime,
   transitionPhase,
   pointerField,
   layerVisibility,
@@ -122,8 +122,9 @@ export function PixiStageHost({
         controller.resize(rect.width, rect.height);
       }
 
+      const bootedAt = performance.now();
       app.ticker.add(() => {
-        controller.render(renderTimeRef.current);
+        controller.render((performance.now() - bootedAt) / 1000);
       });
     };
 
@@ -142,11 +143,6 @@ export function PixiStageHost({
       if (host.firstChild) host.textContent = "";
     };
   }, []);
-
-  const renderTimeRef = useRef(renderTime);
-  useEffect(() => {
-    renderTimeRef.current = renderTime;
-  }, [renderTime]);
 
   useEffect(() => {
     controllerRef.current?.updateScene(stableScene);

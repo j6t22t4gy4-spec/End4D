@@ -3,6 +3,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 
 import { AgentLayerPixi } from "@/components/center-map/pixi/layers/AgentLayerPixi";
+import { AgentHeatLayerPixi } from "@/components/center-map/pixi/layers/AgentHeatLayerPixi";
 import { ClusterLayerPixi } from "@/components/center-map/pixi/layers/ClusterLayerPixi";
 import { PressureLayerPixi } from "@/components/center-map/pixi/layers/PressureLayerPixi";
 import { InteractionLayerPixi } from "@/components/center-map/pixi/layers/InteractionLayerPixi";
@@ -30,6 +31,7 @@ export class PixiSceneController {
   private readonly transitionOverlay = new Graphics();
   private readonly zoneRegionLayer = new ZoneRegionLayerPixi();
   private readonly clusterLayer = new ClusterLayerPixi();
+  private readonly heatLayer = new AgentHeatLayerPixi();
   private readonly pressureLayer = new PressureLayerPixi();
   private readonly interactionLayer = new InteractionLayerPixi();
   private readonly shockLayer = new ShockLayerPixi();
@@ -54,6 +56,7 @@ export class PixiSceneController {
     this.root.addChild(this.fieldLayer);
     this.root.addChild(this.zoneRegionLayer.container);
     this.root.addChild(this.clusterLayer.container);
+    this.root.addChild(this.heatLayer.container);
     this.root.addChild(this.pressureLayer.container);
     this.root.addChild(this.interactionLayer.container);
     this.root.addChild(this.shockLayer.container);
@@ -69,10 +72,12 @@ export class PixiSceneController {
     this.sceneAgents = scene.agents;
     this.zoneRegionLayer.updateZones(scene.zones);
     this.clusterLayer.updateZones(scene.zones);
-    this.pressureLayer.updateAgents(scene.agents);
+    this.heatLayer.updateAgents(scene.agents);
+    this.pressureLayer.updateZones(scene.zones);
     this.interactionLayer.updateInteractions(scene.interactions);
     this.pressureLayer.updateInteractions(scene.interactions, performance.now());
     this.agentLayer.updateAgents(scene.agents);
+    this.agentLayer.updateInteractions(scene.interactions);
   }
 
   updateShocks(annotations: TimelineAnnotation[], currentT: number) {
@@ -111,8 +116,9 @@ export class PixiSceneController {
     this.zoneRegionLayer.container.visible = layers.zones;
     this.agentLayer.container.visible = layers.agents;
     this.clusterLayer.container.visible = layers.clusters;
+    this.heatLayer.container.visible = layers.heatmap;
     this.pressureLayer.container.visible = layers.pressure;
-    this.interactionLayer.container.visible = layers.agents;
+    this.interactionLayer.container.visible = layers.interactions;
     this.shockLayer.container.visible = layers.shocks;
     this.shockFlashOverlay.visible = layers.shocks;
   }
@@ -169,6 +175,7 @@ export class PixiSceneController {
   render(renderTime: number) {
     this.drawField(renderTime);
     this.clusterLayer.animate(renderTime, this.pointerField);
+    this.heatLayer.animate();
     this.pressureLayer.animate(renderTime, this.pointerField);
     this.interactionLayer.animate(renderTime);
     this.shockLayer.animate(renderTime);
@@ -180,6 +187,7 @@ export class PixiSceneController {
   destroy() {
     this.zoneRegionLayer.destroy();
     this.clusterLayer.destroy();
+    this.heatLayer.destroy();
     this.pressureLayer.destroy();
     this.interactionLayer.destroy();
     this.shockLayer.destroy();

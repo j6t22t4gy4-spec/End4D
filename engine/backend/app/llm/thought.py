@@ -104,20 +104,34 @@ def _summarize_thought_text(text: str, cell: Cell) -> str:
 def _grounded_thought_fallback(cell: Cell) -> str:
     role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
     zone = (cell.zone_label or cell.zone_id or "local field").strip() or "local field"
+    name = _agent_display(cell)
     persona = _persona_hint(cell)
     pressure = _pressure_phrase(cell)
+    dialogue = _recent_dialogue_hint(cell)
+    if dialogue:
+        if get_ui_language() == "ko":
+            peer, summary = dialogue
+            return (
+                f"{name}은 {peer}에게 들은 말이 계속 걸린다. {summary} "
+                f"그래서 다음에는 이 문제가 {zone}의 다른 사람들에게도 같은 무게인지 직접 확인해보고 싶다."
+            )[:260]
+        peer, summary = dialogue
+        return (
+            f"{name} keeps turning over what {peer} said. {summary} "
+            f"Next, they want to test whether others in {zone} feel the same pressure."
+        )[:260]
     recent = _recent_behavior_hint(cell)
     if get_ui_language() == "ko":
         if pressure:
-            return f"{role}는 {zone}에서 {pressure}를 느끼며, {recent}을 근거로 다음 협상과 이동 비용을 다시 계산한다."
+            return f"{name}은 {zone}에서 {pressure}를 느낀다. 방금 떠오른 단서는 '{recent}'이고, 다음에는 누구에게 먼저 말을 걸어야 할지 고민한다."
         if persona:
-            return f"{role}는 {zone}에서 '{persona}' 맥락을 붙잡고, 최근 상호작용이 자신의 선택지를 어떻게 좁히는지 재평가한다."
-        return f"{role}는 {zone}의 최근 상호작용을 기준으로 당장의 제약과 다음 선택지를 다시 계산한다."
+            return f"{name}은 '{persona}'라는 자기 사정을 떠올리며, {zone}에서 내 말이 누구에게 통할지 조심스럽게 가늠한다."
+        return f"{name}은 {zone}의 분위기를 보며, 지금은 큰 말보다 가까운 사람의 반응을 먼저 들어봐야겠다고 생각한다."
     if pressure:
-        return f"{role} is reading {pressure} in {zone} and recalculating negotiation and movement costs from {recent}."
+        return f"{name} feels {pressure} in {zone}; after '{recent}', they wonder who to speak with first."
     if persona:
-        return f"{role} is grounding choices in '{persona}' while reassessing constraints in {zone}."
-    return f"{role} is reassessing immediate goals and constraints in {zone}."
+        return f"{name} keeps '{persona}' in mind and wonders who in {zone} would actually listen."
+    return f"{name} watches {zone} and decides to ask a nearby person what they really think next."
 
 
 def _looks_english(text: str) -> bool:
@@ -148,6 +162,32 @@ def _persona_hint(cell: Cell) -> str:
         if value:
             return value[:80]
     return ""
+
+
+def _agent_display(cell: Cell) -> str:
+    attrs = dict(cell.persona_attrs or {})
+    name = str(attrs.get("agent_name") or attrs.get("display_name") or "").strip()
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    if name:
+        return name if "(" in name else f"{name}({role})"
+    return role
+
+
+def _recent_dialogue_hint(cell: Cell) -> tuple[str, str] | None:
+    state = dict(cell.action_state or {})
+    peer = str(state.get("last_dialogue_peer_label") or "").strip()
+    summary = " ".join(str(state.get("last_dialogue_summary") or "").split())
+    if peer and summary:
+        return peer, summary[:160]
+    for item in reversed(list(cell.behavior_log or [])[-12:]):
+        if str(item.get("event_type") or "") != "agent_dialogue":
+            continue
+        payload = dict(item.get("payload") or {})
+        peer = str(payload.get("peer_label") or payload.get("peer_id") or "").strip()
+        summary = " ".join(str(item.get("summary") or "").split())
+        if summary:
+            return peer or "방금 만난 사람", summary[:160]
+    return None
 
 
 def _pressure_phrase(cell: Cell) -> str:

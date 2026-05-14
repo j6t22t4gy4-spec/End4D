@@ -50,6 +50,9 @@ PERSONA_TEXT_FIELDS = (
 ROLE_FIELDS = ("occupation", "role", "job", "profession")
 
 ATTR_FIELDS = (
+    "name",
+    "agent_name",
+    "display_name",
     "sex",
     "age",
     "marital_status",
@@ -105,17 +108,19 @@ def configured_persona_path(country: str) -> Optional[Path]:
     if specific:
         return Path(specific)
 
+    base_dir = os.getenv("ORGANIC4D_PERSONA_DATASET_DIR", "").strip()
+    if base_dir and code:
+        for ext in ("jsonl", "json", "csv"):
+            p = Path(base_dir) / f"{code.lower()}.{ext}"
+            if p.exists():
+                return p
+
+    if configured_hf_dataset(code):
+        return None
+
     pack_path = resolve_country_pack_path(code, kind="persona")
     if pack_path is not None and pack_path.exists():
         return pack_path
-
-    base_dir = os.getenv("ORGANIC4D_PERSONA_DATASET_DIR", "").strip()
-    if not base_dir or not code:
-        return None
-    for ext in ("jsonl", "json", "csv"):
-        p = Path(base_dir) / f"{code.lower()}.{ext}"
-        if p.exists():
-            return p
     return None
 
 

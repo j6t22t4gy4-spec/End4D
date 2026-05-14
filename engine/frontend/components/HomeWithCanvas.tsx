@@ -35,6 +35,7 @@ const GodView = dynamic(() => import("@/components/GodView"), {
 type SimulationDockPayload = {
   controlsContent: ReactNode;
   runtimeContent: ReactNode;
+  chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
   collectiveSummary: CollectiveDynamicsSummary | null;

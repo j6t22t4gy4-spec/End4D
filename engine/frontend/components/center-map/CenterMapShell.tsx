@@ -9,7 +9,9 @@ import type { CenterMapShellProps, CenterMapVisibleLayers } from "@/components/c
 const LAYER_STATUS_LABELS: Record<keyof CenterMapVisibleLayers, string> = {
   zones: "zones",
   agents: "agents",
-  heat: "pressure",
+  interactions: "relations",
+  pressure: "pressure",
+  heat: "agent heat",
   shock: "shock",
   drift: "drift",
   anchors: "anchors",
@@ -22,6 +24,8 @@ function defaultVisibleLayers(mode: CenterMapShellProps["mode"]): CenterMapVisib
     return {
       zones: true,
       agents: false,
+      interactions: true,
+      pressure: true,
       heat: true,
       shock: true,
       drift: true,
@@ -33,6 +37,8 @@ function defaultVisibleLayers(mode: CenterMapShellProps["mode"]): CenterMapVisib
   return {
     zones: true,
     agents: true,
+    interactions: true,
+    pressure: true,
     heat: true,
     shock: false,
     drift: false,

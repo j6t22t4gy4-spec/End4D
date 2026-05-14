@@ -17,6 +17,7 @@ export type CenterMapSceneAgent = {
   radius: number;
   color: number;
   pressure: number;
+  heat: number;
   observerScore: number;
   selected: boolean;
   fractureSignal: boolean;

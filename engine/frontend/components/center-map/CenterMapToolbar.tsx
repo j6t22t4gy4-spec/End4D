@@ -24,7 +24,9 @@ const TOOLBAR_COPY = {
     layerLabels: {
       zones: "Zones",
       agents: "Agents",
-      heat: "Pressure",
+      interactions: "Relations",
+      pressure: "Pressure",
+      heat: "Agent heat",
       shock: "Shock",
       drift: "Drift",
       anchors: "Anchors",
@@ -34,7 +36,9 @@ const TOOLBAR_COPY = {
     layerDescriptions: {
       zones: "Zone terrain. Shows the underlying regions that organize agents and group pressure.",
       agents: "Individual agents. Hover or click to inspect a local social neighborhood.",
-      heat: "Collective pressure grid. Aggregates tension/policy pressure separately from individual agent colors.",
+      interactions: "Live intra-t relationship lines. Green is cooperative, amber is negative, red is hostile.",
+      pressure: "Collective pressure grid. Aggregates tension/policy pressure separately from individual agent colors.",
+      heat: "Agent distribution heatmap. Shows density/activity, not collective pressure.",
       shock: "Event ripples from timeline annotations and policy shocks.",
       drift: "Directional movement of zones and groups across the field.",
       anchors: "Review grounding pins tied to evidence, events, or specific agents.",
@@ -59,7 +63,9 @@ const TOOLBAR_COPY = {
     layerLabels: {
       zones: "Zone",
       agents: "에이전트",
-      heat: "압력",
+      interactions: "관계선",
+      pressure: "압력",
+      heat: "에이전트 Heat",
       shock: "충격",
       drift: "이동",
       anchors: "근거",
@@ -69,7 +75,9 @@ const TOOLBAR_COPY = {
     layerDescriptions: {
       zones: "Zone 지형입니다. 에이전트와 집단 압력이 놓이는 기본 지역 구조를 보여줍니다.",
       agents: "개별 에이전트입니다. 마우스를 올리거나 클릭하면 주변 사회 상태를 확인할 수 있습니다.",
-      heat: "집단 압력 그리드입니다. 에이전트 색상과 분리해 긴장/정책 압력이 모이는 위치를 보여줍니다.",
+      interactions: "t 내부 관계선입니다. 긍정은 초록, 부정은 주황, 적대는 빨강으로 표시합니다.",
+      pressure: "집단 압력 그리드입니다. 에이전트 색상과 분리해 긴장/정책 압력이 모이는 위치를 보여줍니다.",
+      heat: "에이전트 분포 히트맵입니다. 밀도/활동량을 보여주며 집단 압력과는 별개입니다.",
       shock: "타임라인 이벤트나 정책 충격이 퍼지는 파동입니다.",
       drift: "zone과 group이 어느 방향으로 이동하거나 흔들리는지 보여줍니다.",
       anchors: "리뷰 근거, 이벤트, 특정 에이전트와 연결된 위치 표시입니다.",

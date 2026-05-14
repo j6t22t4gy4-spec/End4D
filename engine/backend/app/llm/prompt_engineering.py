@@ -65,6 +65,35 @@ def _scenario_context(cell: Cell) -> str:
     return "none"
 
 
+def _agent_identity(cell: Cell) -> str:
+    attrs = dict(cell.persona_attrs or {})
+    name = str(attrs.get("agent_name") or attrs.get("display_name") or cell.persona_id or "").strip()
+    role = (cell.role_label or cell.role_key or "agent").strip() or "agent"
+    identity = str(attrs.get("identity_summary") or "").strip()
+    if identity:
+        return identity[:260]
+    if name:
+        return f"{name}({role})"
+    return role
+
+
+def _recent_dialogue_context(cell: Cell) -> str:
+    state = dict(cell.action_state or {})
+    peer = str(state.get("last_dialogue_peer_label") or "").strip()
+    summary = str(state.get("last_dialogue_summary") or "").strip()
+    if peer and summary:
+        return f"{peer}: {summary[:180]}"
+    for item in reversed(list(cell.behavior_log or [])[-10:]):
+        if str(item.get("event_type") or "") != "agent_dialogue":
+            continue
+        payload = dict(item.get("payload") or {})
+        peer_label = str(payload.get("peer_label") or payload.get("peer_id") or "").strip()
+        text = " ".join(str(item.get("summary") or "").split())
+        if text:
+            return f"{peer_label}: {text[:180]}" if peer_label else text[:180]
+    return "none"
+
+
 def build_thought_prompt(cell: Cell) -> str:
     language_label = "Korean" if get_ui_language() == "ko" else "English"
     ev = cell.emotion_vec
@@ -86,6 +115,7 @@ def build_thought_prompt(cell: Cell) -> str:
                 "agent_state",
                 _compact_json_like(
                     {
+                        "identity": _agent_identity(cell),
                         "role": role,
                         "energy": f"{cell.energy:.2f}",
                         "dominant_affect": label,
@@ -102,13 +132,16 @@ def build_thought_prompt(cell: Cell) -> str:
             ("scenario_context", _scenario_context(cell)),
             ("collective_context", _collective_prompt_state(cell)),
             ("recent_behavior", _recent_behavior_context(cell)),
+            ("recent_dialogue", _recent_dialogue_context(cell)),
             ("previous_thought", previous_thought[:220]),
             ("output_language", language_label),
             (
                 "grounding_rules",
                 (
-                    f"Write in {language_label}. Mention the agent's role/zone pressure, one concrete concern, "
-                    "and one next-move consideration. Avoid generic phrases like 'reassessing goals'."
+                    f"Write in {language_label} as the agent's private inner monologue, not as an analyst report. "
+                    "Use first-person or close third-person with the agent name. If recent_dialogue names a peer, "
+                    "explicitly mention what that peer said and how it changed the agent's next question or next move. "
+                    "Mention at most one pressure/zone fact, and avoid generic phrases like 'reassessing goals'."
                 ),
             ),
         ],
@@ -143,6 +176,7 @@ def build_action_prompt(cell: Cell) -> str:
                 "agent_state",
                 _compact_json_like(
                     {
+                        "identity": _agent_identity(cell),
                         "role": role,
                         "energy": f"{cell.energy:.2f}",
                         "dominant_emotion": label,
@@ -198,6 +232,7 @@ def build_dialogue_prompt(a: Cell, b: Cell, *, current_t: float) -> str:
                 "agent_a",
                 _compact_json_like(
                     {
+                        "identity": _agent_identity(a),
                         "role": role_a,
                         "energy": f"{a.energy:.2f}",
                         "action": dict(a.action_state),
@@ -211,6 +246,7 @@ def build_dialogue_prompt(a: Cell, b: Cell, *, current_t: float) -> str:
                 "agent_b",
                 _compact_json_like(
                     {
+                        "identity": _agent_identity(b),
                         "role": role_b,
                         "energy": f"{b.energy:.2f}",
                         "action": dict(b.action_state),
@@ -218,6 +254,15 @@ def build_dialogue_prompt(a: Cell, b: Cell, *, current_t: float) -> str:
                         "memory": build_memory_reflection(b)[:260],
                         "relation_to_a": relation_b,
                     }
+                ),
+            ),
+            (
+                "output_rules",
+                (
+                    "Return JSON only with summary_a, summary_b, alignment_delta, tension_delta, "
+                    "cooperation_delta, importance. summary_a and summary_b must sound like lived social memory: "
+                    "include the peer's name/identity and what was heard, promised, refused, or questioned. "
+                    "Do not write abstract phrases like 'dialogue updated local stance'."
                 ),
             ),
         ],

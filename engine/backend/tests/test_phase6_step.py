@@ -138,6 +138,9 @@ def test_scenario_director_roles_and_positions_shape_initial_cells():
 
     assert {"청년 세입자", "소형 임대인"}.issubset({cell.role_key for cell in cells})
     assert {"임차인 밀집지", "자산 보유 bloc", "정책 중재권"}.intersection({cell.zone_label for cell in cells})
+    assert all(cell.persona_attrs.get("agent_name") for cell in cells)
+    assert all("(" not in cell.role_label for cell in cells)
+    assert any("청년 세입자" in str(cell.persona_attrs.get("display_name")) for cell in cells)
     unique_positions = {(round(cell.x, 2), round(cell.y, 2)) for cell in cells}
     assert len(unique_positions) > 4
 
@@ -276,6 +279,64 @@ def test_snapshot_store_keeps_intra_t_scene_events():
     snap = store.get(1.0)
     assert snap is not None
     assert snap.scene_events[0]["scene_id"] == "scene-1"
+
+
+def test_dialogue_memory_feeds_human_thought_fallback():
+    from app.llm.dialogue import _apply_dialogue_to_cell
+    from app.llm.thought import _grounded_thought_fallback
+
+    a = Cell(
+        cell_id="a",
+        x=0,
+        y=0,
+        z=0,
+        t=0,
+        energy=50,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.zeros(256),
+        worldview_vec=np.zeros(384),
+        role_key="시장참여자",
+        role_label="시장참여자",
+        persona_attrs={"agent_name": "홍길동", "identity_summary": "홍길동(시장참여자) · 서울"},
+        action_state={"cooperation_bias": 0.5, "risk_tolerance": 0.5},
+    )
+    b = Cell(
+        cell_id="b",
+        x=1,
+        y=0,
+        z=0,
+        t=0,
+        energy=50,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.zeros(256),
+        worldview_vec=np.zeros(384),
+        role_key="저소득층 시민",
+        role_label="저소득층 시민",
+        persona_attrs={"agent_name": "김아무개", "identity_summary": "김아무개(저소득층 시민) · 임대료 부담"},
+        action_state={"last_thought_summary": "기본소득이 월세 부담을 줄일지 궁금하다."},
+    )
+
+    updated = _apply_dialogue_to_cell(
+        a,
+        {
+            "summary_a": "",
+            "summary_b": "",
+            "alignment_delta": 0.03,
+            "tension_delta": 0.01,
+            "cooperation_delta": 0.02,
+            "importance": 0.7,
+        },
+        side="a",
+        peer=b,
+        current_t=1.0,
+    )
+    thought = _grounded_thought_fallback(updated)
+
+    assert "홍길동" in thought
+    assert "김아무개" in thought
+    assert "들" in thought or "말" in thought
 
 
 def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):

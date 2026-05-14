@@ -48,25 +48,12 @@ export function CenterMapViewport({
   onClearSelection,
   onJumpToT,
 }: CenterMapViewportProps) {
-  const [renderTime, setRenderTime] = useState(0);
   const [transitionPhase, setTransitionPhase] = useState(0);
   const [pointerField, setPointerField] = useState({
     x: 0.5,
     y: 0.5,
     active: false,
   });
-
-  useEffect(() => {
-    let frame = 0;
-    let start = 0;
-    const tick = (ts: number) => {
-      if (!start) start = ts;
-      setRenderTime((ts - start) / 1000);
-      frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     let frame = 0;
@@ -111,7 +98,9 @@ export function CenterMapViewport({
           totalCells={totalCells}
           sampled={sampled}
           showZoneLayer={visibleLayers.zones}
-          showPressureField={visibleLayers.heat}
+          showPressureField={visibleLayers.pressure}
+          showHeatmapLayer={visibleLayers.heat}
+          showInteractionLayer={visibleLayers.interactions}
           showShockLayer={visibleLayers.shock}
           showAnchorLayer={visibleLayers.anchors}
           showDriftLayer={visibleLayers.drift}
@@ -121,7 +110,6 @@ export function CenterMapViewport({
           groundingItems={groundingItems}
           sceneEvents={sceneEvents}
           currentT={currentT}
-          renderTime={renderTime}
           transitionPhase={transitionPhase}
           pointerField={pointerField}
           selectedAgentId={selectedAgentId}

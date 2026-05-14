@@ -9,6 +9,7 @@ import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
 type SimulationDockPayload = {
   controlsContent: ReactNode;
   runtimeContent: ReactNode;
+  chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
   collectiveSummary: CollectiveDynamicsSummary | null;
@@ -42,8 +43,8 @@ export function RuntimeDock({
 }: RuntimeDockProps) {
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
-  const [dockView, setDockView] = useState<"controls" | "runtime" | "calls" | "thoughts">("runtime");
-  const simulationAvailable = Boolean(simulationDock && activeWorldId);
+  const [dockView, setDockView] = useState<"controls" | "runtime" | "calls" | "thoughts" | "chat">("runtime");
+  const simulationAvailable = Boolean(simulationDock);
   const simulationActive = activeView === "simulation";
   const controlsAvailable = simulationAvailable && simulationActive;
 
@@ -68,7 +69,7 @@ export function RuntimeDock({
         className="min-h-0 flex-1"
         bodyClassName="flex h-full min-h-0 flex-col gap-3"
       >
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-5 gap-2">
           <button
             type="button"
             className={`app-button ${dockView === "controls" ? "app-button--primary" : "app-button--ghost"} ${
@@ -102,6 +103,19 @@ export function RuntimeDock({
             onClick={() => setDockView("thoughts")}
           >
             {isKo ? "에이전트 스트림" : "Agent Stream"}
+          </button>
+          <button
+            type="button"
+            className={`app-button ${dockView === "chat" ? "app-button--primary" : "app-button--ghost"} ${
+              controlsAvailable ? "" : "cursor-not-allowed opacity-50"
+            }`}
+            onClick={() => {
+              if (controlsAvailable) setDockView("chat");
+            }}
+            aria-disabled={!controlsAvailable}
+            disabled={!controlsAvailable}
+          >
+            {isKo ? "챗" : "Chat"}
           </button>
         </div>
 
@@ -300,10 +314,13 @@ export function RuntimeDock({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-900">
-                            {agent.role_label ?? agent.role_key ?? "agent"}
+                            {formatAgentIdentity(agent)}
                           </p>
                           <p className="truncate text-xs text-slate-500">
-                            {(agent.persona_country ?? "unknown").toUpperCase()} · {agent.zone_label ?? agent.zone_id ?? "zone"}
+                            {formatAgentMeta(agent)}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500">
+                            {formatAgentIdentitySummary(agent)}
                           </p>
                         </div>
                         <div className="flex flex-col items-end gap-1">
@@ -315,22 +332,24 @@ export function RuntimeDock({
                           </span>
                         </div>
                       </div>
-                      {preview?.thought ? (
-                        <div className="mt-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            {isKo ? "생각" : "Thought"}
-                          </p>
-                          <p className="mt-1 text-xs leading-6 text-slate-700">{preview.thought}</p>
-                        </div>
-                      ) : null}
-                      {preview?.action ? (
-                        <div className="mt-2">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                            {isKo ? "액션" : "Action"}
-                          </p>
-                          <p className="mt-1 text-xs leading-6 text-slate-700">{preview.action}</p>
-                        </div>
-                      ) : null}
+                      <div className="mt-3 max-h-44 space-y-3 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 pr-2">
+                        {preview?.thought ? (
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              {isKo ? "생각" : "Thought"}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.thought}</p>
+                          </div>
+                        ) : null}
+                        {preview?.action ? (
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                              {isKo ? "액션" : "Action"}
+                            </p>
+                            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.action}</p>
+                          </div>
+                        ) : null}
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
                         <span className={continuityPillClass(preview?.continuityState)}>
                           {formatContinuity(preview, isKo)}
@@ -348,6 +367,14 @@ export function RuntimeDock({
                 <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각/액션 흔적이 없습니다." : "No thought or action traces are available for the current t yet."} />
               )}
             </div>
+          ) : null}
+
+          {dockView === "chat" ? (
+            simulationDock?.chatContent && simulationActive ? (
+              <div className="min-h-0">{simulationDock.chatContent}</div>
+            ) : (
+              <EmptyState text={isKo ? "시뮬레이션 world를 열면 챗 패널이 여기에 표시됩니다." : "Open a simulation world to show chat here."} />
+            )
           ) : null}
         </div>
       </AppPanel>
@@ -370,6 +397,39 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <p className="mt-1 break-all text-sm text-slate-900">{value}</p>
     </div>
   );
+}
+
+function formatAgentIdentity(agent: CellSnapshot): string {
+  const attrs = agent.persona_attrs ?? {};
+  const name = firstText(
+    attrs.agent_name,
+    attrs.display_name,
+    attrs.name,
+    agent.persona_id?.replace(/^persona[-_:]/, "")
+  );
+  const role = firstText(agent.role_label, agent.role_key, "agent");
+  return name && name !== role ? `${name}(${role})` : role;
+}
+
+function formatAgentMeta(agent: CellSnapshot): string {
+  const country = String(agent.persona_country ?? "unknown").toUpperCase();
+  const zone = firstText(agent.zone_label, agent.zone_id, "zone");
+  const attrs = agent.persona_attrs ?? {};
+  const socialRole = firstText(attrs.role, attrs.occupation, attrs.social_role);
+  return [country, socialRole, zone].filter(Boolean).join(" · ");
+}
+
+function formatAgentIdentitySummary(agent: CellSnapshot): string {
+  const attrs = agent.persona_attrs ?? {};
+  return firstText(attrs.identity_summary, attrs.persona_summary, agent.persona_text, agent.role_label, agent.role_key, "identity pending");
+}
+
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text && text !== "undefined" && text !== "null") return text;
+  }
+  return "";
 }
 
 function getAgentStreamPreview(agent: CellSnapshot): {

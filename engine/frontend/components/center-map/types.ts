@@ -16,6 +16,8 @@ export type CenterMapMode = "precision" | "swarm";
 export type CenterMapVisibleLayers = {
   zones: boolean;
   agents: boolean;
+  interactions: boolean;
+  pressure: boolean;
   heat: boolean;
   shock: boolean;
   drift: boolean;

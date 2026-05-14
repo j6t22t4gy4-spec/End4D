@@ -8,6 +8,7 @@ import { ScenarioTimeline } from "@/components/ScenarioTimeline/ScenarioTimeline
 import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import { CenterMapShell } from "@/components/center-map/CenterMapShell";
+import { ChatPanel } from "@/components/ChatPanel";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import type { SessionSummary } from "@/lib/api";
 import {
@@ -16,20 +17,15 @@ import {
   type SelectedBand,
   type SelectedZone,
 } from "@/components/SimulationInspectorPanel";
-import {
-  TimelineBookmarks,
-  type TimelineMarker,
-} from "@/components/TimelineBookmarks";
+import type { TimelineMarker } from "@/components/TimelineBookmarks";
 import {
   createWorld,
-  diffRuntimeDataPack,
   getLocalRuntimeStatus,
   getReviewSummary,
   getWorld,
   installRuntimeDataPack,
   listSnapshotTimes,
   pinRuntimeDataPack,
-  rollbackRuntimeDataPack,
   getSnapshotAtT,
   sampleCellsForVisualization,
   syncDataPacks,
@@ -39,7 +35,6 @@ import {
   type CellSnapshot,
   type CollectiveDynamicsListItem,
   type CollectiveDynamicsSummary,
-  type DataPackDiffResponse,
   type GodModePayload,
   type LocalRuntimeStatus,
   type ReviewSummaryResponse,
@@ -153,6 +148,7 @@ export default function GodView({
   onDockPayloadChange?: (payload: {
     controlsContent: ReactNode;
     runtimeContent: ReactNode;
+    chatContent?: ReactNode;
     thoughtCells: CellSnapshot[];
     currentT: number;
     collectiveSummary: CollectiveDynamicsSummary | null;
@@ -230,8 +226,6 @@ export default function GodView({
   const [installSourcePath, setInstallSourcePath] = useState("");
   const [pinVersion, setPinVersion] = useState("2026.05");
   const [packActionStatus, setPackActionStatus] = useState<string | null>(null);
-  const [selectedHistoryIndex, setSelectedHistoryIndex] = useState<number | null>(null);
-  const [packDiffPreview, setPackDiffPreview] = useState<DataPackDiffResponse | null>(null);
   const [reviewInjectPreset, setReviewInjectPreset] = useState<{
     label: string;
     t: number;
@@ -360,20 +354,6 @@ export default function GodView({
   const selectedPack = useMemo(
     () => runtimeStatus?.packs.find((pack) => pack.pack_id === selectedPackId) ?? runtimeStatus?.packs[0] ?? null,
     [runtimeStatus, selectedPackId]
-  );
-  const selectedHistoryEntry = useMemo(() => {
-    if (!selectedPack || selectedHistoryIndex == null || !Array.isArray(selectedPack.history)) return null;
-    return (selectedPack.history[selectedHistoryIndex] as Record<string, unknown> | undefined) ?? null;
-  }, [selectedHistoryIndex, selectedPack]);
-  const verificationHistory = useMemo(
-    () =>
-      Array.isArray(selectedPack?.history)
-        ? selectedPack.history.filter((item) => {
-            const action = String((item as Record<string, unknown>).action ?? "");
-            return action === "verify" || action === "validate";
-          })
-        : [],
-    [selectedPack]
   );
   const llmRuntime = runtimeStatus?.llm_runtime ?? null;
   const currentLlmConfigKey = useMemo(
@@ -524,11 +504,6 @@ export default function GodView({
       window.clearInterval(timer);
     };
   }, [applyRuntimePayload, usesExternalRuntime]);
-
-  useEffect(() => {
-    setSelectedHistoryIndex(null);
-    setPackDiffPreview(null);
-  }, [selectedPackId]);
 
   const currentReviewRevisionKey = useMemo(() => {
     if (!worldId || availableT.length === 0) return null;
@@ -770,23 +745,27 @@ export default function GodView({
     liveObserver != null &&
     Math.round(Number(liveObserver?.t ?? -1)) === Math.round(currentT) &&
     (liveObserver?.cells?.length ?? 0) > 0;
+  const shouldUseLiveSceneStream =
+    Boolean(isRunning) &&
+    liveSceneStream.currentT != null &&
+    Math.round(Number(liveSceneStream.currentT)) === Math.round(currentT);
 
   const renderedSnapshotCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : snapshotCells;
   const renderedVisibleCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : visibleCells;
-  const renderedSceneEvents = shouldUseLiveObserver
+  const renderedSceneEvents = shouldUseLiveSceneStream
     ? liveSceneStream.events
     : snapshotSceneEvents.slice(0, Math.max(0, Math.min(snapshotSceneEvents.length, sceneReplayIndex)));
-  const renderedSceneMetrics = shouldUseLiveObserver ? liveSceneStream.metrics : snapshotSceneMetrics;
+  const renderedSceneMetrics = shouldUseLiveSceneStream ? liveSceneStream.metrics : snapshotSceneMetrics;
 
   useEffect(() => {
-    if (shouldUseLiveObserver || sceneReplayPaused || snapshotSceneEvents.length === 0) return;
+    if (shouldUseLiveSceneStream || sceneReplayPaused || snapshotSceneEvents.length === 0) return;
     if (sceneReplayIndex >= snapshotSceneEvents.length) return;
     const delay = Math.max(120, 520 / Math.max(0.5, sceneReplaySpeed));
     const timer = window.setTimeout(() => {
       setSceneReplayIndex((value) => Math.min(snapshotSceneEvents.length, value + 1));
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [sceneReplayIndex, sceneReplayPaused, sceneReplaySpeed, shouldUseLiveObserver, snapshotSceneEvents.length]);
+  }, [sceneReplayIndex, sceneReplayPaused, sceneReplaySpeed, shouldUseLiveSceneStream, snapshotSceneEvents.length]);
   const renderedVisualStats = shouldUseLiveObserver
     ? {
         totalCells: liveObserver?.totalCells ?? renderedVisibleCells.length,
@@ -955,6 +934,104 @@ export default function GodView({
   const controlsDockContent = useMemo(
     () => (
       <div className="space-y-3">
+        <GodModePrepPanel
+          locale={locale}
+          enabled={godModeEnabled}
+          onEnabledChange={setGodModeEnabled}
+          godRoleMode={godRoleMode}
+          onGodRoleModeChange={setGodRoleMode}
+          customTMax={customTMax}
+          onCustomTMaxChange={setCustomTMax}
+          customInitialCells={customInitialCells}
+          onCustomInitialCellsChange={setCustomInitialCells}
+          customRoles={customRoles}
+          onCustomRolesChange={setCustomRoles}
+          customCountry={customCountry}
+          onCustomCountryChange={setCustomCountry}
+          customNutrient={customNutrient}
+          onCustomNutrientChange={setCustomNutrient}
+          customTUnit={customTUnit}
+          onCustomTUnitChange={setCustomTUnit}
+          zoneCount={zoneCount}
+          onZoneCountChange={setZoneCount}
+          zoneLayout={zoneLayout}
+          onZoneLayoutChange={setZoneLayout}
+          zoneSpacing={zoneSpacing}
+          onZoneSpacingChange={setZoneSpacing}
+          zoneInfluenceStep={zoneInfluenceStep}
+          onZoneInfluenceStepChange={setZoneInfluenceStep}
+          zoneFrictionStep={zoneFrictionStep}
+          onZoneFrictionStepChange={setZoneFrictionStep}
+          zMode={zMode}
+          onZModeChange={setZMode}
+          zWeight={zWeight}
+          onZWeightChange={setZWeight}
+          zScale={zScale}
+          onZScaleChange={setZScale}
+        />
+        <DataPackPrepPanel
+          locale={locale}
+          runtimeLoading={runtimeLoading}
+          runtimeError={runtimeError}
+          runtimeStatus={runtimeStatus}
+          selectedPackId={selectedPack?.pack_id ?? ""}
+          selectedPack={selectedPack}
+          onSelectedPackIdChange={setSelectedPackId}
+          installSourcePath={installSourcePath}
+          onInstallSourcePathChange={setInstallSourcePath}
+          pinVersion={pinVersion}
+          onPinVersionChange={setPinVersion}
+          packActionStatus={packActionStatus}
+          onSync={async () => {
+            setPackActionStatus("syncing manifest…");
+            try {
+              await syncDataPacks();
+              await reloadRuntimeStatus();
+              setPackActionStatus("manifest synced");
+            } catch (reason) {
+              setPackActionStatus(reason instanceof Error ? reason.message : "sync failed");
+            }
+          }}
+          onVerify={async () => {
+            if (!selectedPack) return;
+            setPackActionStatus("verifying pack…");
+            try {
+              await verifyRuntimeDataPack(selectedPack.pack_id);
+              await reloadRuntimeStatus();
+              setPackActionStatus("verification complete");
+            } catch (reason) {
+              setPackActionStatus(reason instanceof Error ? reason.message : "verify failed");
+            }
+          }}
+          onPin={async () => {
+            if (!selectedPack || !pinVersion.trim()) return;
+            setPackActionStatus("pinning pack…");
+            try {
+              await pinRuntimeDataPack(selectedPack.pack_id, pinVersion.trim());
+              await reloadRuntimeStatus();
+              setPackActionStatus("pin updated");
+            } catch (reason) {
+              setPackActionStatus(reason instanceof Error ? reason.message : "pin failed");
+            }
+          }}
+          onInstall={async () => {
+            if (!selectedPack || !installSourcePath.trim()) return;
+            setPackActionStatus("installing pack…");
+            try {
+              await installRuntimeDataPack({
+                pack_id: selectedPack.pack_id,
+                source_path: installSourcePath.trim(),
+                version: pinVersion.trim() || selectedPack.version,
+                dataset_id: selectedPack.dataset_id,
+                source_url: selectedPack.source_url,
+              });
+              await reloadRuntimeStatus();
+              setPackActionStatus("install complete");
+            } catch (reason) {
+              setPackActionStatus(reason instanceof Error ? reason.message : "install failed");
+            }
+          }}
+        />
         <RunPanel
           locale={locale}
           worldId={worldId}
@@ -1001,32 +1078,6 @@ export default function GodView({
             await handleInjected();
           }}
         />
-        <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{isKo ? "t 시점 변경" : "Time Step Control"}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {isKo ? "현재 관측 중인 시점을 즉시 옮깁니다." : "Move the currently observed simulation time instantly."}
-              </p>
-            </div>
-            <span className="text-xs text-slate-500">
-              {availableT.length} {isKo ? "프레임" : "frames"}
-            </span>
-          </div>
-          <div className="space-y-3">
-            <TimeSlider t={currentT} tMin={tSliderMin} tMax={tSliderMax} step={1} onChange={setCurrentT} disabled={sliderDisabled} />
-            <TimelineBookmarks
-              t={currentT}
-              tMin={tSliderMin}
-              tMax={Math.max(tSliderMin + 1, tSliderMax)}
-              markers={[...timelineMarkers, ...reviewMarkers]}
-              bookmarks={bookmarks}
-              onJump={setCurrentT}
-              onAddBookmark={addBookmark}
-              onRemoveBookmark={removeBookmark}
-            />
-          </div>
-        </div>
         <ScenarioTimeline
           locale={locale}
           worldId={worldId}
@@ -1049,34 +1100,63 @@ export default function GodView({
       </div>
     ),
     [
-      addBookmark,
-      availableT.length,
-      bookmarks,
       chartRefreshKey,
+      customCountry,
+      customInitialCells,
+      customNutrient,
+      customRoles,
+      customTMax,
+      customTUnit,
       currentT,
+      godModeEnabled,
+      godRoleMode,
       handleInjected,
       handleRunStream,
       handleRunSync,
+      installSourcePath,
       isKo,
       isRunning,
       liveCellCount,
       liveSceneStream,
       liveT,
       locale,
+      packActionStatus,
+      pinVersion,
+      reloadRuntimeStatus,
       reviewInjectPreset,
       reviewSummary,
-      reviewMarkers,
-      sliderDisabled,
-      timelineMarkers,
-      tSliderMax,
-      tSliderMin,
+      runtimeError,
+      runtimeLoading,
+      runtimeStatus,
+      selectedPack,
       worldId,
+      zMode,
+      zScale,
+      zWeight,
+      zoneCount,
+      zoneFrictionStep,
+      zoneInfluenceStep,
+      zoneLayout,
+      zoneSpacing,
     ]
   );
 
   const runtimeDockContent = useMemo(
     () => (
       <div className="space-y-3">
+        <CompactTimeControl
+          locale={locale}
+          t={currentT}
+          tMin={tSliderMin}
+          tMax={tSliderMax}
+          frameCount={availableT.length}
+          disabled={sliderDisabled}
+          markers={[...timelineMarkers, ...reviewMarkers]}
+          bookmarks={bookmarks}
+          onJump={setCurrentT}
+          onAddBookmark={addBookmark}
+          onRemoveBookmark={removeBookmark}
+        />
         <div className="grid gap-3">
           <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-700">
             <input type="checkbox" checked={llmEnabled} onChange={(event) => setLlmEnabled(event.target.checked)} />
@@ -1272,7 +1352,11 @@ export default function GodView({
       </div>
     ),
     [
+      addBookmark,
       availableModelPresets,
+      availableT.length,
+      bookmarks,
+      currentT,
       currentLlmConfigKey,
       handleSaveLlmConfig,
       handleTestLlmConnection,
@@ -1297,25 +1381,45 @@ export default function GodView({
       llmTaskRows,
       locale,
       reviewError,
+      reviewMarkers,
       runtimeStatus?.llm?.model,
       runtimeStatus?.llm?.provider,
+      sliderDisabled,
       taskBudgetDraft,
       taskPriorityDraft,
+      timelineMarkers,
+      tSliderMax,
+      tSliderMin,
       llmTestResult,
     ]
+  );
+
+  const chatDockContent = useMemo(
+    () => (
+      <ChatPanel
+        locale={locale}
+        worldId={worldId}
+        currentT={currentT}
+        cells={renderedSnapshotCells}
+        selectedAgent={selectedAgent}
+        selectedZone={selectedZone}
+      />
+    ),
+    [currentT, locale, renderedSnapshotCells, selectedAgent, selectedZone, worldId]
   );
 
   useEffect(() => {
     onDockPayloadChange?.({
       controlsContent: controlsDockContent,
       runtimeContent: runtimeDockContent,
+      chatContent: chatDockContent,
       thoughtCells: renderedSnapshotCells,
       currentT,
       collectiveSummary: renderedCollectiveSummary,
       collectiveSignal: renderedCollectiveSignal,
       connectionState: llmConnectionState,
     });
-  }, [controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent]);
+  }, [chatDockContent, controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent]);
 
 
   useEffect(() => {
@@ -1444,15 +1548,7 @@ export default function GodView({
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="app-button app-button--secondary"
-            onClick={() => onOpenWorkbenchView?.("data-packs")}
-          >
-            {strings.openDataPacks}
-          </button>
-        </div>
+        <div className="hidden" />
       </AppPanel>
 
       {stage === "setup" && (
@@ -1463,16 +1559,6 @@ export default function GodView({
               title={isKo ? "시나리오 생성" : "Scenario Genesis"}
               subtitle={isKo ? "프롬프트, 페르소나 팩, 월드 시드 구성을 먼저 정합니다" : "Prompt, persona packs, and world seed configuration"}
               bodyClassName="space-y-4"
-              action={
-                <label className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={godModeEnabled}
-                    onChange={(e) => setGodModeEnabled(e.target.checked)}
-                  />
-                  {isKo ? "갓 모드" : "God Mode"}
-                </label>
-              }
             >
               <label className="flex flex-col gap-2">
                 <span className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
@@ -1558,116 +1644,6 @@ export default function GodView({
                   </button>
                 )}
               </div>
-              {godModeEnabled && (
-                <div className="grid gap-3 rounded-[22px] border border-slate-200 bg-slate-50/90 p-4">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      t_max
-                      <input value={customTMax} onChange={(e) => setCustomTMax(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "초기 에이전트 수" : "initial cells"}
-                      <input value={customInitialCells} onChange={(e) => setCustomInitialCells(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
-                      {isKo ? "역할 선택 방식" : "role selection mode"}
-                      <select
-                        value={godRoleMode}
-                        onChange={(e) => setGodRoleMode(e.target.value as "auto" | "manual")}
-                        className="app-input"
-                      >
-                        <option value="auto">{isKo ? "자동 (페르소나 기반)" : "Auto (from personas)"}</option>
-                        <option value="manual">{isKo ? "수동 입력" : "Manual"}</option>
-                      </select>
-                    </label>
-                    {godRoleMode === "manual" ? (
-                      <label className="flex flex-col gap-1 text-xs text-slate-500 md:col-span-2">
-                        {isKo ? "역할 목록 (쉼표 구분)" : "roles (comma separated)"}
-                        <input value={customRoles} onChange={(e) => setCustomRoles(e.target.value)} className="app-input" />
-                      </label>
-                    ) : null}
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "페르소나 국가" : "persona country"}
-                      <input value={customCountry} onChange={(e) => setCustomCountry(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "단계당 자원" : "nutrient / step"}
-                      <input value={customNutrient} onChange={(e) => setCustomNutrient(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "시간 단위" : "time unit"}
-                      <select value={customTUnit} onChange={(e) => setCustomTUnit(e.target.value)} className="app-input">
-                        <option value="hour">hour</option>
-                        <option value="day">day</option>
-                        <option value="month">month</option>
-                        <option value="year">year</option>
-                        <option value="decade_scale">decade_scale</option>
-                      </select>
-                    </label>
-                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
-                      {godRoleMode === "auto"
-                        ? isKo
-                          ? "페르소나 분포를 기준으로 역할 목록을 자동 구성합니다."
-                          : "Role catalog is derived automatically from persona distribution."
-                        : isKo
-                          ? "수동 입력한 역할 목록을 그대로 사용합니다."
-                          : "The manual role catalog is used as entered."}
-                    </div>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "구역 수" : "zone count"}
-                      <input value={zoneCount} onChange={(e) => setZoneCount(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "구역 레이아웃" : "zone layout"}
-                      <select value={zoneLayout} onChange={(e) => setZoneLayout(e.target.value)} className="app-input">
-                        <option value="grid">grid</option>
-                        <option value="bands">bands</option>
-                        <option value="ring">ring</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "구역 간격" : "zone spacing"}
-                      <input value={zoneSpacing} onChange={(e) => setZoneSpacing(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "영향력 단계치" : "influence step"}
-                      <input value={zoneInfluenceStep} onChange={(e) => setZoneInfluenceStep(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "마찰 단계치" : "friction step"}
-                      <input value={zoneFrictionStep} onChange={(e) => setZoneFrictionStep(e.target.value)} className="app-input" />
-                    </label>
-                  </div>
-                  <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3 md:grid-cols-3">
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "z 모드" : "z mode"}
-                      <select value={zMode} onChange={(e) => setZMode(e.target.value)} className="app-input">
-                        <option value="hybrid">hybrid</option>
-                        <option value="wealth">wealth</option>
-                        <option value="influence">influence</option>
-                        <option value="policy">policy</option>
-                        <option value="memory">memory</option>
-                        <option value="flat">flat</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "z 가중치" : "z weight"}
-                      <input value={zWeight} onChange={(e) => setZWeight(e.target.value)} className="app-input" />
-                    </label>
-                    <label className="flex flex-col gap-1 text-xs text-slate-500">
-                      {isKo ? "z 스케일" : "z scale"}
-                      <input value={zScale} onChange={(e) => setZScale(e.target.value)} className="app-input" />
-                    </label>
-                    <p className="md:col-span-3 rounded-2xl bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
-                      {isKo
-                        ? "`z`는 메시 높이가 아니라 사회적 고도로 취급됩니다. `weight`는 상호작용 거리에서 고도가 얼마나 반영되는지, `scale`은 필드 진폭을 얼마나 크게 둘지 조절합니다."
-                        : "`z` is treated as social elevation, not mesh height. Use `weight` to control how much elevation affects interaction distance, and `scale` to control field amplitude."}
-                    </p>
-                  </div>
-                </div>
-              )}
               {worldId && (
                 <div className="grid gap-2">
                   <p className="rounded-2xl bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-500">
@@ -1680,288 +1656,6 @@ export default function GodView({
               )}
             </AppPanel>
 
-            <AppPanel
-              title={isKo ? "데이터 팩 라이프사이클" : "Data Pack Lifecycle"}
-              subtitle={isKo ? "장기 시뮬레이션 전에 페르소나 팩 상태를 준비합니다" : "Prepare persona packs before long-run simulation"}
-              bodyClassName="space-y-3"
-            >
-              {runtimeLoading ? <p className="text-sm text-slate-500">{isKo ? "런타임 상태 불러오는 중…" : "Runtime status loading…"}</p> : null}
-              {runtimeError ? (
-                <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                  runtime/data-pack 상태를 읽지 못했습니다: {runtimeError}
-                </p>
-              ) : null}
-              {runtimeStatus ? (
-                <>
-                  <div className="grid gap-2 md:grid-cols-[220px_minmax(0,1fr)]">
-                    <select
-                      className="app-input"
-                      value={selectedPack?.pack_id ?? ""}
-                      onChange={(event) => setSelectedPackId(event.target.value)}
-                    >
-                      {runtimeStatus.packs.map((pack) => (
-                        <option key={pack.pack_id} value={pack.pack_id}>
-                          {pack.pack_id} · {pack.country} · {pack.version}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="grid gap-2 md:grid-cols-3">
-                      <MetricChip label={isKo ? "설치됨" : "installed"} value={selectedPack?.installed ? (isKo ? "예" : "yes") : isKo ? "아니오" : "no"} />
-                      <MetricChip
-                        label={isKo ? "고정 버전" : "pinned"}
-                        value={selectedPack?.pinned ? String(selectedPack?.pinned_version || (isKo ? "예" : "yes")) : isKo ? "아니오" : "no"}
-                      />
-                      <MetricChip
-                        label={isKo ? "생성 준비" : "genesis ready"}
-                        value={String((selectedPack?.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "unknown")}
-                      />
-                    </div>
-                  </div>
-                  {selectedPack ? (
-                    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                      <p className="text-sm leading-6 text-slate-600">
-                        {selectedPack.dataset_id || selectedPack.description}
-                      </p>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <MetricChip
-                          label="schema"
-                          value={String((selectedPack.verification as Record<string, unknown> | undefined)?.schema_health ?? "unknown")}
-                        />
-                        <MetricChip
-                          label="country consistency"
-                          value={String((selectedPack.verification as Record<string, unknown> | undefined)?.country_consistency ?? "n/a")}
-                        />
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <label className="flex flex-col gap-1 text-xs text-slate-500">
-                          {isKo ? "설치 소스 경로" : "install source path"}
-                          <input
-                            value={installSourcePath}
-                            onChange={(event) => setInstallSourcePath(event.target.value)}
-                            className="app-input"
-                            placeholder="/absolute/path/to/personas.jsonl"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-1 text-xs text-slate-500">
-                          {isKo ? "고정할 버전" : "pin version"}
-                          <input
-                            value={pinVersion}
-                            onChange={(event) => setPinVersion(event.target.value)}
-                            className="app-input"
-                            placeholder="2026.05"
-                          />
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="app-button app-button--ghost"
-                          onClick={async () => {
-                            setPackActionStatus("syncing manifest…");
-                            try {
-                              await syncDataPacks();
-                              await reloadRuntimeStatus();
-                              setPackActionStatus("manifest synced");
-                            } catch (reason) {
-                              setPackActionStatus(reason instanceof Error ? reason.message : "sync failed");
-                            }
-                          }}
-                        >
-                          {isKo ? "매니페스트 동기화" : "Sync Manifest"}
-                        </button>
-                        <button
-                          type="button"
-                          className="app-button app-button--ghost"
-                          onClick={async () => {
-                            if (!selectedPack) return;
-                            setPackActionStatus("verifying pack…");
-                            try {
-                              await verifyRuntimeDataPack(selectedPack.pack_id);
-                              await reloadRuntimeStatus();
-                              setPackActionStatus("verification complete");
-                            } catch (reason) {
-                              setPackActionStatus(reason instanceof Error ? reason.message : "verify failed");
-                            }
-                          }}
-                        >
-                          {isKo ? "검증" : "Verify"}
-                        </button>
-                        <button
-                          type="button"
-                          className="app-button app-button--ghost"
-                          onClick={async () => {
-                            if (!selectedPack || !pinVersion.trim()) return;
-                            setPackActionStatus("pinning pack…");
-                            try {
-                              await pinRuntimeDataPack(selectedPack.pack_id, pinVersion.trim());
-                              await reloadRuntimeStatus();
-                              setPackActionStatus("pin updated");
-                            } catch (reason) {
-                              setPackActionStatus(reason instanceof Error ? reason.message : "pin failed");
-                            }
-                          }}
-                        >
-                          {isKo ? "버전 고정" : "Pin Version"}
-                        </button>
-                        <button
-                          type="button"
-                          className="app-button app-button--ghost"
-                          onClick={async () => {
-                            if (!selectedPack || !installSourcePath.trim()) return;
-                            setPackActionStatus("installing pack…");
-                            try {
-                              await installRuntimeDataPack({
-                                pack_id: selectedPack.pack_id,
-                                source_path: installSourcePath.trim(),
-                                version: pinVersion.trim() || selectedPack.version,
-                                dataset_id: selectedPack.dataset_id,
-                                source_url: selectedPack.source_url,
-                              });
-                              await reloadRuntimeStatus();
-                              setPackActionStatus("install complete");
-                            } catch (reason) {
-                              setPackActionStatus(reason instanceof Error ? reason.message : "install failed");
-                            }
-                          }}
-                        >
-                          {isKo ? "설치 / 새로고침" : "Install / Refresh"}
-                        </button>
-                      </div>
-                      {Array.isArray(selectedPack.history) && selectedPack.history.length ? (
-                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            {isKo ? "라이프사이클 이력" : "Lifecycle History"}
-                          </p>
-                          {selectedPack.history
-                            .slice()
-                            .reverse()
-                            .slice(0, 6)
-                            .map((item, index) => {
-                              const historyIndex = selectedPack.history
-                                ? selectedPack.history.length - 1 - index
-                                : index;
-                              return (
-                                <div key={`${historyIndex}-${String(item.at ?? "at")}`} className="session-thread-card">
-                                  <div className="session-thread-card__header">
-                                    <p className="session-thread-card__title">{String(item.action ?? "event")}</p>
-                                    <span className="session-thread-card__meta">{String(item.at ?? "")}</span>
-                                  </div>
-                                  <p className="session-thread-card__prompt">
-                                    {String((item.detail as Record<string, unknown> | undefined)?.version ?? (item.detail as Record<string, unknown> | undefined)?.restored_version ?? "")}
-                                  </p>
-                                  <div className="session-thread-card__actions">
-                                    <button
-                                      type="button"
-                                      className="app-button app-button--ghost"
-                                      onClick={async () => {
-                                        if (!selectedPack) return;
-                                        setPackActionStatus("loading diff preview…");
-                                        setSelectedHistoryIndex(historyIndex);
-                                        try {
-                                          const preview = await diffRuntimeDataPack(selectedPack.pack_id, historyIndex);
-                                          setPackDiffPreview(preview);
-                                          setPackActionStatus("diff preview ready");
-                                        } catch (reason) {
-                                          setPackActionStatus(
-                                            reason instanceof Error ? reason.message : "diff preview failed"
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      {isKo ? "미리보기" : "Preview"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="app-button app-button--ghost"
-                                      onClick={async () => {
-                                        if (!selectedPack) return;
-                                        setPackActionStatus("rolling back pack…");
-                                        try {
-                                          await rollbackRuntimeDataPack(selectedPack.pack_id, historyIndex);
-                                          await reloadRuntimeStatus();
-                                          setPackActionStatus("rollback complete");
-                                        } catch (reason) {
-                                          setPackActionStatus(
-                                            reason instanceof Error ? reason.message : "rollback failed"
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      {isKo ? "롤백" : "Rollback"}
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      ) : null}
-                      {selectedHistoryEntry ? (
-                        <div className="grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">
-                            {isKo ? "버전 차이 미리보기" : "Version Diff Preview"}
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            {isKo ? "선택한 이력 항목" : "selected history entry"}: {String(selectedHistoryEntry.action ?? "event")} · {String(selectedHistoryEntry.at ?? "")}
-                          </p>
-                          {packDiffPreview?.changes.length ? (
-                            <div className="grid gap-2">
-                              {packDiffPreview.changes.map((item) => (
-                                <div key={String(item.field ?? "field")} className="session-thread-card">
-                                  <div className="session-thread-card__header">
-                                    <p className="session-thread-card__title">{String(item.field ?? "field")}</p>
-                                  </div>
-                                  <p className="session-thread-card__prompt">
-                                    current: {String(item.current ?? "n/a")} {"->"} rollback: {String(item.rollback ?? "n/a")}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-500">{isKo ? "현재 상태와 달라지는 주요 필드가 없습니다." : "No major fields change from the current state."}</p>
-                          )}
-                          {packDiffPreview?.verification_changes.length ? (
-                            <div className="grid gap-2">
-                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                                {isKo ? "검증 차이" : "Verification Delta"}
-                              </p>
-                              {packDiffPreview.verification_changes.map((item) => (
-                                <div key={`verify-${String(item.field ?? "field")}`} className="session-thread-card">
-                                  <div className="session-thread-card__header">
-                                    <p className="session-thread-card__title">{String(item.field ?? "field")}</p>
-                                  </div>
-                                  <p className="session-thread-card__prompt">
-                                    current: {String(item.current ?? "n/a")} {"->"} rollback: {String(item.rollback ?? "n/a")}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {verificationHistory.length ? (
-                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            {isKo ? "검증 타임라인" : "Verification Timeline"}
-                          </p>
-                          {verificationHistory.slice().reverse().slice(0, 4).map((item, index) => (
-                            <div key={`${index}-${String((item as Record<string, unknown>).at ?? "")}`} className="session-thread-card">
-                              <div className="session-thread-card__header">
-                                <p className="session-thread-card__title">{String((item as Record<string, unknown>).action ?? "verify")}</p>
-                                <span className="session-thread-card__meta">{String((item as Record<string, unknown>).at ?? "")}</span>
-                              </div>
-                              <p className="session-thread-card__prompt">
-                                schema {String(((item as Record<string, unknown>).detail as Record<string, unknown> | undefined)?.schema_health ?? "n/a")} · ready {String(((item as Record<string, unknown>).detail as Record<string, unknown> | undefined)?.ready_for_genesis ?? "n/a")}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {packActionStatus ? <p className="text-xs text-slate-500">{packActionStatus}</p> : null}
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </AppPanel>
             </div>
 
             <PersonaPreview worldId={worldId} refreshKey={personaRefreshKey} />
@@ -1973,8 +1667,8 @@ export default function GodView({
               bodyClassName="grid gap-2 md:grid-cols-2"
             >
               <SetupItem index="01" title={isKo ? "시나리오 프롬프트" : "Scenario Prompt"} body={isKo ? "장기 정책/시장/사회 시나리오를 먼저 정의합니다." : "Define the long-run policy, market, and social scenario first."} />
-              <SetupItem index="02" title={isKo ? "페르소나와 데이터 팩" : "Persona & Data Packs"} body={isKo ? "국가별 persona pack과 source attribution을 확인합니다." : "Check country packs and source attribution before genesis."} />
-              <SetupItem index="03" title={isKo ? "생성 제어" : "Genesis Controls"} body={isKo ? "필요하면 God Mode에서 zone/z/role seed를 미세 조정합니다." : "Use God Mode to fine-tune zone, z, and role seeds when needed."} />
+              <SetupItem index="02" title={isKo ? "페르소나와 데이터 팩" : "Persona & Data Packs"} body={isKo ? "우측 실행 메뉴에서 persona pack 준비 상태를 확인합니다." : "Check persona pack readiness from the right run menu."} />
+              <SetupItem index="03" title={isKo ? "생성 제어" : "Genesis Controls"} body={isKo ? "우측 실행 메뉴의 God mode에서 zone/z/role seed를 미세 조정합니다." : "Fine-tune zone, z, and role seeds from God mode in the right run menu."} />
               <SetupItem index="04" title={isKo ? "실행 단계 진입" : "Enter Run Stage"} body={isKo ? "world가 생성되면 Run 단계에서 실행·주입·탐색을 시작합니다." : "Once the world is created, start execution, injection, and exploration in Run."} />
             </AppPanel>
 
@@ -2243,6 +1937,342 @@ function splitRoles(value: string): string[] | undefined {
     .map((item) => item.trim())
     .filter(Boolean);
   return roles.length ? roles : undefined;
+}
+
+function CompactTimeControl({
+  locale,
+  t,
+  tMin,
+  tMax,
+  frameCount,
+  disabled,
+  markers,
+  bookmarks,
+  onJump,
+  onAddBookmark,
+  onRemoveBookmark,
+}: {
+  locale: UiLocale;
+  t: number;
+  tMin: number;
+  tMax: number;
+  frameCount: number;
+  disabled: boolean;
+  markers: TimelineMarker[];
+  bookmarks: TimelineMarker[];
+  onJump: (t: number) => void;
+  onAddBookmark: () => void;
+  onRemoveBookmark: (key: string) => void;
+}) {
+  const isKo = locale === "ko";
+  const span = Math.max(1, tMax - tMin);
+  const safeMax = Math.max(tMin + 1, tMax);
+  return (
+    <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-900">
+          {isKo ? "시간 t" : "time t"} <span className="font-mono">{t.toFixed(1)}/{frameCount}{isKo ? "프레임" : " frames"}</span>
+        </p>
+        <div className="flex items-center gap-1">
+          <button type="button" className="app-button app-button--ghost !px-3 !py-2" onClick={onAddBookmark} disabled={disabled}>
+            {isKo ? "북마크" : "Bookmark"}
+          </button>
+          <details className="relative">
+            <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">
+              ▾
+            </summary>
+            <div className="absolute right-0 z-30 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {isKo ? "북마크" : "Bookmarks"}
+              </p>
+              {bookmarks.length ? (
+                <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                  {bookmarks.map((bookmark) => (
+                    <div key={bookmark.key} className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2 py-2">
+                      <button type="button" className="min-w-0 truncate text-left text-xs font-semibold text-slate-700" onClick={() => onJump(bookmark.t)}>
+                        {bookmark.label}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-full px-2 text-sm text-slate-400 hover:bg-white hover:text-rose-600"
+                        onClick={() => onRemoveBookmark(bookmark.key)}
+                        aria-label={`Remove ${bookmark.label}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">{isKo ? "저장된 북마크가 없습니다." : "No bookmarks yet."}</p>
+              )}
+            </div>
+          </details>
+        </div>
+      </div>
+      <TimeSlider t={t} tMin={tMin} tMax={safeMax} step={1} onChange={onJump} disabled={disabled} />
+      <div className="relative mt-2 h-4 rounded-full bg-slate-100">
+        {markers.map((marker) => (
+          <button
+            key={marker.key}
+            type="button"
+            className={`absolute top-1 h-2 w-2 -translate-x-1/2 rounded-full ${
+              marker.kind === "inject"
+                ? "bg-amber-500"
+                : marker.kind === "annotation"
+                  ? "bg-sky-500"
+                  : marker.kind === "bookmark"
+                    ? "bg-slate-900"
+                    : "bg-slate-400"
+            }`}
+            style={{ left: `${((marker.t - tMin) / span) * 100}%` }}
+            onClick={() => onJump(marker.t)}
+            title={`${marker.label} · t=${marker.t}${marker.reason ? ` · ${marker.reason}` : ""}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GodModePrepPanel({
+  locale,
+  enabled,
+  onEnabledChange,
+  godRoleMode,
+  onGodRoleModeChange,
+  customTMax,
+  onCustomTMaxChange,
+  customInitialCells,
+  onCustomInitialCellsChange,
+  customRoles,
+  onCustomRolesChange,
+  customCountry,
+  onCustomCountryChange,
+  customNutrient,
+  onCustomNutrientChange,
+  customTUnit,
+  onCustomTUnitChange,
+  zoneCount,
+  onZoneCountChange,
+  zoneLayout,
+  onZoneLayoutChange,
+  zoneSpacing,
+  onZoneSpacingChange,
+  zoneInfluenceStep,
+  onZoneInfluenceStepChange,
+  zoneFrictionStep,
+  onZoneFrictionStepChange,
+  zMode,
+  onZModeChange,
+  zWeight,
+  onZWeightChange,
+  zScale,
+  onZScaleChange,
+}: {
+  locale: UiLocale;
+  enabled: boolean;
+  onEnabledChange: (value: boolean) => void;
+  godRoleMode: "auto" | "manual";
+  onGodRoleModeChange: (value: "auto" | "manual") => void;
+  customTMax: string;
+  onCustomTMaxChange: (value: string) => void;
+  customInitialCells: string;
+  onCustomInitialCellsChange: (value: string) => void;
+  customRoles: string;
+  onCustomRolesChange: (value: string) => void;
+  customCountry: string;
+  onCustomCountryChange: (value: string) => void;
+  customNutrient: string;
+  onCustomNutrientChange: (value: string) => void;
+  customTUnit: string;
+  onCustomTUnitChange: (value: string) => void;
+  zoneCount: string;
+  onZoneCountChange: (value: string) => void;
+  zoneLayout: string;
+  onZoneLayoutChange: (value: string) => void;
+  zoneSpacing: string;
+  onZoneSpacingChange: (value: string) => void;
+  zoneInfluenceStep: string;
+  onZoneInfluenceStepChange: (value: string) => void;
+  zoneFrictionStep: string;
+  onZoneFrictionStepChange: (value: string) => void;
+  zMode: string;
+  onZModeChange: (value: string) => void;
+  zWeight: string;
+  onZWeightChange: (value: string) => void;
+  zScale: string;
+  onZScaleChange: (value: string) => void;
+}) {
+  const isKo = locale === "ko";
+  return (
+    <details className="rounded-[22px] border border-slate-200 bg-white shadow-sm" open={enabled}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{isKo ? "God mode 생성 제어" : "God mode genesis controls"}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {enabled ? (isKo ? "월드 생성 seed를 직접 조정합니다." : "Manual world-seed overrides are active.") : (isKo ? "필요할 때만 열어 seed를 조정합니다." : "Open only when you need seed overrides.")}
+          </p>
+        </div>
+        <label className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700" onClick={(event) => event.stopPropagation()}>
+          <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.target.checked)} />
+          {enabled ? (isKo ? "켜짐" : "on") : (isKo ? "꺼짐" : "off")}
+        </label>
+      </summary>
+      <div className="grid gap-3 border-t border-slate-200 p-3">
+        <div className="grid grid-cols-2 gap-2">
+          <MiniField label="t_max" value={customTMax} onChange={onCustomTMaxChange} />
+          <MiniField label={isKo ? "에이전트" : "agents"} value={customInitialCells} onChange={onCustomInitialCellsChange} />
+          <MiniField label={isKo ? "국가" : "country"} value={customCountry} onChange={onCustomCountryChange} />
+          <MiniField label={isKo ? "자원/step" : "nutrient/step"} value={customNutrient} onChange={onCustomNutrientChange} />
+          <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+            {isKo ? "시간 단위" : "time unit"}
+            <select value={customTUnit} onChange={(event) => onCustomTUnitChange(event.target.value)} className="app-input">
+              <option value="hour">hour</option>
+              <option value="day">day</option>
+              <option value="month">month</option>
+              <option value="year">year</option>
+              <option value="decade_scale">decade_scale</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+            {isKo ? "역할 방식" : "role mode"}
+            <select value={godRoleMode} onChange={(event) => onGodRoleModeChange(event.target.value as "auto" | "manual")} className="app-input">
+              <option value="auto">{isKo ? "자동" : "auto"}</option>
+              <option value="manual">{isKo ? "수동" : "manual"}</option>
+            </select>
+          </label>
+        </div>
+        {godRoleMode === "manual" ? <MiniField label={isKo ? "역할 목록" : "roles"} value={customRoles} onChange={onCustomRolesChange} /> : null}
+        <div className="grid grid-cols-2 gap-2">
+          <MiniField label={isKo ? "구역 수" : "zones"} value={zoneCount} onChange={onZoneCountChange} />
+          <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+            {isKo ? "구역 레이아웃" : "zone layout"}
+            <select value={zoneLayout} onChange={(event) => onZoneLayoutChange(event.target.value)} className="app-input">
+              <option value="grid">grid</option>
+              <option value="bands">bands</option>
+              <option value="ring">ring</option>
+            </select>
+          </label>
+          <MiniField label={isKo ? "구역 간격" : "spacing"} value={zoneSpacing} onChange={onZoneSpacingChange} />
+          <MiniField label={isKo ? "영향 단계" : "influence"} value={zoneInfluenceStep} onChange={onZoneInfluenceStepChange} />
+          <MiniField label={isKo ? "마찰 단계" : "friction"} value={zoneFrictionStep} onChange={onZoneFrictionStepChange} />
+          <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+            {isKo ? "z 모드" : "z mode"}
+            <select value={zMode} onChange={(event) => onZModeChange(event.target.value)} className="app-input">
+              <option value="hybrid">hybrid</option>
+              <option value="wealth">wealth</option>
+              <option value="influence">influence</option>
+              <option value="policy">policy</option>
+              <option value="memory">memory</option>
+              <option value="flat">flat</option>
+            </select>
+          </label>
+          <MiniField label={isKo ? "z 가중치" : "z weight"} value={zWeight} onChange={onZWeightChange} />
+          <MiniField label={isKo ? "z 스케일" : "z scale"} value={zScale} onChange={onZScaleChange} />
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function DataPackPrepPanel({
+  locale,
+  runtimeLoading,
+  runtimeError,
+  runtimeStatus,
+  selectedPackId,
+  selectedPack,
+  onSelectedPackIdChange,
+  installSourcePath,
+  onInstallSourcePathChange,
+  pinVersion,
+  onPinVersionChange,
+  packActionStatus,
+  onSync,
+  onVerify,
+  onPin,
+  onInstall,
+}: {
+  locale: UiLocale;
+  runtimeLoading: boolean;
+  runtimeError: string | null;
+  runtimeStatus: LocalRuntimeStatus | null;
+  selectedPackId: string;
+  selectedPack: LocalRuntimeStatus["packs"][number] | null;
+  onSelectedPackIdChange: (value: string) => void;
+  installSourcePath: string;
+  onInstallSourcePathChange: (value: string) => void;
+  pinVersion: string;
+  onPinVersionChange: (value: string) => void;
+  packActionStatus: string | null;
+  onSync: () => Promise<void>;
+  onVerify: () => Promise<void>;
+  onPin: () => Promise<void>;
+  onInstall: () => Promise<void>;
+}) {
+  const isKo = locale === "ko";
+  const ready = String((selectedPack?.verification as Record<string, unknown> | undefined)?.ready_for_genesis ?? "unknown");
+  const schema = String((selectedPack?.verification as Record<string, unknown> | undefined)?.schema_health ?? "unknown");
+  return (
+    <details className="rounded-[22px] border border-slate-200 bg-white shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-900">{isKo ? "데이터팩 준비" : "Data pack prep"}</p>
+          <p className="mt-1 truncate text-xs text-slate-500">
+            {selectedPack ? `${selectedPack.pack_id} · ${selectedPack.country} · ${selectedPack.version}` : runtimeLoading ? (isKo ? "불러오는 중…" : "loading…") : "no pack"}
+          </p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${ready === "true" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          ready {ready}
+        </span>
+      </summary>
+      <div className="grid gap-3 border-t border-slate-200 p-3">
+        {runtimeError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{runtimeError}</p> : null}
+        {runtimeStatus ? (
+          <select className="app-input" value={selectedPackId} onChange={(event) => onSelectedPackIdChange(event.target.value)}>
+            {runtimeStatus.packs.map((pack) => (
+              <option key={pack.pack_id} value={pack.pack_id}>
+                {pack.pack_id} · {pack.country} · {pack.version}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <MetricChip label="schema" value={schema} />
+          <MetricChip label={isKo ? "설치" : "installed"} value={selectedPack?.installed ? (isKo ? "예" : "yes") : (isKo ? "아니오" : "no")} />
+        </div>
+        <MiniField label={isKo ? "설치 소스 경로" : "install source path"} value={installSourcePath} onChange={onInstallSourcePathChange} placeholder="/absolute/path/to/personas.jsonl" />
+        <MiniField label={isKo ? "고정 버전" : "pin version"} value={pinVersion} onChange={onPinVersionChange} />
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="app-button app-button--ghost" onClick={() => void onSync()}>{isKo ? "동기화" : "Sync"}</button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void onVerify()} disabled={!selectedPack}>{isKo ? "검증" : "Verify"}</button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void onPin()} disabled={!selectedPack || !pinVersion.trim()}>{isKo ? "고정" : "Pin"}</button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void onInstall()} disabled={!selectedPack || !installSourcePath.trim()}>{isKo ? "설치" : "Install"}</button>
+        </div>
+        {packActionStatus ? <p className="text-xs text-slate-500">{packActionStatus}</p> : null}
+      </div>
+    </details>
+  );
+}
+
+function MiniField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-[11px] text-slate-500">
+      {label}
+      <input className="app-input" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+    </label>
+  );
 }
 
 function RunPanel({

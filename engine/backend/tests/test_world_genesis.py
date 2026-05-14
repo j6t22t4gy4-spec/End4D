@@ -72,6 +72,41 @@ def test_refine_scenario_for_runtime_uses_llm_director(monkeypatch):
     assert refined["scenario_quality"]["runtime_director_mode"] == "llm"
 
 
+def test_refine_scenario_for_runtime_tolerates_string_pressure_seeds(monkeypatch):
+    monkeypatch.setattr("app.core.world_genesis.get_llm_chat_enabled", lambda: True)
+
+    def fake_direct_scenario(payload):
+        return (
+            """
+            {
+              "scenario_prompt": "실행용 시나리오",
+              "actor_roles": "청년 세입자, 소형 임대인, 정책 중재자",
+              "initial_zones": [{"name": "임차인 밀집지"}, {"name": "자산 보유 bloc"}],
+              "placement_logic": "갈등 경계에 배치",
+              "conflict_axes": ["주거비 부담"],
+              "initial_scene_beats": ["조건 조정 요구"],
+              "role_assignment_policy": "토큰 매칭",
+              "pressure_seeds": "sensitive_roles: 청년 세입자",
+              "rationale": "director test"
+            }
+            """,
+            {"provider": "stub-test", "model": "director", "prompt_count_sent": 1},
+        )
+
+    monkeypatch.setattr("app.core.world_genesis.llm_facade.direct_scenario", fake_direct_scenario)
+    refined = refine_scenario_for_runtime(
+        engine_params={"raw_prompt": "월세 갈등", "scenario_prompt": "원문 시나리오: 월세 갈등"},
+        role_catalog=["생산자", "소비자"],
+        persona_catalog=[],
+        simulation_mode="precision",
+    )
+
+    assert refined["scenario_director_mode"] == "llm"
+    assert refined["scenario_actor_roles"][:2] == ["청년 세입자", "소형 임대인"]
+    assert refined["scenario_initial_zones"][:2] == ["임차인 밀집지", "자산 보유 bloc"]
+    assert isinstance(refined["scenario_director"]["pressure_seeds"], dict)
+
+
 def test_genesis_long_horizon_keyword():
     p = propose_world_from_prompt("향후 10년 장기 예측 정책 시나리오를 시뮬하고 싶다")
     assert p.t_max >= 200

@@ -641,6 +641,44 @@ export type SessionReviewQueryResponse = {
   review_meta: Record<string, unknown>;
 };
 
+export type WorldChatTargetType = "world" | "role" | "zone" | "agent";
+
+export type WorldChatContext = {
+  t?: number | null;
+  target_type?: WorldChatTargetType;
+  cell_id?: string | null;
+  role_key?: string | null;
+  zone_id?: string | null;
+};
+
+export type WorldChatGroundingItem = {
+  anchor_id: string;
+  kind: string;
+  label: string;
+  reason?: string;
+  t?: number | null;
+  cell_id?: string | null;
+  role_key?: string | null;
+  zone_id?: string | null;
+};
+
+export type WorldChatResponse = {
+  world_id: string;
+  session_id: string;
+  message_id: string;
+  question: string;
+  answer: string;
+  evidence: string[];
+  follow_up: string[];
+  confidence_notes: string[];
+  mode: string;
+  context: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  grounding: Record<string, WorldChatGroundingItem[]>;
+  citations: WorldChatGroundingItem[];
+  chat_meta: Record<string, unknown>;
+};
+
 export type RestoreWorldResponse = {
   source_world_id: string;
   world_id: string;
@@ -1054,6 +1092,23 @@ export async function postReviewDiffQuery(
     }
   );
   if (!res.ok) throw new Error(`postReviewDiffQuery: ${res.status}`);
+  return res.json();
+}
+
+export async function postWorldChat(
+  worldId: string,
+  body: {
+    question: string;
+    session_id?: string | null;
+    context?: WorldChatContext;
+  }
+): Promise<WorldChatResponse> {
+  const res = await fetch(`${API_BASE}/worlds/${encodeURIComponent(worldId)}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`postWorldChat: ${res.status}`);
   return res.json();
 }
 

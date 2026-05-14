@@ -63,6 +63,11 @@ from app.llm.review import (
     parse_timeline_annotations,
     heuristic_timeline_annotations,
 )
+from app.llm.world_chat import (
+    build_world_chat_prompt,
+    heuristic_world_chat,
+    parse_world_chat,
+)
 from app.models.cell import Cell
 
 
@@ -168,6 +173,8 @@ class LLMFacade:
             "- initial_zones must describe socially meaningful starting areas/blocs.\n"
             "- placement_logic must explain who starts near whom, who starts separated, and why.\n"
             "- initial_scene_beats must list 4-8 concrete early tensions/interactions.\n"
+            "- pressure_seeds must be a JSON object, never a string or list. Example: "
+            '{"sensitive_roles":["role"],"separation_axes":["axis"]}.\n'
             "- Keep Korean if the source scenario is Korean.\n"
             f"Runtime payload:\n{payload}\n"
         )
@@ -523,6 +530,31 @@ class LLMFacade:
             "repair_used": bool(repair["used"]),
             "repair_count": int(repair["count"]),
             "repair_reason": str(repair["reason"] or ""),
+        }
+
+    def chat_world(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        question: str,
+    ) -> dict[str, Any]:
+        prompt = build_world_chat_prompt(payload, question)
+        texts, meta = self._run_task_with_meta([prompt], task="world_chat")
+        text = str(texts[0] if texts else "").strip()
+        used_heuristic = (not text) or text == prompt or text.startswith("[PROMPT_CONTRACT]")
+        answer = (
+            heuristic_world_chat(payload, question)
+            if used_heuristic
+            else parse_world_chat(text, payload, question)
+        )
+        return {
+            "query": answer,
+            "mode": "heuristic" if used_heuristic else "llm",
+            "prompt_version": get_prompt_version("world_chat"),
+            "prompt_meta": get_prompt_meta("world_chat"),
+            "provider": str(meta.get("provider") or get_llm_provider()),
+            "model": str(meta.get("model") or get_llm_model()),
+            "fallback_reason": str(meta.get("fallback_reason") or ""),
         }
 
     def _repair_citation_output(

@@ -3,8 +3,8 @@
 import { Container, Graphics } from "pixi.js";
 
 import type {
-  CenterMapSceneAgent,
   CenterMapSceneInteraction,
+  CenterMapSceneZone,
   PointerField,
 } from "@/components/center-map/scene/sceneTypes";
 
@@ -13,7 +13,7 @@ export class PressureLayerPixi {
 
   private readonly field = new Graphics();
   private readonly flash = new Graphics();
-  private fieldAgents: CenterMapSceneAgent[] = [];
+  private zones: CenterMapSceneZone[] = [];
   private sceneFlashes: Array<{ id: string; x: number; y: number; intensity: number; type: CenterMapSceneInteraction["type"]; pressureDelta: number; bornAt: number }> = [];
 
   constructor() {
@@ -21,12 +21,11 @@ export class PressureLayerPixi {
     this.container.addChild(this.flash);
   }
 
-  updateAgents(agents: CenterMapSceneAgent[]) {
-    const pressureAgents = agents
-      .filter((agent) => agent.pressure > 0.003 || agent.fractureSignal)
-      .sort((a, b) => b.pressure - a.pressure)
-      .slice(0, 220);
-    this.fieldAgents = pressureAgents;
+  updateZones(zones: CenterMapSceneZone[]) {
+    this.zones = zones
+      .filter((zone) => zone.avgPressure > 0.01 || zone.fractureSignals > 0)
+      .sort((a, b) => b.avgPressure - a.avgPressure)
+      .slice(0, 80);
     this.redrawField();
   }
 
@@ -72,27 +71,28 @@ export class PressureLayerPixi {
 
   private redrawField() {
     this.field.clear();
-    if (this.fieldAgents.length === 0) return;
+    if (this.zones.length === 0) return;
 
-    const cellSize = 24;
+    const cellSize = 28;
     const gap = 2;
-    const sigma = 78;
-    const sigma2 = sigma * sigma * 2;
 
     for (let y = 62; y <= 574; y += cellSize) {
       for (let x = 62; x <= 898; x += cellSize) {
-        const intensity = this.fieldAgents.reduce((sum, agent) => {
-          const dx = x - agent.x;
-          const dy = y - agent.y;
-          const pressure = agent.pressure + (agent.fractureSignal ? 0.16 : 0);
-          return sum + pressure * Math.exp(-(dx * dx + dy * dy) / sigma2);
+        const intensity = this.zones.reduce((sum, zone) => {
+          const radiusX = Math.max(42, zone.width * 0.56);
+          const radiusY = Math.max(34, zone.height * 0.6);
+          const dx = Math.abs(x - zone.centerX) / radiusX;
+          const dy = Math.abs(y - zone.centerY) / radiusY;
+          const falloff = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy));
+          const pressure = zone.avgPressure + Math.min(0.24, zone.fractureSignals * 0.045);
+          return sum + pressure * falloff;
         }, 0);
 
-        if (intensity < 0.06) continue;
+        if (intensity < 0.045) continue;
 
         const normalized = Math.min(1, intensity);
         const fill = fieldColor(normalized);
-        const alpha = Math.min(0.42, 0.08 + normalized * 0.24);
+        const alpha = Math.min(0.36, 0.06 + normalized * 0.25);
         this.field.beginFill(fill, alpha);
         this.field.drawRect(
           x - cellSize / 2 + gap,

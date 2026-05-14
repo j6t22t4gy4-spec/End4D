@@ -155,7 +155,7 @@ def _step_loop_node(state: "SimulationState") -> dict:
         next_t=next_t,
         internal_interactions=internal_interactions,
         group_state=group_state,
-        limit=4,
+        limit=6,
     )
     scene_events = _merge_scene_events(live_scene_events, final_scene_events, internal_interactions=internal_interactions)
     cells = _apply_scene_accumulation(cells, scene_events, next_t=next_t)
@@ -283,7 +283,7 @@ def _collect_live_scene_events(
         next_t=next_t,
         internal_interactions=interactions,
         group_state=group_state,
-        limit=3,
+        limit=4,
     )
     for event in batch:
         key = (
@@ -298,13 +298,13 @@ def _collect_live_scene_events(
         event["scene_t"] = float(scene_t)
         event["scene_progress"] = _scene_progress(current_t=current_t, next_t=next_t, scene_t=scene_t)
         event["scene_index"] = len(scene_events) + 1
-        event["scene_count"] = max(1, min(12, interactions * 3))
+        event["scene_count"] = max(1, min(18, interactions * 4))
         event["live_computed"] = True
         event["scene_id"] = f"live-scene-{_safe_t(next_t)}-{event['scene_index']}"
         scene_events.append(event)
         if scene_event_sink is not None:
             scene_event_sink(dict(event))
-        if len(scene_events) >= 12:
+        if len(scene_events) >= 18:
             return
 
 
@@ -326,7 +326,7 @@ def _merge_scene_events(
             continue
         seen.add(key)
         merged.append(dict(event))
-        if len(merged) >= 12:
+        if len(merged) >= 18:
             break
     merged.sort(key=lambda item: float(item.get("scene_progress", 0.0) or 0.0))
     scene_count = len(merged)
@@ -388,10 +388,20 @@ def _precision_internal_interaction_count(
     previous_group_state: dict | None,
 ) -> int:
     mode = str(engine_params.get("simulation_mode") or "precision").strip().lower()
+    cell_count = len(cells)
     if mode == "swarm":
-        return 1
-    min_steps = max(1, int(engine_params.get("min_interactions_per_step", 2)))
-    max_steps = max(min_steps, int(engine_params.get("max_interactions_per_step", 6)))
+        default_min = 2
+        default_max = 4
+        if cell_count >= 3000:
+            default_max = 2
+        elif cell_count >= 1000:
+            default_max = 3
+        min_steps = max(2, int(engine_params.get("min_interactions_per_step", default_min)))
+        max_steps = max(min_steps, int(engine_params.get("max_interactions_per_step", default_max)))
+        max_steps = min(max_steps, default_max)
+    else:
+        min_steps = max(1, int(engine_params.get("min_interactions_per_step", 2)))
+        max_steps = max(min_steps, int(engine_params.get("max_interactions_per_step", 5)))
     sensitivity = max(0.1, float(engine_params.get("interaction_sensitivity", 1.0)))
     pressure = 0.0
     fracture = 0.0
@@ -403,6 +413,8 @@ def _precision_internal_interaction_count(
     local_density = _avg_action_value(cells, "local_density", 0.0)
     policy = _avg_action_value(cells, "policy_sensitivity", 0.5)
     scenario_need = min(1.0, (pressure * 0.32 + fracture * 0.28 + local_density * 0.16 + policy * 0.12) * sensitivity)
+    if mode == "swarm":
+        scenario_need = max(0.34, scenario_need)
     return max(min_steps, min(max_steps, min_steps + round((max_steps - min_steps) * scenario_need)))
 
 

@@ -61,6 +61,19 @@ def _create_initial_cells(
         label = str(rk if scenario_roles else persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
         attrs = dict(persona.get("attrs") or {})
+        agent_name = _persona_agent_name(persona, attrs=attrs, i=i)
+        attrs.setdefault("agent_name", agent_name)
+        attrs.setdefault("display_name", f"{agent_name}({label})")
+        attrs.setdefault(
+            "identity_summary",
+            _identity_summary(
+                name=agent_name,
+                role=label,
+                persona_text=persona_text,
+                attrs=attrs,
+                zone_label="",
+            ),
+        )
         if params.get("scenario_prompt") and not attrs.get("scenario_prompt"):
             attrs["scenario_prompt"] = str(params.get("scenario_prompt") or "")
         if params.get("raw_prompt") and not attrs.get("raw_prompt"):
@@ -89,6 +102,13 @@ def _create_initial_cells(
             or (scenario_zones[zone_index] if scenario_zones and zone_index < len(scenario_zones) else "")
             or region_label
             or f"Zone {zone_index}"
+        )
+        attrs["identity_summary"] = _identity_summary(
+            name=agent_name,
+            role=label,
+            persona_text=persona_text,
+            attrs=attrs,
+            zone_label=zone_label,
         )
         zone_influence = float(persona.get("zone_influence", 1.0 + zone_influence_step * zone_index))
         zone_friction = float(persona.get("zone_friction", zone_friction_step * zone_index))
@@ -182,6 +202,65 @@ def _safe_age(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+_KOREAN_FAMILY_NAMES = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신", "권", "황"]
+_KOREAN_GIVEN_NAMES = [
+    "민준",
+    "서연",
+    "지훈",
+    "하린",
+    "도윤",
+    "수빈",
+    "현우",
+    "예진",
+    "준호",
+    "나영",
+    "태민",
+    "가은",
+    "성민",
+    "유진",
+    "재호",
+    "소윤",
+    "민재",
+    "다은",
+    "지호",
+    "은서",
+]
+
+
+def _persona_agent_name(persona: dict, *, attrs: Dict[str, Any], i: int) -> str:
+    for key in ("name", "full_name", "person_name", "agent_name", "display_name"):
+        value = str(attrs.get(key) or persona.get(key) or "").strip()
+        if value:
+            return value.split("(")[0].strip()[:24]
+    seed = str(persona.get("persona_id") or persona.get("persona_text") or attrs.get("occupation") or f"agent-{i}")
+    family = _KOREAN_FAMILY_NAMES[int(_stable_unit(seed) * len(_KOREAN_FAMILY_NAMES)) % len(_KOREAN_FAMILY_NAMES)]
+    given = _KOREAN_GIVEN_NAMES[int(_stable_unit(f"{seed}:given:{i}") * len(_KOREAN_GIVEN_NAMES)) % len(_KOREAN_GIVEN_NAMES)]
+    return f"{family}{given}"
+
+
+def _identity_summary(
+    *,
+    name: str,
+    role: str,
+    persona_text: str,
+    attrs: Dict[str, Any],
+    zone_label: str,
+) -> str:
+    district = str(attrs.get("district") or attrs.get("province") or attrs.get("region") or zone_label or "").strip()
+    occupation = str(attrs.get("occupation") or role or "").strip()
+    values = str(attrs.get("values") or "").strip()
+    pieces = [f"{name}({role})"]
+    if occupation and occupation != role:
+        pieces.append(occupation)
+    if district:
+        pieces.append(district)
+    if values:
+        pieces.append(values[:40])
+    if persona_text:
+        pieces.append(" ".join(persona_text.split())[:90])
+    return " · ".join(piece for piece in pieces if piece)
 
 
 def _energy_bias_from_persona(*, label: str, attrs: Dict[str, Any], age: int | None) -> float:

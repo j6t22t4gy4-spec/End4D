@@ -94,6 +94,7 @@ def _apply_dialogue_to_cell(
 ) -> Cell:
     summary_key = "summary_a" if side == "a" else "summary_b"
     summary = str(outcome.get(summary_key) or outcome.get("summary_a") or "direct dialogue")
+    summary = _humanize_dialogue_summary(summary, cell=cell, peer=peer)
     current_action = dict(cell.action_state)
     collective = collective_context_from_action_state(current_action)
     influence = collective_decision_influence(current_action)
@@ -122,6 +123,7 @@ def _apply_dialogue_to_cell(
     )
     current_action["last_dialogue_summary"] = summary
     current_action["last_dialogue_peer_id"] = peer.cell_id
+    current_action["last_dialogue_peer_label"] = _agent_display(peer)
     current_action["collective_dialogue_effect"] = round(abs(cooperation_delta) + abs(risk_delta), 4)
     current_action["collective_dialogue_pressure"] = round(pressure, 3)
     current_action["collective_dialogue_decision_delta"] = round(decision_delta, 4)
@@ -136,6 +138,8 @@ def _apply_dialogue_to_cell(
         source="llm.dialogue",
         payload={
             "peer_id": peer.cell_id,
+            "peer_label": _agent_display(peer),
+            "self_label": _agent_display(cell),
             "alignment_delta": outcome["alignment_delta"],
             "tension_delta": outcome["tension_delta"],
             "cooperation_delta": cooperation_delta,
@@ -177,8 +181,8 @@ def _parse_dialogue_outcome(text: str, a: Cell, b: Cell) -> Dict[str, float | st
     if payload is None:
         return _heuristic_dialogue(a, b)
     return {
-        "summary_a": str(payload.get("summary_a") or "dialogue updated local stance"),
-        "summary_b": str(payload.get("summary_b") or "dialogue updated local stance"),
+        "summary_a": str(payload.get("summary_a") or _dialogue_line(a, b, tension=float(payload.get("tension_delta", 0.02) or 0.02))),
+        "summary_b": str(payload.get("summary_b") or _dialogue_line(b, a, tension=float(payload.get("tension_delta", 0.02) or 0.02))),
         "alignment_delta": _signed(payload.get("alignment_delta"), default=0.04),
         "tension_delta": _signed(payload.get("tension_delta"), default=0.02),
         "cooperation_delta": _signed(payload.get("cooperation_delta"), default=0.03),
@@ -191,8 +195,8 @@ def _heuristic_dialogue(a: Cell, b: Cell) -> Dict[str, float | str]:
     coop_b = float(b.action_state.get("cooperation_bias", 0.5))
     delta = 0.04 if (coop_a + coop_b) / 2.0 >= 0.5 else -0.02
     return {
-        "summary_a": f"direct dialogue with {b.role_label or b.role_key or 'agent'} changed cooperation by {delta:.2f}",
-        "summary_b": f"direct dialogue with {a.role_label or a.role_key or 'agent'} changed cooperation by {delta:.2f}",
+        "summary_a": _dialogue_line(a, b, tension=max(0.0, -delta)),
+        "summary_b": _dialogue_line(b, a, tension=max(0.0, -delta)),
         "alignment_delta": abs(delta),
         "tension_delta": max(0.0, -delta),
         "cooperation_delta": delta,
@@ -226,3 +230,49 @@ def _signed(value, *, default: float) -> float:
         return max(-1.0, min(1.0, float(value)))
     except Exception:
         return default
+
+
+def _agent_display(cell: Cell) -> str:
+    attrs = dict(cell.persona_attrs or {})
+    name = str(attrs.get("agent_name") or attrs.get("display_name") or "").strip()
+    role = str(cell.role_label or cell.role_key or "agent").strip() or "agent"
+    if name:
+        base = name if "(" in name else f"{name}({role})"
+    else:
+        base = role
+    return base[:60]
+
+
+def _agent_concern(cell: Cell) -> str:
+    state = dict(cell.action_state or {})
+    for key in ("last_action_summary", "last_thought_summary", "strategy_summary", "persona_prior_summary"):
+        value = " ".join(str(state.get(key) or "").split())
+        if value:
+            return value[:90]
+    attrs = dict(cell.persona_attrs or {})
+    for key in ("occupation", "identity_summary", "scenario_prompt"):
+        value = " ".join(str(attrs.get(key) or "").split())
+        if value:
+            return value[:90]
+    return "지금 상황이 자기 생활에 어떤 비용을 만들지 따져보고 있음"
+
+
+def _dialogue_line(cell: Cell, peer: Cell, *, tension: float) -> str:
+    me = _agent_display(cell)
+    peer_name = _agent_display(peer)
+    concern = _agent_concern(cell)
+    peer_concern = _agent_concern(peer)
+    if tension >= 0.04:
+        return f"{me}은 {peer_name}에게서 '{peer_concern}'라는 걱정을 듣고, 내 입장인 '{concern}'이 쉽게 받아들여지지 않겠다고 느꼈다."
+    return f"{me}은 {peer_name}에게서 '{peer_concern}'라는 말을 듣고, 내 다음 행동을 '{concern}' 쪽으로 조심스럽게 맞춰볼 수 있겠다고 생각했다."
+
+
+def _humanize_dialogue_summary(summary: str, *, cell: Cell, peer: Cell) -> str:
+    text = " ".join(str(summary or "").split())
+    lowered = text.lower()
+    if not text or "dialogue updated" in lowered or "direct dialogue" in lowered or "changed cooperation" in lowered:
+        return _dialogue_line(cell, peer, tension=0.02)
+    peer_label = _agent_display(peer)
+    if peer_label not in text:
+        return f"{peer_label}와의 대화에서 {text}"
+    return text[:260]

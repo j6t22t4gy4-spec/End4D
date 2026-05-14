@@ -4,6 +4,7 @@ import { Container, Graphics } from "pixi.js";
 
 import type {
   CenterMapSceneAgent,
+  CenterMapSceneInteraction,
   PointerField,
 } from "@/components/center-map/scene/sceneTypes";
 
@@ -28,12 +29,37 @@ type AgentVisual = {
   fractureSignal: boolean;
   phase: number;
   transitionEnergy: number;
+  interactionX: number;
+  interactionY: number;
+  interactionEnergy: number;
 };
 
 export class AgentLayerPixi {
   readonly container = new Container();
 
   private visuals = new Map<string, AgentVisual>();
+
+  updateInteractions(interactions: CenterMapSceneInteraction[]) {
+    for (const interaction of interactions.slice(0, 80)) {
+      if (!interaction.fresh) continue;
+      const source = this.visuals.get(interaction.sourceId);
+      const target = this.visuals.get(interaction.targetId);
+      if (!source || !target) continue;
+      const dx = target.targetX - source.targetX;
+      const dy = target.targetY - source.targetY;
+      const len = Math.max(1, Math.hypot(dx, dy));
+      const ux = dx / len;
+      const uy = dy / len;
+      const sign = interaction.type === "positive" || interaction.type === "dialogue" ? 1 : -1;
+      const lateral = interaction.type === "hostile" ? 0.55 : interaction.type === "negative" ? 0.3 : 0.12;
+      const force = Math.min(
+        8.5,
+        2.6 + interaction.intensity * 6.4 + Math.abs(interaction.pressureDelta ?? 0) * 10
+      );
+      nudge(source, ux * sign * force + -uy * lateral * force, uy * sign * force + ux * lateral * force, interaction.intensity);
+      nudge(target, -ux * sign * force + uy * lateral * force, -uy * sign * force + -ux * lateral * force, interaction.intensity);
+    }
+  }
 
   updateAgents(agents: CenterMapSceneAgent[]) {
     const nextIds = new Set(agents.map((agent) => agent.id));
@@ -115,11 +141,15 @@ export class AgentLayerPixi {
       const driftWeight = visual.hovered || visual.selected ? 0.08 : 0.025;
 
       visual.container.position.set(
-        visual.x + pointerPushX * driftWeight,
-        visual.y + pointerPushY * driftWeight
+        visual.x + visual.interactionX + pointerPushX * driftWeight,
+        visual.y + visual.interactionY + pointerPushY * driftWeight
       );
       visual.container.scale.set(
-        1 + (visual.hovered ? 0.1 : 0) + (visual.selected ? 0.08 : 0) + neighborFocus * 0.12
+        1 +
+          (visual.hovered ? 0.1 : 0) +
+          (visual.selected ? 0.08 : 0) +
+          neighborFocus * 0.12 +
+          visual.interactionEnergy * 0.08
       );
       visual.container.alpha = isolationDim;
 
@@ -130,6 +160,7 @@ export class AgentLayerPixi {
           visual.observerScore * 0.2 +
           visual.pressure * 0.06 +
           neighborFocus * 0.18 +
+          visual.interactionEnergy * 0.12 +
           (visual.hovered ? 0.06 : 0) +
           (visual.selected ? 0.09 : 0)
       );
@@ -155,6 +186,9 @@ export class AgentLayerPixi {
       visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal ? 0.78 : 0.0;
 
       this.drawTransitionTrail(visual, renderTime, transitionBoost, targetDistance);
+      visual.interactionX *= 0.84;
+      visual.interactionY *= 0.84;
+      visual.interactionEnergy = Math.max(0, visual.interactionEnergy * 0.86 - 0.01);
     }
   }
 
@@ -228,6 +262,9 @@ export class AgentLayerPixi {
       fractureSignal: agent.fractureSignal,
       phase: Math.random(),
       transitionEnergy: 0,
+      interactionX: 0,
+      interactionY: 0,
+      interactionEnergy: 0,
     };
     this.redrawVisual(visual);
     container.position.set(agent.x, agent.y);
@@ -293,4 +330,10 @@ export class AgentLayerPixi {
     visual.transitionTrail.moveTo(-ux * tail, -uy * tail);
     visual.transitionTrail.lineTo(-ux * (visual.radius + 2), -uy * (visual.radius + 2));
   }
+}
+
+function nudge(visual: AgentVisual, dx: number, dy: number, energy: number) {
+  visual.interactionX = Math.max(-16, Math.min(16, visual.interactionX + dx));
+  visual.interactionY = Math.max(-16, Math.min(16, visual.interactionY + dy));
+  visual.interactionEnergy = Math.min(1, visual.interactionEnergy + 0.28 + energy * 0.42);
 }

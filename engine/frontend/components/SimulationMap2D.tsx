@@ -24,6 +24,8 @@ type SimulationMap2DProps = {
   totalCells: number;
   sampled: boolean;
   showPressureField?: boolean;
+  showHeatmapLayer?: boolean;
+  showInteractionLayer?: boolean;
   showZoneLayer?: boolean;
   showShockLayer?: boolean;
   showAnchorLayer?: boolean;
@@ -34,7 +36,6 @@ type SimulationMap2DProps = {
   groundingItems?: ReviewGroundingItem[];
   sceneEvents?: IntraTSceneEvent[];
   currentT?: number;
-  renderTime?: number;
   transitionPhase?: number;
   pointerField?: PointerField;
   selectedAgentId?: string | null;
@@ -120,6 +121,8 @@ export default function SimulationMap2D({
   totalCells,
   sampled,
   showPressureField = true,
+  showHeatmapLayer = true,
+  showInteractionLayer = true,
   showZoneLayer = true,
   showShockLayer = true,
   showAnchorLayer = true,
@@ -130,7 +133,6 @@ export default function SimulationMap2D({
   groundingItems = [],
   sceneEvents = [],
   currentT = 0,
-  renderTime = 0,
   transitionPhase = 0,
   pointerField = { x: 0.5, y: 0.5, active: false },
   selectedAgentId = null,
@@ -343,7 +345,6 @@ export default function SimulationMap2D({
               scene={pixiScene}
               annotations={annotations}
               currentT={currentT}
-              renderTime={renderTime}
               transitionPhase={transitionPhase}
               pointerField={pointerField}
               layerVisibility={{
@@ -351,6 +352,8 @@ export default function SimulationMap2D({
                 agents: showAgentLayer,
                 clusters: showClusterLayer,
                 pressure: showPressureField,
+                heatmap: showHeatmapLayer,
+                interactions: showInteractionLayer,
                 shocks: showShockLayer,
               }}
               onInteractionApiReady={(api) => {

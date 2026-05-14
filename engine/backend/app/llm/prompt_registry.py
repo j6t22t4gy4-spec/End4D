@@ -331,6 +331,24 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "citations",
         ),
     ),
+    "world_chat": PromptSpec(
+        task="world_chat",
+        version="world-chat-v1",
+        output_mode="json",
+        description="Conversational question-answering over one simulation world with explicit t/persona/role/zone grounding.",
+        system_prompt=(
+            "Answer the user's natural-language question about the simulation world using only the provided world, snapshot, persona, event, and group metadata. "
+            "If a persona or group context is selected, answer from that vantage point while clearly separating observed evidence from interpretation. "
+            "Return compact JSON only. Citations must use only anchor ids from GROUNDING."
+        ),
+        expected_keys=(
+            "answer",
+            "evidence",
+            "follow_up",
+            "confidence_notes",
+            "citations",
+        ),
+    ),
 }
 
 
