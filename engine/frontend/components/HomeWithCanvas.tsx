@@ -33,8 +33,10 @@ const GodView = dynamic(() => import("@/components/GodView"), {
 });
 
 type SimulationDockPayload = {
+  timeControlContent?: ReactNode;
   controlsContent: ReactNode;
   runtimeContent: ReactNode;
+  insightContent?: ReactNode;
   chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
@@ -60,7 +62,7 @@ export default function HomeWithCanvas() {
   const [pendingInjectPreset, setPendingInjectPreset] = useState<ReviewSummaryResponse["inject_presets"][number] | null>(null);
   const [dataPackSyncing, setDataPackSyncing] = useState(false);
   const [dataPackSyncError, setDataPackSyncError] = useState<string | null>(null);
-  const [dockWidth, setDockWidth] = useState(380);
+  const [dockWidth, setDockWidth] = useState(460);
   const [resizingDock, setResizingDock] = useState(false);
   const [simulationDock, setSimulationDock] = useState<SimulationDockPayload | null>(null);
 
@@ -152,7 +154,7 @@ export default function HomeWithCanvas() {
     if (!resizingDock) return;
     const handleMove = (event: MouseEvent) => {
       const nextWidth = window.innerWidth - event.clientX - 28;
-      setDockWidth(Math.max(320, Math.min(520, nextWidth)));
+      setDockWidth(Math.max(380, Math.min(640, nextWidth)));
     };
     const handleUp = () => setResizingDock(false);
     window.addEventListener("mousemove", handleMove);

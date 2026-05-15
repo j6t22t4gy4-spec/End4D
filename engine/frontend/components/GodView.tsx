@@ -12,7 +12,6 @@ import { ChatPanel } from "@/components/ChatPanel";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import type { SessionSummary } from "@/lib/api";
 import {
-  AgentDirectoryPanel,
   SimulationInspectorPanel,
   type SelectedBand,
   type SelectedZone,
@@ -146,8 +145,10 @@ export default function GodView({
   runtimeErrorExternal?: string | null;
   onRefreshRuntimeExternal?: () => Promise<void> | void;
   onDockPayloadChange?: (payload: {
+    timeControlContent?: ReactNode;
     controlsContent: ReactNode;
     runtimeContent: ReactNode;
+    insightContent?: ReactNode;
     chatContent?: ReactNode;
     thoughtCells: CellSnapshot[];
     currentT: number;
@@ -1144,19 +1145,6 @@ export default function GodView({
   const runtimeDockContent = useMemo(
     () => (
       <div className="space-y-3">
-        <CompactTimeControl
-          locale={locale}
-          t={currentT}
-          tMin={tSliderMin}
-          tMax={tSliderMax}
-          frameCount={availableT.length}
-          disabled={sliderDisabled}
-          markers={[...timelineMarkers, ...reviewMarkers]}
-          bookmarks={bookmarks}
-          onJump={setCurrentT}
-          onAddBookmark={addBookmark}
-          onRemoveBookmark={removeBookmark}
-        />
         <div className="grid gap-3">
           <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-700">
             <input type="checkbox" checked={llmEnabled} onChange={(event) => setLlmEnabled(event.target.checked)} />
@@ -1394,6 +1382,78 @@ export default function GodView({
     ]
   );
 
+  const timeDockContent = useMemo(
+    () => (
+      <CompactTimeControl
+        locale={locale}
+        t={currentT}
+        tMin={tSliderMin}
+        tMax={tSliderMax}
+        frameCount={availableT.length}
+        disabled={sliderDisabled}
+        markers={[...timelineMarkers, ...reviewMarkers]}
+        bookmarks={bookmarks}
+        onJump={setCurrentT}
+        onAddBookmark={addBookmark}
+        onRemoveBookmark={removeBookmark}
+        compact
+      />
+    ),
+    [
+      addBookmark,
+      availableT.length,
+      bookmarks,
+      currentT,
+      locale,
+      reviewMarkers,
+      sliderDisabled,
+      timelineMarkers,
+      tSliderMax,
+      tSliderMin,
+    ]
+  );
+
+  const insightDockContent = useMemo(
+    () => (
+      <SimulationInspectorPanel
+        locale={locale}
+        selectedAgent={selectedAgent}
+        selectedZone={selectedZone}
+        selectedBand={selectedBand}
+        worldSummary={{
+          worldId,
+          currentT,
+          visibleCount: renderedVisibleCells.length,
+          totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
+          sampled: renderedVisualStats?.sampled ?? false,
+          collectiveSummary: renderedCollectiveSummary,
+          collectiveSignal: renderedCollectiveSignal,
+        }}
+        agentRoster={renderedSnapshotCells}
+        onSelectAgent={setSelectedAgent}
+        onOpenWorldAt={(_, t) => {
+          if (typeof t === "number") setCurrentT(t);
+        }}
+        onClearSelection={clearSelection}
+      />
+    ),
+    [
+      clearSelection,
+      currentT,
+      locale,
+      renderedCollectiveSignal,
+      renderedCollectiveSummary,
+      renderedSnapshotCells,
+      renderedVisibleCells.length,
+      renderedVisualStats?.sampled,
+      renderedVisualStats?.totalCells,
+      selectedAgent,
+      selectedBand,
+      selectedZone,
+      worldId,
+    ]
+  );
+
   const chatDockContent = useMemo(
     () => (
       <ChatPanel
@@ -1410,8 +1470,10 @@ export default function GodView({
 
   useEffect(() => {
     onDockPayloadChange?.({
+      timeControlContent: timeDockContent,
       controlsContent: controlsDockContent,
       runtimeContent: runtimeDockContent,
+      insightContent: insightDockContent,
       chatContent: chatDockContent,
       thoughtCells: renderedSnapshotCells,
       currentT,
@@ -1419,7 +1481,7 @@ export default function GodView({
       collectiveSignal: renderedCollectiveSignal,
       connectionState: llmConnectionState,
     });
-  }, [chatDockContent, controlsDockContent, currentT, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent]);
+  }, [chatDockContent, controlsDockContent, currentT, insightDockContent, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent, timeDockContent]);
 
 
   useEffect(() => {
@@ -1826,90 +1888,6 @@ export default function GodView({
             />
           </main>
 
-          <aside className="unified-dashboard__right">
-            <div className="unified-dashboard__section-label">{isKo ? "Live Insights" : "Live Insights"}</div>
-            <SimulationInspectorPanel
-              locale={locale}
-              selectedAgent={selectedAgent}
-              selectedZone={selectedZone}
-              selectedBand={selectedBand}
-              worldSummary={{
-                worldId,
-                currentT,
-                visibleCount: renderedVisibleCells.length,
-                totalCount: renderedVisualStats?.totalCells ?? renderedVisibleCells.length,
-                sampled: renderedVisualStats?.sampled ?? false,
-                collectiveSummary: renderedCollectiveSummary,
-                collectiveSignal: renderedCollectiveSignal,
-              }}
-              agentRoster={renderedSnapshotCells}
-              onSelectAgent={setSelectedAgent}
-              onOpenWorldAt={(_, t) => {
-                if (typeof t === "number") setCurrentT(t);
-              }}
-              onClearSelection={clearSelection}
-            />
-            {reviewSummary ? (
-              <AppPanel
-                title={isKo ? "리뷰 스냅샷" : "Review Snapshot"}
-                subtitle={reviewLoading ? (isKo ? "분석 요약 새로고침 중…" : "Refreshing analyst summary…") : reviewSummary.headline}
-                bodyClassName="space-y-3"
-              >
-              <p className="text-sm leading-6 text-slate-700">{reviewSummary.summary}</p>
-              {reviewSummary.causal_analysis.slice(0, 2).map((item, index) => (
-                <div key={`${index}-${item}`} className="session-thread-card">
-                  <p className="session-thread-card__prompt">{item}</p>
-                </div>
-              ))}
-              {Array.isArray(reviewSummary.inject_presets) && reviewSummary.inject_presets.length ? (
-                <div className="grid gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    {isKo ? "리뷰 기반 정책 프리셋" : "Review-driven Policy Presets"}
-                  </p>
-                  {reviewSummary.inject_presets.map((item, index) => (
-                    <div
-                      key={`${index}-${String(item.label ?? "preset")}`}
-                      className="session-thread-card"
-                    >
-                      <div className="session-thread-card__header">
-                        <p className="session-thread-card__title">{String(item.label ?? "Policy preset")}</p>
-                        <span className="session-thread-card__meta">
-                          t={Number(item.t ?? currentT).toFixed(0)}
-                        </span>
-                      </div>
-                      <p className="session-thread-card__prompt">{String(item.description ?? "")}</p>
-                      <div className="session-thread-card__actions">
-                        <button
-                          type="button"
-                          className="app-button app-button--ghost"
-                          onClick={() => {
-                            setReviewInjectPreset({
-                              label: String(item.label ?? "Policy preset"),
-                              t: Number(item.t ?? currentT),
-                              eventType: String(item.event_type ?? "policy_shift"),
-                              payload: (item.payload as Record<string, unknown>) ?? {},
-                            });
-                            setCurrentT(Number(item.t ?? currentT));
-                          }}
-                        >
-                          {isKo ? "주입 패널로 사용" : "Use in Injection Panel"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className="app-button app-button--ghost"
-                onClick={() => setStage("review")}
-              >
-                {isKo ? "리뷰 단계 열기" : "Open Review Stage"}
-              </button>
-              </AppPanel>
-            ) : null}
-          </aside>
-
         </div>
       )}
     </div>
@@ -1951,6 +1929,7 @@ function CompactTimeControl({
   onJump,
   onAddBookmark,
   onRemoveBookmark,
+  compact = false,
 }: {
   locale: UiLocale;
   t: number;
@@ -1963,18 +1942,19 @@ function CompactTimeControl({
   onJump: (t: number) => void;
   onAddBookmark: () => void;
   onRemoveBookmark: (key: string) => void;
+  compact?: boolean;
 }) {
   const isKo = locale === "ko";
   const span = Math.max(1, tMax - tMin);
   const safeMax = Math.max(tMin + 1, tMax);
   return (
-    <div className="rounded-[22px] border border-slate-200 bg-white px-4 py-3 shadow-sm">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-900">
+    <div className={`rounded-[22px] border border-slate-200 bg-white shadow-sm ${compact ? "px-3 py-2" : "px-4 py-3"}`}>
+      <div className={`${compact ? "mb-1.5" : "mb-2"} flex items-center justify-between gap-3`}>
+        <p className={`${compact ? "text-xs" : "text-sm"} font-semibold text-slate-900`}>
           {isKo ? "시간 t" : "time t"} <span className="font-mono">{t.toFixed(1)}/{frameCount}{isKo ? "프레임" : " frames"}</span>
         </p>
         <div className="flex items-center gap-1">
-          <button type="button" className="app-button app-button--ghost !px-3 !py-2" onClick={onAddBookmark} disabled={disabled}>
+          <button type="button" className="app-button app-button--ghost !px-3 !py-2 text-xs" onClick={onAddBookmark} disabled={disabled}>
             {isKo ? "북마크" : "Bookmark"}
           </button>
           <details className="relative">
@@ -2482,6 +2462,17 @@ function IntraTScenePanel({
           <MetricPill label={isKo ? "장면" : "Scenes"} value={String(metrics.scenes_per_t ?? sourceEvents.length)} />
           <MetricPill label={isKo ? "참여율" : "Participation"} value={`${Math.round(Number(metrics.agent_participation_rate ?? 0) * 100)}%`} />
           <MetricPill label={isKo ? "연속성" : "Continuity"} value={`${Math.round(Number(metrics.narrative_continuity_score ?? 0) * 100)}%`} />
+          <MetricPill label={isKo ? "구체성" : "Specificity"} value={`${Math.round(Number(metrics.narrative_specificity_score ?? 0) * 100)}%`} />
+          <MetricPill label={isKo ? "시나리오" : "Scenario"} value={`${Math.round(Number(metrics.scenario_link_rate ?? 0) * 100)}%`} />
+          <MetricPill label={isKo ? "품질" : "Quality"} value={sceneQualityLabel(metrics.scene_quality_grade, isKo)} />
+        </div>
+      ) : null}
+      {metrics?.quality_warnings?.length ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+          <span className="font-semibold">{isKo ? "장면 품질 경고" : "Scene quality warnings"}</span>
+          <span className="ml-1">
+            {metrics.quality_warnings.map((item) => sceneWarningLabel(item, isKo)).join(" · ")}
+          </span>
         </div>
       ) : null}
       {events.length ? (
@@ -2541,6 +2532,28 @@ function sceneToneLabel(type: IntraTSceneEvent["interaction_type"], isKo: boolea
   if (type === "hostile") return isKo ? "적대" : "hostile";
   if (type === "dialogue") return isKo ? "대화" : "dialogue";
   return isKo ? "압력" : "pressure";
+}
+
+function sceneQualityLabel(value: unknown, isKo: boolean): string {
+  const raw = String(value || "unknown");
+  if (!isKo) return raw;
+  if (raw === "strong") return "강함";
+  if (raw === "usable") return "사용 가능";
+  if (raw === "thin") return "얇음";
+  if (raw === "weak") return "약함";
+  return "미확인";
+}
+
+function sceneWarningLabel(value: string, isKo: boolean): string {
+  if (!isKo) return value.replaceAll("_", " ");
+  const labels: Record<string, string> = {
+    too_few_scenes: "장면 수 부족",
+    low_agent_participation: "참여율 낮음",
+    weak_relationship_stream: "관계 흐름 약함",
+    generic_scene_text: "장면 문장 추상적",
+    weak_scenario_link: "시나리오 연결 약함",
+  };
+  return labels[value] ?? value;
 }
 
 function GenesisMeta({ locale = "ko", lastGenesis }: { locale?: UiLocale; lastGenesis: CreateWorldResult }) {

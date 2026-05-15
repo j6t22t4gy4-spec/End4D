@@ -314,7 +314,7 @@ def _seed_action_state_from_persona(
         "policy_sensitivity": round(max(0.0, min(1.0, policy)), 4),
         "resource_bias": round(max(0.0, min(1.0, resource)), 4),
         "mobility_bias": round(max(0.0, min(1.0, mobility)), 4),
-        "strategy_summary": "persona_seeded_initial_state",
+        "strategy_summary": _seed_strategy_summary(label=label, attrs=attrs, zone_index=zone_index, priors=priors),
         "persona_prior_summary": priors["summary"],
         "persona_prior_factors": priors["factors"],
         "persona_distribution_bias": {
@@ -323,6 +323,22 @@ def _seed_action_state_from_persona(
             if isinstance(value, (int, float))
         },
     }
+
+
+def _seed_strategy_summary(*, label: str, attrs: Dict[str, Any], zone_index: int, priors: Dict[str, Any]) -> str:
+    name = str(attrs.get("agent_name") or attrs.get("display_name") or attrs.get("name") or "").strip()
+    role = str(label or attrs.get("occupation") or "행위자").strip()
+    district = str(attrs.get("district") or attrs.get("province") or attrs.get("region") or f"zone-{zone_index + 1}").strip()
+    identity = str(attrs.get("identity_summary") or attrs.get("persona_summary") or attrs.get("occupation") or "").strip()
+    prior = str(priors.get("summary") or "").strip()
+    subject = f"{name}({role})" if name and name not in role else role
+    identity_clause = f"{identity[:90]}를 바탕으로" if identity else "초기 페르소나 조건을 바탕으로"
+    prior_clause = f" {prior[:80]}" if prior else ""
+    return (
+        f"행동: {subject}은 {district}에서 먼저 가까운 이해관계자의 반응을 살핀다. "
+        f"이유: {identity_clause} 정책·자원·협력 신호를 가늠해야 한다.{prior_clause} "
+        f"대상: 같은 구역의 협의 대상과 역할 집단."
+    )[:360]
 
 
 def _scenario_role_for_persona(persona: dict, roles: List[str], *, i: int, scenario_roles: List[str]) -> str:

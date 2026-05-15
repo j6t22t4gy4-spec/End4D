@@ -19,6 +19,7 @@ ChatTargetType = Literal["world", "role", "zone", "agent"]
 
 class ChatContext(BaseModel):
     t: Optional[float] = None
+    compare_t: Optional[float] = None
     target_type: ChatTargetType = "world"
     cell_id: Optional[str] = None
     role_key: Optional[str] = None
@@ -76,6 +77,7 @@ def post_world_chat(world_id: str, body: WorldChatRequest):
     snap = store.get(resolved_t) or store.get_nearest(resolved_t)
     if snap is None:
         raise HTTPException(status_code=404, detail="No snapshot available")
+    compare_snap = _resolve_compare_snapshot(store, available_t, body.context.compare_t, float(snap.t))
 
     context = body.context.model_dump()
     context["requested_t"] = requested_t
@@ -92,6 +94,8 @@ def post_world_chat(world_id: str, body: WorldChatRequest):
         context=context,
         cells=list(snap.cells),
         target_cells=target_cells,
+        compare_cells=list(compare_snap.cells) if compare_snap is not None else [],
+        compare_t=float(compare_snap.t) if compare_snap is not None else None,
         scene_events=[dict(item) for item in getattr(snap, "scene_events", [])],
         question=body.question,
     )
@@ -168,6 +172,15 @@ def _select_cells(cells: List[Cell], context: ChatContext) -> List[Cell]:
     return list(cells)
 
 
+def _resolve_compare_snapshot(store: Any, available_t: List[float], compare_t: Optional[float], resolved_t: float) -> Any:
+    if compare_t is not None:
+        return store.get(float(compare_t)) or store.get_nearest(float(compare_t))
+    previous = [float(value) for value in available_t if float(value) < float(resolved_t)]
+    if not previous:
+        return None
+    return store.get(previous[-1]) or store.get_nearest(previous[-1])
+
+
 def _representative_cells(cells: List[Cell], limit: int) -> List[Cell]:
     return sorted(cells, key=lambda cell: (-float(cell.energy), str(cell.cell_id)))[:limit]
 
@@ -179,13 +192,17 @@ def _build_chat_payload(
     context: Dict[str, Any],
     cells: List[Cell],
     target_cells: List[Cell],
+    compare_cells: List[Cell],
+    compare_t: Optional[float],
     scene_events: List[Dict[str, Any]],
     question: str,
 ) -> Dict[str, Any]:
     world = entry.get("world")
     target_label = _target_label(context, target_cells)
-    personas = [_persona_row(cell, index=index) for index, cell in enumerate(target_cells[:8])]
+    peer_labels = _cell_label_index(cells)
+    personas = [_persona_row(cell, index=index, peer_labels=peer_labels) for index, cell in enumerate(target_cells[:8])]
     events = [_event_row(event, index=index, t=float(context.get("resolved_t") or 0.0)) for index, event in enumerate(scene_events[:10])]
+    target_summary = _target_summary(target_cells, events)
     snapshot = {
         "anchor_id": f"snapshot:{world_id}:t:{float(context.get('resolved_t') or 0.0):g}",
         "world_id": world_id,
@@ -195,7 +212,16 @@ def _build_chat_payload(
         "target_cell_count": len(target_cells),
         "avg_energy": round(sum(float(cell.energy) for cell in target_cells) / max(1, len(target_cells)), 4),
         "avg_z": round(sum(float(cell.z) for cell in target_cells) / max(1, len(target_cells)), 4),
+        "avg_collective_pressure": target_summary["avg_collective_pressure"],
+        "avg_decision_pressure_delta": target_summary["avg_decision_pressure_delta"],
+        "scene_participation_count": target_summary["scene_participation_count"],
     }
+    compare_target_cells = _select_comparable_cells(compare_cells, context, target_cells)
+    comparison = _comparison_summary(
+        current_summary=target_summary,
+        compare_cells=compare_target_cells,
+        compare_t=compare_t,
+    )
     grounding = {
         "snapshot": [
             {
@@ -208,9 +234,17 @@ def _build_chat_payload(
         ],
         "personas": personas,
         "events": events,
+        "relationships": _relationship_grounding(personas),
     }
     metadata = {
         "snapshot": snapshot,
+        "target": {
+            "type": str(context.get("target_type") or "world"),
+            "label": target_label,
+            "cell_count": len(target_cells),
+            "summary": target_summary,
+        },
+        "comparison": comparison,
         "persona": [
             {key: row.get(key) for key in ("anchor_id", "cell_id", "label", "role_key", "role_label", "zone_id", "zone_label", "persona_id")}
             for row in personas
@@ -236,10 +270,12 @@ def _build_chat_payload(
             "simulation_mode": str(dict(entry.get("engine_params") or {}).get("simulation_mode") or "precision"),
         },
         "snapshot": snapshot,
+        "comparison": comparison,
         "target": {
             "type": str(context.get("target_type") or "world"),
             "label": target_label,
             "cell_count": len(target_cells),
+            "summary": target_summary,
         },
         "personas": personas,
         "events": events,
@@ -249,7 +285,7 @@ def _build_chat_payload(
     }
 
 
-def _persona_row(cell: Cell, *, index: int) -> Dict[str, Any]:
+def _persona_row(cell: Cell, *, index: int, peer_labels: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     attrs = dict(cell.persona_attrs or {})
     name = _first_text(attrs.get("agent_name"), attrs.get("display_name"), attrs.get("name"), cell.persona_id, f"agent-{index + 1}")
     label = f"{name}({cell.role_label or cell.role_key or 'agent'})"
@@ -263,6 +299,27 @@ def _persona_row(cell: Cell, *, index: int) -> Dict[str, Any]:
         for item in list(cell.behavior_log or [])[-3:]
         if str(item.get("summary") or item.get("event_type") or "").strip()
     ]
+    action_state = {
+        key: cell.action_state.get(key)
+        for key in (
+            "last_thought_summary",
+            "last_action_summary",
+            "strategy_summary",
+            "observer_focus",
+            "last_dialogue_summary",
+            "last_dialogue_peer_id",
+            "last_dialogue_peer_label",
+            "collective_pressure",
+            "collective_pressure_bucket",
+            "decision_pressure_delta",
+            "scene_participation_count",
+            "scene_pressure_delta",
+            "scene_relationship_delta",
+            "group_pressure_reason",
+        )
+        if key in cell.action_state
+    }
+    relationships = _top_relationships(cell, peer_labels or {})
     return {
         "anchor_id": f"persona:{cell.cell_id}",
         "kind": "persona",
@@ -281,11 +338,8 @@ def _persona_row(cell: Cell, *, index: int) -> Dict[str, Any]:
         "z": round(float(cell.z), 4),
         "recent_memory": recent_memory,
         "recent_behavior": recent_behavior,
-        "action_state": {
-            key: cell.action_state.get(key)
-            for key in ("last_thought_summary", "last_action_summary", "strategy_summary", "observer_focus")
-            if key in cell.action_state
-        },
+        "relationships": relationships,
+        "action_state": action_state,
     }
 
 
@@ -316,6 +370,134 @@ def _target_label(context: Dict[str, Any], cells: List[Cell]) -> str:
     if target_type == "zone":
         return str(context.get("zone_id") or (cells[0].zone_label if cells else "") or "zone")
     return "world"
+
+
+def _cell_label_index(cells: List[Cell]) -> Dict[str, str]:
+    return {cell.cell_id: _persona_row(cell, index=index, peer_labels={})["label"] for index, cell in enumerate(cells)}
+
+
+def _target_summary(target_cells: List[Cell], events: List[Dict[str, Any]]) -> Dict[str, Any]:
+    action_states = [dict(cell.action_state or {}) for cell in target_cells]
+    pressures = [_float_state(state, "collective_pressure") for state in action_states]
+    decision_deltas = [_float_state(state, "decision_pressure_delta") for state in action_states]
+    participation = [_float_state(state, "scene_participation_count") for state in action_states]
+    dialogue_count = sum(1 for state in action_states if str(state.get("last_dialogue_summary") or "").strip())
+    source_ids = {str(event.get("source_id") or "") for event in events}
+    target_ids = {str(item) for event in events for item in list(event.get("target_ids") or [])}
+    target_cell_ids = {cell.cell_id for cell in target_cells}
+    relevant_events = sum(1 for cell_id in target_cell_ids if cell_id in source_ids or cell_id in target_ids)
+    top_pressure = sorted(
+        (
+            {
+                "cell_id": cell.cell_id,
+                "label": _persona_row(cell, index=index, peer_labels={})["label"],
+                "pressure": round(_float_state(dict(cell.action_state or {}), "collective_pressure"), 4),
+                "decision_pressure_delta": round(_float_state(dict(cell.action_state or {}), "decision_pressure_delta"), 4),
+            }
+            for index, cell in enumerate(target_cells)
+        ),
+        key=lambda item: (-float(item["pressure"]), str(item["cell_id"])),
+    )[:4]
+    return {
+        "avg_collective_pressure": round(_mean(pressures), 4),
+        "avg_decision_pressure_delta": round(_mean(decision_deltas), 4),
+        "max_collective_pressure": round(max(pressures) if pressures else 0.0, 4),
+        "scene_participation_count": int(sum(participation)),
+        "dialogue_count": dialogue_count,
+        "relevant_scene_event_count": relevant_events,
+        "top_pressure_personas": top_pressure,
+    }
+
+
+def _select_comparable_cells(compare_cells: List[Cell], context: Dict[str, Any], target_cells: List[Cell]) -> List[Cell]:
+    if not compare_cells:
+        return []
+    target_type = str(context.get("target_type") or "world")
+    if target_type == "agent":
+        cell_ids = {cell.cell_id for cell in target_cells}
+        return [cell for cell in compare_cells if cell.cell_id in cell_ids]
+    if target_type == "role":
+        key = str(context.get("role_key") or "")
+        return [cell for cell in compare_cells if key and (cell.role_key == key or cell.role_label == key)]
+    if target_type == "zone":
+        key = str(context.get("zone_id") or "")
+        return [cell for cell in compare_cells if key and (cell.zone_id == key or cell.zone_label == key)]
+    return _representative_cells(compare_cells, limit=8)
+
+
+def _comparison_summary(*, current_summary: Dict[str, Any], compare_cells: List[Cell], compare_t: Optional[float]) -> Dict[str, Any]:
+    if compare_t is None or not compare_cells:
+        return {}
+    base = _target_summary(compare_cells, [])
+    current_pressure = float(current_summary.get("avg_collective_pressure", 0.0) or 0.0)
+    base_pressure = float(base.get("avg_collective_pressure", 0.0) or 0.0)
+    current_decision = float(current_summary.get("avg_decision_pressure_delta", 0.0) or 0.0)
+    base_decision = float(base.get("avg_decision_pressure_delta", 0.0) or 0.0)
+    return {
+        "compare_t": float(compare_t),
+        "baseline": base,
+        "pressure_delta": round(current_pressure - base_pressure, 4),
+        "decision_pressure_delta": round(current_decision - base_decision, 4),
+        "scene_participation_delta": int(current_summary.get("scene_participation_count", 0) or 0)
+        - int(base.get("scene_participation_count", 0) or 0),
+    }
+
+
+def _top_relationships(cell: Cell, peer_labels: Dict[str, str]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for peer_id, state in dict(cell.relationship_state or {}).items():
+        item = dict(state or {})
+        rows.append(
+            {
+                "peer_id": str(peer_id),
+                "peer_label": peer_labels.get(str(peer_id), str(peer_id)),
+                "trust": round(float(item.get("trust", 0.0) or 0.0), 4),
+                "tension": round(float(item.get("tension", 0.0) or 0.0), 4),
+                "alignment": round(float(item.get("alignment", 0.0) or 0.0), 4),
+                "dialogue_count": int(item.get("dialogue_count", 0) or 0),
+                "last_summary": str(item.get("last_summary") or "")[:220],
+                "last_t": float(item.get("last_t", -1.0) or -1.0),
+            }
+        )
+    return sorted(
+        rows,
+        key=lambda item: (
+            -(float(item["trust"]) + float(item["tension"]) + min(1.0, int(item["dialogue_count"]) / 4.0)),
+            -float(item["last_t"]),
+            str(item["peer_id"]),
+        ),
+    )[:5]
+
+
+def _relationship_grounding(personas: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for persona in personas:
+        for rel in list(persona.get("relationships") or [])[:2]:
+            anchor_id = f"relationship:{persona.get('cell_id')}:{rel.get('peer_id')}"
+            rows.append(
+                {
+                    "anchor_id": anchor_id,
+                    "kind": "relationship",
+                    "label": f"{persona.get('label')} ↔ {rel.get('peer_label')}",
+                    "reason": str(rel.get("last_summary") or "recent relationship state"),
+                    "t": rel.get("last_t"),
+                    "cell_id": persona.get("cell_id"),
+                    "role_key": persona.get("role_key"),
+                    "zone_id": persona.get("zone_id"),
+                }
+            )
+    return rows[:8]
+
+
+def _float_state(state: Dict[str, Any], key: str) -> float:
+    try:
+        return float(state.get(key, 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _mean(values: List[float]) -> float:
+    return float(sum(values) / len(values)) if values else 0.0
 
 
 def _response_grounding(payload: Dict[str, Any]) -> Dict[str, List[ChatGroundingItem]]:

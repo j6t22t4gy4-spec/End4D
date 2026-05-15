@@ -161,6 +161,8 @@ export function buildCenterMapScene({
     const pressureDelta = Number(event.pressure_delta ?? 0);
     const relationshipDelta = Number(event.relationship_delta ?? 0);
     const hasNarrative = Boolean(event.narrative_reason || event.scenario_relevance);
+    const isLatestScene =
+      Number(event.scene_index ?? eventIndex + 1) >= Math.max(1, Number(event.scene_count ?? sceneEvents.length) - 2);
     const intensity = Math.max(
       0.25,
       Math.min(
@@ -187,7 +189,10 @@ export function buildCenterMapScene({
           type: eventType,
           intensity,
           age: Math.max(0, 1 - Number(event.scene_index ?? 1) / Math.max(1, Number(event.scene_count ?? 1))),
-          fresh: Boolean((event.visual_hint as Record<string, unknown> | undefined)?.pulse) || Boolean((event as Record<string, unknown>).live_computed),
+          fresh:
+            isLatestScene ||
+            Boolean((event.visual_hint as Record<string, unknown> | undefined)?.pulse) ||
+            Boolean((event as Record<string, unknown>).live_computed),
           sceneId: String(event.scene_id ?? ""),
           pressureDelta,
           salience: intensity,

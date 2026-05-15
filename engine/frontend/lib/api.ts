@@ -70,6 +70,11 @@ export type IntraTSceneMetrics = {
   positive_event_count?: number;
   dead_timestep_rate?: number;
   narrative_continuity_score?: number;
+  narrative_specificity_score?: number;
+  scenario_link_rate?: number;
+  scene_quality_score?: number;
+  scene_quality_grade?: string;
+  quality_warnings?: string[];
   pressure_delta_abs_sum?: number;
 };
 
@@ -645,6 +650,7 @@ export type WorldChatTargetType = "world" | "role" | "zone" | "agent";
 
 export type WorldChatContext = {
   t?: number | null;
+  compare_t?: number | null;
   target_type?: WorldChatTargetType;
   cell_id?: string | null;
   role_key?: string | null;

@@ -7,8 +7,10 @@ import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
 
 type SimulationDockPayload = {
+  timeControlContent?: ReactNode;
   controlsContent: ReactNode;
   runtimeContent: ReactNode;
+  insightContent?: ReactNode;
   chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
   currentT: number;
@@ -47,6 +49,7 @@ export function RuntimeDock({
   const simulationAvailable = Boolean(simulationDock);
   const simulationActive = activeView === "simulation";
   const controlsAvailable = simulationAvailable && simulationActive;
+  const useSimulationHeader = simulationActive && Boolean(simulationDock?.timeControlContent);
 
   const thoughtCards = useMemo(
     () =>
@@ -64,11 +67,12 @@ export function RuntimeDock({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
       <AppPanel
-        title={strings.runtimeDockTitle}
-        subtitle={strings.runtimeDockSubtitle}
+        title={useSimulationHeader ? undefined : strings.runtimeDockTitle}
+        subtitle={useSimulationHeader ? undefined : strings.runtimeDockSubtitle}
         className="min-h-0 flex-1"
         bodyClassName="flex h-full min-h-0 flex-col gap-3"
       >
+        {useSimulationHeader ? <div className="runtime-dock__global-time">{simulationDock?.timeControlContent}</div> : null}
         <div className="grid grid-cols-5 gap-2">
           <button
             type="button"
@@ -102,7 +106,7 @@ export function RuntimeDock({
             className={`app-button ${dockView === "thoughts" ? "app-button--primary" : "app-button--ghost"}`}
             onClick={() => setDockView("thoughts")}
           >
-            {isKo ? "에이전트 스트림" : "Agent Stream"}
+            {isKo ? "스트림/인사이트" : "Stream/Insights"}
           </button>
           <button
             type="button"
@@ -244,127 +248,140 @@ export function RuntimeDock({
             <div className="space-y-3">
               {!activeWorldId ? (
                 <EmptyState text={isKo ? "시뮬레이션 world를 열면 현재 t 기준 thought stream이 여기에 표시됩니다." : "Open a simulation world to show current-t thought traces here."} />
-              ) : thoughtCards.length ? (
-                <>
-                  {simulationDock?.collectiveSummary ? (
-                    <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-900">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">{isKo ? "Collective Dynamics" : "Collective Dynamics"}</p>
-                          <p className="mt-1 text-sky-800/80">
-                            {isKo ? "현재 observer 시점의 집단 응집·균열·드리프트 요약" : "Collective cohesion, fracture, and drift at the current observer step"}
-                          </p>
-                        </div>
-                        <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                          {simulationDock.collectiveSignal}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <InfoRow
-                          label={isKo ? "역할 응집" : "Role Cohesion"}
-                          value={String(Math.round((simulationDock.collectiveSummary.role?.avg_cohesion ?? 0) * 100))}
-                        />
-                        <InfoRow
-                          label={isKo ? "역할 균열" : "Role Fracture"}
-                          value={String(Math.round((simulationDock.collectiveSummary.role?.avg_fracture_risk ?? 0) * 100))}
-                        />
-                        <InfoRow
-                          label={isKo ? "구역 긴장" : "Zone Tension"}
-                          value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_tension ?? 0) * 100))}
-                        />
-                        <InfoRow
-                          label={isKo ? "구역 드리프트" : "Zone Drift"}
-                          value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_drift_velocity ?? 0) * 100))}
-                        />
-                      </div>
-                      <div className="mt-3 grid gap-2">
-                        {simulationDock.collectiveSummary.role?.top_fracturing?.slice(0, 2).map((item) => (
-                          <div key={`role-fracture-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                              {isKo ? "Top Fracturing Group" : "Top Fracturing Group"}
-                            </p>
-                            <p className="mt-1 text-sm">{item.group_label}</p>
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              fracture {Number(item.fracture_risk ?? 0).toFixed(2)} · tension {Number(item.tension ?? 0).toFixed(2)}
-                            </p>
-                          </div>
-                        ))}
-                        {simulationDock.collectiveSummary.zone?.top_drifting?.slice(0, 2).map((item) => (
-                          <div key={`zone-drift-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                              {isKo ? "Top Drifting Zone" : "Top Drifting Zone"}
-                            </p>
-                            <p className="mt-1 text-sm">{item.group_label}</p>
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              drift {Number(item.drift_velocity ?? 0).toFixed(2)} · cohesion {Number(item.cohesion ?? 0).toFixed(2)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                    {isKo ? "현재 관측 시점" : "Current observed t"} · t={Number(simulationDock?.currentT ?? 0).toFixed(0)}
-                  </div>
-                  {thoughtCards.map(({ agent, preview }) => (
-                    <article
-                      key={`dock-stream-${agent.cell_id}`}
-                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {formatAgentIdentity(agent)}
-                          </p>
-                          <p className="truncate text-xs text-slate-500">
-                            {formatAgentMeta(agent)}
-                          </p>
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500">
-                            {formatAgentIdentitySummary(agent)}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1">
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
-                            t={Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                            {formatObserverFocus(agent, isKo)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-3 max-h-44 space-y-3 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 pr-2">
-                        {preview?.thought ? (
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              {isKo ? "생각" : "Thought"}
-                            </p>
-                            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.thought}</p>
-                          </div>
-                        ) : null}
-                        {preview?.action ? (
-                          <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                              {isKo ? "액션" : "Action"}
-                            </p>
-                            <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.action}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                        <span className={continuityPillClass(preview?.continuityState)}>
-                          {formatContinuity(preview, isKo)}
-                        </span>
-                        {typeof agent.action_state?.last_spatial_shift === "number" ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
-                            move {Number(agent.action_state.last_spatial_shift).toFixed(2)}
-                          </span>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
-                </>
               ) : (
-                <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각/액션 흔적이 없습니다." : "No thought or action traces are available for the current t yet."} />
+                <>
+                  {simulationDock?.insightContent && simulationActive ? (
+                    <CollapsibleCard title={isKo ? "선택 상세" : "Selection Details"} defaultOpen>
+                      <div className="runtime-dock__live-insights">{simulationDock.insightContent}</div>
+                    </CollapsibleCard>
+                  ) : null}
+                  {simulationDock?.collectiveSummary ? (
+                    <CollapsibleCard title="Collective Dynamics" defaultOpen>
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-900">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{isKo ? "Collective Dynamics" : "Collective Dynamics"}</p>
+                            <p className="mt-1 text-sky-800/80">
+                              {isKo ? "현재 observer 시점의 집단 응집·균열·드리프트 요약" : "Collective cohesion, fracture, and drift at the current observer step"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                            {simulationDock.collectiveSignal}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <InfoRow
+                            label={isKo ? "역할 응집" : "Role Cohesion"}
+                            value={String(Math.round((simulationDock.collectiveSummary.role?.avg_cohesion ?? 0) * 100))}
+                          />
+                          <InfoRow
+                            label={isKo ? "역할 균열" : "Role Fracture"}
+                            value={String(Math.round((simulationDock.collectiveSummary.role?.avg_fracture_risk ?? 0) * 100))}
+                          />
+                          <InfoRow
+                            label={isKo ? "구역 긴장" : "Zone Tension"}
+                            value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_tension ?? 0) * 100))}
+                          />
+                          <InfoRow
+                            label={isKo ? "구역 드리프트" : "Zone Drift"}
+                            value={String(Math.round((simulationDock.collectiveSummary.zone?.avg_drift_velocity ?? 0) * 100))}
+                          />
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          {simulationDock.collectiveSummary.role?.top_fracturing?.slice(0, 2).map((item) => (
+                            <div key={`role-fracture-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                                {isKo ? "Top Fracturing Group" : "Top Fracturing Group"}
+                              </p>
+                              <p className="mt-1 text-sm">{item.group_label}</p>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                fracture {Number(item.fracture_risk ?? 0).toFixed(2)} · tension {Number(item.tension ?? 0).toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                          {simulationDock.collectiveSummary.zone?.top_drifting?.slice(0, 2).map((item) => (
+                            <div key={`zone-drift-${item.group_id}`} className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-slate-700">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                                {isKo ? "Top Drifting Zone" : "Top Drifting Zone"}
+                              </p>
+                              <p className="mt-1 text-sm">{item.group_label}</p>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                drift {Number(item.drift_velocity ?? 0).toFixed(2)} · cohesion {Number(item.cohesion ?? 0).toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </CollapsibleCard>
+                  ) : null}
+                  <CollapsibleCard title={isKo ? "현재 관측 시점" : "Current observed t"} defaultOpen={false}>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+                      {isKo ? "현재 관측 시점" : "Current observed t"} · t={Number(simulationDock?.currentT ?? 0).toFixed(0)}
+                    </div>
+                  </CollapsibleCard>
+                  {thoughtCards.length ? (
+                    thoughtCards.map(({ agent, preview }) => (
+                      <CollapsibleCard
+                        key={`dock-stream-${agent.cell_id}`}
+                        title={formatAgentIdentity(agent)}
+                        meta={`t=${Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)} · ${formatObserverFocus(agent, isKo)}`}
+                        defaultOpen={false}
+                      >
+                        <article className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-900">
+                                {formatAgentIdentity(agent)}
+                              </p>
+                              <p className="truncate text-xs text-slate-500">
+                                {formatAgentMeta(agent)}
+                              </p>
+                              <AgentIdentitySummary agent={agent} isKo={isKo} />
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                                t={Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)}
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                {formatObserverFocus(agent, isKo)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-3 max-h-44 space-y-3 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 pr-2">
+                            {preview?.thought ? (
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  {isKo ? "생각" : "Thought"}
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.thought}</p>
+                              </div>
+                            ) : null}
+                            {preview?.action ? (
+                              <div>
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                  {isKo ? "액션" : "Action"}
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.action}</p>
+                              </div>
+                            ) : null}
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                            <span className={continuityPillClass(preview?.continuityState)}>
+                              {formatContinuity(preview, isKo)}
+                            </span>
+                            {typeof agent.action_state?.last_spatial_shift === "number" ? (
+                              <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                                move {Number(agent.action_state.last_spatial_shift).toFixed(2)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </article>
+                      </CollapsibleCard>
+                    ))
+                  ) : (
+                    <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각/액션 흔적이 없습니다." : "No thought or action traces are available for the current t yet."} />
+                  )}
+                </>
               )}
             </div>
           ) : null}
@@ -399,6 +416,56 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CollapsibleCard({
+  title,
+  meta,
+  defaultOpen = false,
+  children,
+}: {
+  title: string;
+  meta?: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details className="runtime-collapsible-card group" open={defaultOpen}>
+      <summary className="runtime-collapsible-card__summary">
+        <span className="runtime-collapsible-card__chevron">⌄</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {meta ? <span className="runtime-collapsible-card__meta">{meta}</span> : null}
+      </summary>
+      <div className="runtime-collapsible-card__body">{children}</div>
+    </details>
+  );
+}
+
+function AgentIdentitySummary({ agent, isKo }: { agent: CellSnapshot; isKo: boolean }) {
+  const full = formatAgentIdentitySummary(agent);
+  const short = truncateText(full, 15);
+  return (
+    <div className="mt-1 flex min-w-0 items-start gap-1.5">
+      <p className="min-w-0 flex-1 text-[11px] leading-5 text-slate-500">{short}</p>
+      {full.length > short.length ? (
+        <details className="relative shrink-0">
+          <summary
+            className="flex h-6 w-6 cursor-pointer list-none items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 hover:border-slate-400 hover:text-slate-900"
+            aria-label={isKo ? "페르소나 설명 전체 보기" : "Show full persona description"}
+            title={isKo ? "전체 설명" : "Full description"}
+          >
+            i
+          </summary>
+          <div className="absolute right-0 z-40 mt-2 w-80 rounded-2xl border border-slate-200 bg-white p-3 text-xs leading-6 text-slate-700 shadow-xl">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              {isKo ? "페르소나 전문" : "Full persona"}
+            </p>
+            <p className="max-h-64 overflow-y-auto whitespace-pre-wrap pr-1">{full}</p>
+          </div>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 function formatAgentIdentity(agent: CellSnapshot): string {
   const attrs = agent.persona_attrs ?? {};
   const name = firstText(
@@ -422,6 +489,12 @@ function formatAgentMeta(agent: CellSnapshot): string {
 function formatAgentIdentitySummary(agent: CellSnapshot): string {
   const attrs = agent.persona_attrs ?? {};
   return firstText(attrs.identity_summary, attrs.persona_summary, agent.persona_text, agent.role_label, agent.role_key, "identity pending");
+}
+
+function truncateText(value: string, limit: number): string {
+  const text = String(value || "").trim();
+  if (text.length <= limit) return text;
+  return `${text.slice(0, Math.max(0, limit - 1)).trimEnd()}…`;
 }
 
 function firstText(...values: unknown[]): string {
@@ -481,7 +554,7 @@ function getActionPreview(agent: CellSnapshot): string {
       ""
   ).trim();
   if (directSummary) {
-    return directSummary;
+    return normalizeActionPreview(agent, directSummary);
   }
   const behaviorLog = Array.isArray(agent.behavior_log) ? agent.behavior_log : [];
   for (const item of [...behaviorLog].reverse()) {
@@ -492,6 +565,21 @@ function getActionPreview(agent: CellSnapshot): string {
     }
   }
   return "";
+}
+
+function normalizeActionPreview(agent: CellSnapshot, value: string): string {
+  const raw = String(value || "").trim();
+  if (!isPlaceholderAction(raw)) return raw;
+  const role = firstText(agent.role_label, agent.role_key, "agent");
+  const zone = firstText(agent.zone_label, agent.zone_id, "local field");
+  const attrs = agent.persona_attrs ?? {};
+  const identity = firstText(attrs.identity_summary, attrs.occupation, attrs.persona_summary, agent.persona_text);
+  return `행동: ${role} 입장에서 ${zone}의 가까운 사람들과 상황을 확인한다. 이유: ${truncateText(identity, 88) || "초기 페르소나 조건이 다음 선택의 기준이 된다"}. 대상: 주변 협의 대상.`;
+}
+
+function isPlaceholderAction(value: string): boolean {
+  const raw = String(value || "").trim().toLowerCase();
+  return raw === "persona_seeded_initial_state" || raw === "adaptive planning" || raw === "current_state_reflection";
 }
 
 function formatObserverFocus(agent: CellSnapshot, isKo: boolean): string {

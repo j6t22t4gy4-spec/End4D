@@ -139,7 +139,7 @@ export function useSimulation() {
         let runTriggered = false;
         let streamActive = true;
         let reconnectAttempts = 0;
-        const maxReconnectAttempts = 1;
+        const maxReconnectAttempts = 3;
 
         const settleResolve = () => {
           if (settled) return;
@@ -165,6 +165,10 @@ export function useSimulation() {
           ws.onmessage = (ev) => handleStreamMessage(ev.data);
 
           ws.onerror = () => {
+            if (!settled && isRecoverableStreamStatus() && reconnectAttempts < maxReconnectAttempts) {
+              scheduleReconnect("socket error");
+              return;
+            }
             const message = mode === "reconnect" ? "WebSocket 재연결 실패" : "WebSocket 연결 실패";
             setStreamError(message);
             setStreamStatus((prev) => ({ ...prev, phase: "error", message }));
@@ -178,13 +182,7 @@ export function useSimulation() {
             if (expectedCloseRef.current || settled) return;
             clearRuntimeTimers(pingTimerRef, heartbeatWatchRef, reconnectTimerRef);
             if (isRecoverableStreamStatus() && reconnectAttempts < maxReconnectAttempts) {
-              reconnectAttempts += 1;
-              setStreamStatus((prev) => ({
-                ...prev,
-                phase: "reconnecting",
-                message: "stream reconnecting",
-              }));
-              reconnectTimerRef.current = window.setTimeout(() => connect("reconnect"), 850);
+              scheduleReconnect("socket closed");
               return;
             }
             setIsRunning(false);
@@ -224,6 +222,23 @@ export function useSimulation() {
 
         const isRecoverableStreamStatus = () => {
           return streamActive;
+        };
+
+        const scheduleReconnect = (reason: string) => {
+          reconnectAttempts += 1;
+          clearRuntimeTimers(pingTimerRef, heartbeatWatchRef, reconnectTimerRef);
+          expectedCloseRef.current = true;
+          if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+          }
+          const delayMs = 700 + reconnectAttempts * 650;
+          setStreamStatus((prev) => ({
+            ...prev,
+            phase: "reconnecting",
+            message: `stream reconnecting (${reason}, ${reconnectAttempts}/${maxReconnectAttempts})`,
+          }));
+          reconnectTimerRef.current = window.setTimeout(() => connect("reconnect"), delayMs);
         };
 
         const handleStreamMessage = (data: string) => {

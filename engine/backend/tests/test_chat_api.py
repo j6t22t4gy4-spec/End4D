@@ -36,6 +36,8 @@ def test_world_chat_returns_grounded_answer_and_session():
     assert payload["session_id"]
     assert payload["answer"]
     assert payload["metadata"]["snapshot"]["t"] == latest_t
+    assert "avg_collective_pressure" in payload["metadata"]["snapshot"]
+    assert "summary" in payload["metadata"]["target"]
     assert payload["grounding"]["snapshot"]
     assert "persona" in payload["metadata"]
 
@@ -66,4 +68,5 @@ def test_world_chat_accepts_agent_context():
     payload = response.json()
     assert payload["context"]["target_type"] == "agent"
     assert payload["metadata"]["persona"][0]["cell_id"] == cell_id
+    assert "summary" in payload["metadata"]["target"]
     assert any(item["cell_id"] == cell_id for item in payload["grounding"]["personas"])

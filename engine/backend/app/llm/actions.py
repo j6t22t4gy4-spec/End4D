@@ -88,6 +88,8 @@ def _parse_action_state(text: str, cell: Cell) -> Dict[str, float | str]:
             "policy_sensitivity": _bounded_float(payload.get("policy_sensitivity"), default=0.5),
             "mobility_bias": _bounded_float(payload.get("mobility_bias"), default=0.4),
         }
+        if _is_abstract_action(str(state["strategy_summary"])):
+            state["strategy_summary"] = _default_action_phrase(cell)
         action_reason = str(payload.get("action_reason") or payload.get("reason") or "").strip()
         action_target = str(payload.get("action_target") or payload.get("target") or "").strip()
         if action_reason:
@@ -186,9 +188,14 @@ def _grounded_action_summary(cell: Cell, state: Dict[str, float | str]) -> str:
         action = _default_action_phrase(cell)
     reason = str(state.get("action_reason") or "").strip() or _grounded_action_reason(cell)
     target = str(state.get("action_target") or "").strip() or _grounded_action_target(cell)
+    dialogue = _recent_dialogue_hint(cell)
+    dialogue_clause = ""
+    if dialogue:
+        peer, summary = dialogue
+        dialogue_clause = f" 최근 대화: {peer}에게 '{summary[:70]}'." if locale == "ko" else f" Recent dialogue: {peer} said '{summary[:70]}'."
     if locale == "ko":
-        return f"행동: {action[:90]}. 이유: {reason[:110]}. 대상: {target[:70]}."
-    return f"Action: {action[:90]}. Reason: {reason[:110]}. Target: {target[:70]}."
+        return f"행동: {action[:90]}. 이유: {reason[:110]}. 대상: {target[:70]}.{dialogue_clause}"
+    return f"Action: {action[:90]}. Reason: {reason[:110]}. Target: {target[:70]}.{dialogue_clause}"
 
 
 def _grounded_action_reason(cell: Cell) -> str:
@@ -198,7 +205,11 @@ def _grounded_action_reason(cell: Cell) -> str:
     persona = _persona_hint(cell)
     pressure = _pressure_hint(cell)
     recent = _recent_behavior_hint(cell)
+    dialogue = _recent_dialogue_hint(cell)
     if locale == "ko":
+        if dialogue:
+            peer, summary = dialogue
+            return f"{peer}와의 최근 대화('{summary[:90]}')가 {role}의 다음 선택을 압박함"
         if pressure:
             return f"{role}가 {zone}에서 {pressure}를 감지했고 {recent}을 바탕으로 조정이 필요함"
         if persona:
@@ -206,6 +217,9 @@ def _grounded_action_reason(cell: Cell) -> str:
         return f"{role}가 {zone}의 최근 상호작용을 기준으로 위험과 협력 여지를 재평가함"
     if pressure:
         return f"{role} detects {pressure} in {zone} and adjusts from {recent}"
+    if dialogue:
+        peer, summary = dialogue
+        return f"recent dialogue with {peer} ('{summary[:90]}') is shaping the next move"
     if persona:
         return f"{persona} and the current {zone} context constrain the next move"
     return f"{role} is reassessing risk and cooperation in {zone}"
@@ -214,8 +228,13 @@ def _grounded_action_reason(cell: Cell) -> str:
 def _grounded_action_target(cell: Cell) -> str:
     role = _role_label(cell)
     zone = _zone_label(cell)
+    dialogue = _recent_dialogue_hint(cell)
     if get_ui_language() == "ko":
+        if dialogue:
+            return f"{dialogue[0]} 및 {zone}의 가까운 협의 대상"
         return f"{zone}의 {role} 및 가까운 협의 대상"
+    if dialogue:
+        return f"{dialogue[0]} and nearby negotiation partners in {zone}"
     return f"{role} peers and nearby negotiation partners in {zone}"
 
 
@@ -291,3 +310,20 @@ def _recent_behavior_hint(cell: Cell) -> str:
     if get_ui_language() == "ko":
         return "최근 관찰된 상호작용"
     return "recent observed interactions"
+
+
+def _recent_dialogue_hint(cell: Cell) -> tuple[str, str] | None:
+    state = dict(cell.action_state or {})
+    peer = str(state.get("last_dialogue_peer_label") or "").strip()
+    summary = " ".join(str(state.get("last_dialogue_summary") or "").split())
+    if peer and summary:
+        return peer, summary
+    for item in reversed(list(cell.behavior_log or [])[-10:]):
+        if str(item.get("event_type") or "") != "agent_dialogue":
+            continue
+        payload = dict(item.get("payload") or {})
+        peer = str(payload.get("peer_label") or payload.get("peer_id") or "").strip()
+        summary = " ".join(str(item.get("summary") or "").split())
+        if summary:
+            return peer or ("방금 만난 사람" if get_ui_language() == "ko" else "a recent peer"), summary
+    return None

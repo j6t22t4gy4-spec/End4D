@@ -62,6 +62,8 @@ def compute_scene_quality_metrics(
     hostile_events = 0
     positive_events = 0
     pressure_sum = 0.0
+    narrative_specificity_values: list[float] = []
+    scenario_linked_events = 0
     sorted_events = sorted(scene_events, key=lambda item: float(item.get("scene_progress", 0.0) or 0.0))
     previous_progress: float | None = None
     gaps: list[float] = []
@@ -81,6 +83,16 @@ def compute_scene_quality_metrics(
         if interaction_type == "positive":
             positive_events += 1
         pressure_sum += abs(float(event.get("pressure_delta") or 0.0))
+        summary = str(event.get("summary") or "")
+        reason = str(event.get("narrative_reason") or "")
+        scenario = str(event.get("scenario_relevance") or "")
+        specificity = min(1.0, (len(summary) + len(reason)) / 220.0)
+        if event.get("source_label") and event.get("target_label"):
+            specificity += 0.12
+        if scenario:
+            scenario_linked_events += 1
+            specificity += 0.12
+        narrative_specificity_values.append(min(1.0, specificity))
         progress = float(event.get("scene_progress", 0.0) or 0.0)
         if previous_progress is not None:
             gaps.append(max(0.0, progress - previous_progress))
@@ -100,6 +112,18 @@ def compute_scene_quality_metrics(
             + 0.16 * (1.0 - min(1.0, max_gap)),
         ),
     )
+    specificity_score = _mean(narrative_specificity_values)
+    scenario_link_rate = scenario_linked_events / max(1, scenes_per_t)
+    quality_score = max(
+        0.0,
+        min(
+            1.0,
+            continuity * 0.42
+            + specificity_score * 0.28
+            + scenario_link_rate * 0.16
+            + min(1.0, relationship_events / 6.0) * 0.14,
+        ),
+    )
     return {
         "t": float(next_t),
         "start_t": float(current_t),
@@ -110,8 +134,51 @@ def compute_scene_quality_metrics(
         "positive_event_count": positive_events,
         "dead_timestep_rate": dead_timestep,
         "narrative_continuity_score": round(continuity, 4),
+        "narrative_specificity_score": round(specificity_score, 4),
+        "scenario_link_rate": round(scenario_link_rate, 4),
+        "scene_quality_score": round(quality_score, 4),
+        "scene_quality_grade": _quality_grade(quality_score),
+        "quality_warnings": _quality_warnings(
+            scenes_per_t=scenes_per_t,
+            participation=participation,
+            relationship_events=relationship_events,
+            specificity_score=specificity_score,
+            scenario_link_rate=scenario_link_rate,
+        ),
         "pressure_delta_abs_sum": round(pressure_sum, 4),
     }
+
+
+def _quality_grade(score: float) -> str:
+    if score >= 0.78:
+        return "strong"
+    if score >= 0.58:
+        return "usable"
+    if score >= 0.36:
+        return "thin"
+    return "weak"
+
+
+def _quality_warnings(
+    *,
+    scenes_per_t: int,
+    participation: float,
+    relationship_events: int,
+    specificity_score: float,
+    scenario_link_rate: float,
+) -> list[str]:
+    warnings: list[str] = []
+    if scenes_per_t < 4:
+        warnings.append("too_few_scenes")
+    if participation < 0.12:
+        warnings.append("low_agent_participation")
+    if relationship_events < 2:
+        warnings.append("weak_relationship_stream")
+    if specificity_score < 0.42:
+        warnings.append("generic_scene_text")
+    if scenario_link_rate < 0.25:
+        warnings.append("weak_scenario_link")
+    return warnings[:4]
 
 
 def _interaction_scenes(
@@ -429,6 +496,10 @@ def _compact_fragment(value: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _mean(values: list[float]) -> float:
+    return float(sum(values) / len(values)) if values else 0.0
 
 
 def _groups_for(source: Cell, target: Cell | None) -> list[str]:
