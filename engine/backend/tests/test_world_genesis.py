@@ -4,6 +4,7 @@ import json
 import pytest
 
 from app.core.persona_dataset import PersonaSeed
+from app.core.scenario_compiler import prepare_swarm_v2_scenario
 from app.core.world_genesis import apply_persona_distribution_to_plan, normalize_scenario_prompt, propose_world_from_prompt, refine_scenario_for_runtime
 
 
@@ -38,7 +39,7 @@ def test_normalize_scenario_prompt_expands_short_input():
 
 
 def test_refine_scenario_for_runtime_uses_llm_director(monkeypatch):
-    monkeypatch.setattr("app.core.world_genesis.get_llm_chat_enabled", lambda: True)
+    monkeypatch.setattr("app.core.scenario_compiler.get_llm_chat_enabled", lambda: True)
 
     def fake_direct_scenario(payload):
         return (
@@ -58,7 +59,7 @@ def test_refine_scenario_for_runtime_uses_llm_director(monkeypatch):
             {"provider": "stub-test", "model": "director", "prompt_count_sent": 1},
         )
 
-    monkeypatch.setattr("app.core.world_genesis.llm_facade.direct_scenario", fake_direct_scenario)
+    monkeypatch.setattr("app.core.scenario_compiler.llm_facade.direct_scenario", fake_direct_scenario)
     refined = refine_scenario_for_runtime(
         engine_params={"raw_prompt": "금리와 월세", "scenario_prompt": "원문 시나리오: 금리와 월세"},
         role_catalog=["생산자", "소비자"],
@@ -73,7 +74,7 @@ def test_refine_scenario_for_runtime_uses_llm_director(monkeypatch):
 
 
 def test_refine_scenario_for_runtime_tolerates_string_pressure_seeds(monkeypatch):
-    monkeypatch.setattr("app.core.world_genesis.get_llm_chat_enabled", lambda: True)
+    monkeypatch.setattr("app.core.scenario_compiler.get_llm_chat_enabled", lambda: True)
 
     def fake_direct_scenario(payload):
         return (
@@ -93,7 +94,7 @@ def test_refine_scenario_for_runtime_tolerates_string_pressure_seeds(monkeypatch
             {"provider": "stub-test", "model": "director", "prompt_count_sent": 1},
         )
 
-    monkeypatch.setattr("app.core.world_genesis.llm_facade.direct_scenario", fake_direct_scenario)
+    monkeypatch.setattr("app.core.scenario_compiler.llm_facade.direct_scenario", fake_direct_scenario)
     refined = refine_scenario_for_runtime(
         engine_params={"raw_prompt": "월세 갈등", "scenario_prompt": "원문 시나리오: 월세 갈등"},
         role_catalog=["생산자", "소비자"],
@@ -105,6 +106,16 @@ def test_refine_scenario_for_runtime_tolerates_string_pressure_seeds(monkeypatch
     assert refined["scenario_actor_roles"][:2] == ["청년 세입자", "소형 임대인"]
     assert refined["scenario_initial_zones"][:2] == ["임차인 밀집지", "자산 보유 bloc"]
     assert isinstance(refined["scenario_director"]["pressure_seeds"], dict)
+
+
+def test_prepare_swarm_v2_scenario_preserves_raw_and_compiles_runtime_brief():
+    scenario = prepare_swarm_v2_scenario("기본소득")
+
+    assert scenario["raw_prompt"] == "기본소득"
+    assert "원문 시나리오: 기본소득" in scenario["scenario_prompt"]
+    assert scenario["scenario_director_mode"] == "heuristic"
+    assert scenario["scenario_actor_roles"]
+    assert scenario["scenario_initial_zones"]
 
 
 def test_genesis_long_horizon_keyword():

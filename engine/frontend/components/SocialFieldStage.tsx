@@ -19,7 +19,7 @@ import type {
   SelectedZone,
 } from "@/components/SimulationInspectorPanel";
 
-type SimulationMap2DProps = {
+type SocialFieldStageProps = {
   cells: CellSnapshot[];
   totalCells: number;
   sampled: boolean;
@@ -116,7 +116,7 @@ const SVG_WIDTH = 960;
 const SVG_HEIGHT = 640;
 const PADDING = 56;
 
-export default function SimulationMap2D({
+export default function SocialFieldStage({
   cells,
   totalCells,
   sampled,
@@ -144,7 +144,7 @@ export default function SimulationMap2D({
   onSelectBand,
   onClearSelection,
   onJumpToT,
-}: SimulationMap2DProps) {
+}: SocialFieldStageProps) {
   const scene = useMemo(() => buildScene(cells), [cells]);
   const pixiScene = useMemo(
     () => buildCenterMapScene({ cells, selectedAgentId, sceneEvents }),
@@ -183,12 +183,20 @@ export default function SimulationMap2D({
   const selectedBand = selectedBandKey
     ? scene.elevationBands.find((band) => band.key === selectedBandKey) ?? null
     : null;
-  const metaItems = [
-    `${cells.length.toLocaleString()} visible`,
-    `${totalCells.toLocaleString()} total`,
-    `${scene.zoneBoxes.length} zones`,
-    sampled ? "sampled" : "full",
-  ];
+  const metaItems = pixiScene.activeSession
+    ? [
+        `${cells.length.toLocaleString()} visible`,
+        `${totalCells.toLocaleString()} total`,
+        `stream ${pixiScene.activeSession.index}/${pixiScene.activeSession.count}`,
+        `${pixiScene.activeSession.eventCount} live contacts`,
+        sampled ? "sampled" : "full",
+      ]
+    : [
+        `${cells.length.toLocaleString()} visible`,
+        `${totalCells.toLocaleString()} total`,
+        `${scene.zoneBoxes.length} zones`,
+        sampled ? "sampled" : "full",
+      ];
 
   useEffect(() => {
     if (cameraResetSignal === lastCameraResetSignalRef.current) return;
@@ -332,8 +340,17 @@ export default function SimulationMap2D({
           >
             <div className="simulation-map__hud">
               <div>
-                <p className="simulation-map__eyebrow">Social Field</p>
-                <h3 className="simulation-map__title">{scene.zSemantics.label}</h3>
+                <p className="simulation-map__eyebrow">Live Social Field</p>
+                <h3 className="simulation-map__title">
+                  {pixiScene.activeSession
+                    ? `Social stream ${pixiScene.activeSession.index}/${pixiScene.activeSession.count}`
+                    : scene.zSemantics.label}
+                </h3>
+                {pixiScene.activeSession ? (
+                  <p className="simulation-map__subtitle simulation-map__subtitle--session">
+                    {pixiScene.activeSession.latestSummary || `${pixiScene.activeSession.activeAgentIds.length} agents interacting`}
+                  </p>
+                ) : null}
               </div>
               <div className="simulation-map__meta">
                 {metaItems.map((item) => (
@@ -412,9 +429,7 @@ export default function SimulationMap2D({
               className="simulation-map__hover-chip"
               style={hoverChipStyle(hoverPosition)}
             >
-              {cellById.get(hoveredAgentId)?.role_label ??
-                cellById.get(hoveredAgentId)?.role_key ??
-                "agent"}
+              {agentDisplayName(cellById.get(hoveredAgentId))}
             </div>
           ) : null}
           </div>
@@ -447,6 +462,14 @@ export default function SimulationMap2D({
 
     </div>
   );
+}
+
+function agentDisplayName(cell?: CellSnapshot) {
+  if (!cell) return "agent";
+  const attrs = cell.persona_attrs ?? {};
+  const name = String(attrs.display_name ?? attrs.agent_name ?? attrs.name ?? "").trim();
+  const role = String(cell.role_label ?? cell.role_key ?? "agent").trim();
+  return name ? `${name}(${role})` : role;
 }
 
 function buildScene(cells: CellSnapshot[]) {

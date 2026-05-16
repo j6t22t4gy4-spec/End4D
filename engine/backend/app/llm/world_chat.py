@@ -157,11 +157,14 @@ def _agent_answer(
     action_sentence = f" 다음 행동 단서는 '{action_text}'로 보입니다." if action_text else ""
     comparison_sentence = _comparison_sentence(comparison)
     return (
-        f"t={snapshot.get('t', 'n/a')}에서 {target_label}은 단순한 역할 표본이 아니라 "
-        f"{persona.get('zone_label') or '해당 구역'} 안에서 압력 {pressure}, 결정 압력 {decision_delta}를 받고 있는 개별 페르소나입니다."
+        f"결론부터 말하면, t={snapshot.get('t', 'n/a')}에서 {target_label}은 "
+        f"{persona.get('zone_label') or '해당 구역'}의 압력 {pressure}, 결정 압력 {decision_delta}를 개인의 역할 이해로 번역하고 있습니다. "
+        f"이 사람은 단순한 역할 표본이 아니라 최근 대화, 자기 생계/직무, 주변 구역 분위기를 함께 보고 움직이는 페르소나입니다."
         f"{peer_sentence}{thought_sentence}{scene_sentence}{action_sentence}{comparison_sentence} "
-        f"따라서 질문 '{question}'에 답하면, 이 에이전트는 시나리오 '{world.get('genesis_prompt') or 'scenario'}'를 "
-        "추상 정책이 아니라 주변 사람의 말과 자기 생계/역할 이해를 통해 해석하고 있다고 보는 편이 가장 근거에 맞습니다."
+        f"질문 '{question}'에 대한 해석은 이렇습니다. 첫째, 시나리오 '{world.get('genesis_prompt') or 'scenario'}'는 "
+        "이 에이전트에게 추상 정책이 아니라 주변 사람의 말과 당장의 선택 압력으로 들어옵니다. "
+        "둘째, 다음 변화는 이 사람이 누구와 다시 접촉하는지, 그리고 그 접촉이 협력인지 불신인지에 따라 갈릴 가능성이 큽니다. "
+        "셋째, 지금 답변은 관측된 snapshot/persona/event metadata에 근거한 해석이므로, 더 강한 결론을 내려면 다음 t의 scene stream과 관계선 변화를 같이 봐야 합니다."
     )
 
 
@@ -200,10 +203,12 @@ def _group_answer(
     top_sentence = f" 특히 압력이 큰 표본은 {', '.join(top_people)}입니다." if top_people else ""
     comparison_sentence = _comparison_sentence(comparison)
     return (
-        f"t={snapshot.get('t', 'n/a')}의 {target_label}은 평균 압력 {pressure}, 최대 압력 {max_pressure}, "
-        f"결정 압력 {decision_delta} 수준으로 관측됩니다.{top_sentence}{event_sentence}{persona_sentence}{comparison_sentence} "
-        f"질문 '{question}'에 대한 현재 해석은, 시나리오 '{world.get('genesis_prompt') or 'scenario'}'가 "
-        "집단 전체에 균일하게 먹히기보다 일부 페르소나와 최근 상호작용을 통해 국소적으로 증폭되는 상태라는 쪽입니다."
+        f"결론부터 말하면, t={snapshot.get('t', 'n/a')}의 {target_label}은 평균 압력 {pressure}, 최대 압력 {max_pressure}, "
+        f"결정 압력 {decision_delta} 수준의 집단 상태로 관측됩니다.{top_sentence}{event_sentence}{persona_sentence}{comparison_sentence} "
+        f"질문 '{question}'에 대한 현재 해석은 세 가지입니다. "
+        f"첫째, 시나리오 '{world.get('genesis_prompt') or 'scenario'}'는 집단 전체에 균일하게 퍼지기보다 특정 페르소나와 최근 상호작용을 통해 국소적으로 증폭됩니다. "
+        "둘째, 평균 압력보다 최대 압력과 최근 scene의 방향이 더 중요합니다. 이 둘이 함께 오르면 다음 t에서 fracture나 drift가 커질 수 있습니다. "
+        "셋째, 지금 단계의 의사결정 포인트는 전체 평균을 낮추는 것보다 압력이 큰 하위 집단/구역의 대화 경로를 확인하는 것입니다."
     )
 
 

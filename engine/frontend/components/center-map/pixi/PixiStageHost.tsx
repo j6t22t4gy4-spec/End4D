@@ -122,9 +122,8 @@ export function PixiStageHost({
         controller.resize(rect.width, rect.height);
       }
 
-      const bootedAt = performance.now();
       app.ticker.add(() => {
-        controller.render((performance.now() - bootedAt) / 1000);
+        controller.render(performance.now());
       });
     };
 

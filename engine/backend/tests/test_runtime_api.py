@@ -7,6 +7,7 @@ import numpy as np
 from app.llm.facade import llm_facade
 from app.main import app
 from app.models.cell import Cell
+from app.core.settings import get_llm_timeout_s
 
 client = TestClient(app)
 
@@ -458,6 +459,13 @@ def test_runtime_llm_config_can_be_saved(tmp_path, monkeypatch):
     assert status_payload["llm_runtime"]["group_deliberation_max_groups"] == 20
     assert status_payload["llm_runtime"]["task_budgets"]["thought"] == 144
     assert status_payload["llm_runtime"]["task_priorities"]["dialogue"] == 1
+
+
+def test_swarm_llm_tasks_wait_longer_than_display_pace(monkeypatch):
+    monkeypatch.setenv("ORGANIC4D_LLM_TIMEOUT_S", "12")
+
+    assert get_llm_timeout_s("swarm_agent") >= 90
+    assert get_llm_timeout_s("swarm_packet") >= 90
 
 
 def test_runtime_llm_test_endpoint_reports_runtime_result(monkeypatch):

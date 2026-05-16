@@ -157,13 +157,15 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_summary": PromptSpec(
         task="review_summary",
-        version="review-summary-v8",
+        version="review-summary-v9",
         output_mode="json",
         description="Executive summary for a completed simulation world.",
         system_prompt=(
             "Act as an analyst reviewing a completed long-horizon societal simulation. "
-            "Return compact JSON only, focusing on major events, group-level belief shifts, emergent ideological dynamics, causes, and decision implications. "
+            "Return JSON only, but do not be shallow: executive_summary should be a dense 4-6 sentence analyst memo, "
+            "key_events and causal_analysis should explain concrete t-points, affected groups/zones/personas, pressure direction, and why it matters. "
             "Use mechanism_summary, lineage_summary, policy_lineage_bridge, causal_chains, and grounding to explain event -> group -> zone -> agent causality instead of generic summaries. "
+            "Call out whether the world feels stable, self-damping, brittle, over-smoothed, or under-specified. "
             "The citations object must use explicit sentence keys such as headline, key_events.0, causal_analysis.0, and decision_implications.0. "
             "Only cite anchor ids that appear in ANCHOR_CANDIDATES or GROUNDING. Every major sentence must map to at least one anchor id."
         ),
@@ -210,12 +212,13 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "review_query": PromptSpec(
         task="review_query",
-        version="review-query-v6",
+        version="review-query-v7",
         output_mode="json",
         description="Answer a focused analyst question about a completed simulation world using structured review evidence.",
         system_prompt=(
             "Answer the analyst question using only the structured simulation evidence provided. "
-            "Return compact JSON only, with a direct answer, supporting evidence, and confidence notes. "
+            "Return JSON only. The answer must be specific and useful: give the direct conclusion first, then the mechanism, then the practical implication. "
+            "Use at least 3 concrete evidence bullets when data exists, including t-points, groups/zones, pressure/fracture/drift, and notable agent traces. "
             "Prefer group-level, lineage-level, policy-lineage bridge, and mechanism-level evidence before anecdotal agent evidence. "
             "The citations list must contain only anchor ids from ANCHOR_CANDIDATES or GROUNDING."
         ),
@@ -333,13 +336,15 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
     ),
     "world_chat": PromptSpec(
         task="world_chat",
-        version="world-chat-v1",
+        version="world-chat-v2",
         output_mode="json",
         description="Conversational question-answering over one simulation world with explicit t/persona/role/zone grounding.",
         system_prompt=(
             "Answer the user's natural-language question about the simulation world using only the provided world, snapshot, persona, event, and group metadata. "
             "If a persona or group context is selected, answer from that vantage point while clearly separating observed evidence from interpretation. "
-            "Return compact JSON only. Citations must use only anchor ids from GROUNDING."
+            "Return JSON only, but make the answer detailed enough to be useful: state what is happening, why it is happening, who/which group is involved, "
+            "what changed from the previous t when comparison exists, and what to watch next. Avoid generic scenario commentary. "
+            "Citations must use only anchor ids from GROUNDING."
         ),
         expected_keys=(
             "answer",
@@ -347,6 +352,28 @@ PROMPT_SPECS: dict[str, PromptSpec] = {
             "follow_up",
             "confidence_notes",
             "citations",
+        ),
+    ),
+    "swarm_packet": PromptSpec(
+        task="swarm_packet",
+        version="swarm-packet-v1",
+        output_mode="text",
+        description="Compact group-level debate packet rewrite for Swarm V2.",
+        system_prompt=(
+            "Rewrite swarm packet events into one vivid Korean sentence. "
+            "Preserve the social conflict, topic, and concrete reaction. "
+            "Do not add unsupported facts."
+        ),
+    ),
+    "swarm_agent": PromptSpec(
+        task="swarm_agent",
+        version="swarm-agent-v1",
+        output_mode="text",
+        description="Compact agent-level utterance rewrite for Swarm V2.",
+        system_prompt=(
+            "Rewrite one swarm event as a concrete Korean agent reaction. "
+            "Sound like a person responding to another person, not an abstract report. "
+            "Keep it to one sentence."
         ),
     ),
 }

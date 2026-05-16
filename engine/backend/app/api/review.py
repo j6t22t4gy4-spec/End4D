@@ -53,6 +53,7 @@ class ReviewSummaryResponse(BaseModel):
     stance_groups: List[Dict[str, Any]] = Field(default_factory=list)
     belief_trajectory: Dict[str, Any] = Field(default_factory=dict)
     decision_influence: Dict[str, Any] = Field(default_factory=dict)
+    action_ledger: Dict[str, Any] = Field(default_factory=dict)
     group_analysis: Dict[str, Any] = Field(default_factory=dict)
     group_tables: Dict[str, Any] = Field(default_factory=dict)
     lineage_summary: Dict[str, Any] = Field(default_factory=dict)
@@ -130,6 +131,7 @@ def _current_review_revision(entry: Dict[str, Any]) -> Dict[str, int]:
     return {
         "latest_t": latest_t,
         "snapshot_count": len(available_t),
+        "action_ledger_count": len(list(entry.get("action_ledger") or [])),
     }
 
 
@@ -160,6 +162,7 @@ def _build_review_summary_response(
         stance_groups=[dict(item) for item in list((payload.get("belief_drift") or {}).get("groups") or [])],
         belief_trajectory=dict(payload.get("belief_trajectory") or {}),
         decision_influence=dict(payload.get("decision_influence") or {}),
+        action_ledger=dict(payload.get("action_ledger") or {}),
         group_analysis=dict(payload.get("group_analysis") or {}),
         group_tables=dict(payload.get("group_tables") or {}),
         lineage_summary=dict(payload.get("lineage_summary") or {}),
@@ -299,6 +302,7 @@ def get_review_diff(world_id: str, base_world_id: str):
         "lineage_delta": dict(diff_payload.get("lineage_delta") or {}),
         "policy_lineage_delta": dict(diff_payload.get("policy_lineage_delta") or {}),
         "decision_influence_delta": dict(diff_payload.get("decision_influence_delta") or {}),
+        "action_ledger_delta": dict(diff_payload.get("action_ledger_delta") or {}),
         "belief_trajectory_delta": dict(diff_payload.get("belief_trajectory_delta") or {}),
         "group_table_delta": dict(diff_payload.get("group_table_delta") or {}),
         "timeline_turning_point_delta": dict(diff_payload.get("timeline_turning_point_delta") or {}),

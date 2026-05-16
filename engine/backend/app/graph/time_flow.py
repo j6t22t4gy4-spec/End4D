@@ -10,6 +10,7 @@ import re
 
 from langgraph.graph import StateGraph, START, END
 
+from app.core.actor_factory import build_actor_sheet, stable_unit
 from app.core.collective_dynamics import apply_collective_dynamics
 from app.models.cell import Cell
 from app.core.memory_store import seed_memory_from_text
@@ -57,59 +58,28 @@ def _create_initial_cells(
     grid_width = max(1, math.ceil(count ** 0.5))
     for i in range(count):
         persona = personas[i % len(personas)] if personas else {}
-        rk = _scenario_role_for_persona(persona, roles, i=i, scenario_roles=scenario_roles)
-        label = str(rk if scenario_roles else persona.get("role_label") or rk)
         persona_text = str(persona.get("persona_text") or "")
-        attrs = dict(persona.get("attrs") or {})
-        agent_name = _persona_agent_name(persona, attrs=attrs, i=i)
-        attrs.setdefault("agent_name", agent_name)
-        attrs.setdefault("display_name", f"{agent_name}({label})")
-        attrs.setdefault(
-            "identity_summary",
-            _identity_summary(
-                name=agent_name,
-                role=label,
-                persona_text=persona_text,
-                attrs=attrs,
-                zone_label="",
-            ),
+        actor = build_actor_sheet(
+            persona=dict(persona),
+            role_catalog=list(roles),
+            scenario_roles=list(scenario_roles),
+            scenario_zones=list(scenario_zones),
+            zone_count=zone_count,
+            region_zone_map=dict(region_zone_map),
+            i=i,
         )
+        rk = actor.role_key
+        label = actor.role_label
+        attrs = dict(actor.attrs)
         if params.get("scenario_prompt") and not attrs.get("scenario_prompt"):
             attrs["scenario_prompt"] = str(params.get("scenario_prompt") or "")
         if params.get("raw_prompt") and not attrs.get("raw_prompt"):
             attrs["raw_prompt"] = str(params.get("raw_prompt") or "")
         if params.get("scenario_quality") and not attrs.get("scenario_quality"):
             attrs["scenario_quality"] = dict(params.get("scenario_quality") or {})
-        region_label = str(
-            attrs.get("district")
-            or attrs.get("province")
-            or attrs.get("region")
-            or persona.get("zone_label")
-            or ""
-        ).strip()
-        zone_index = _scenario_zone_index(
-            persona=persona,
-            role_key=rk,
-            region_label=region_label,
-            zone_count=zone_count,
-            region_zone_map=region_zone_map,
-            scenario_zones=scenario_zones,
-            i=i,
-        )
-        zone_id = str(persona.get("zone_id") or f"zone-{zone_index}")
-        zone_label = str(
-            persona.get("zone_label")
-            or (scenario_zones[zone_index] if scenario_zones and zone_index < len(scenario_zones) else "")
-            or region_label
-            or f"Zone {zone_index}"
-        )
-        attrs["identity_summary"] = _identity_summary(
-            name=agent_name,
-            role=label,
-            persona_text=persona_text,
-            attrs=attrs,
-            zone_label=zone_label,
-        )
+        zone_id = actor.zone_id
+        zone_label = actor.zone_label
+        zone_index = int(str(zone_id).split("-")[-1]) if str(zone_id).startswith("zone-") and str(zone_id).split("-")[-1].isdigit() else i % max(1, zone_count)
         zone_influence = float(persona.get("zone_influence", 1.0 + zone_influence_step * zone_index))
         zone_friction = float(persona.get("zone_friction", zone_friction_step * zone_index))
         row = i // grid_width
@@ -123,19 +93,19 @@ def _create_initial_cells(
             x = float(math.cos(theta) * radius)
             y = float(math.sin(theta) * radius)
         elif zone_layout == "swarm":
-            role_affinity = _stable_unit(rk)
-            zone_affinity = _stable_unit(zone_id or zone_label)
-            persona_affinity = _stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
+            role_affinity = stable_unit(rk)
+            zone_affinity = stable_unit(zone_id or zone_label)
+            persona_affinity = stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
             theta = math.tau * ((zone_index / max(1, zone_count)) * 0.62 + role_affinity * 0.28 + persona_affinity * 0.10)
             radius = spacing * (2.0 + zone_index * 0.52 + role_affinity * 1.2)
             jitter = spacing * 0.28
             x = float(math.cos(theta) * radius + math.cos(math.tau * persona_affinity) * jitter)
             y = float(math.sin(theta) * radius + math.sin(math.tau * persona_affinity) * jitter)
         elif zone_layout == "scenario_social_field":
-            role_affinity = _stable_unit(rk)
-            zone_affinity = _stable_unit(zone_id or zone_label)
-            persona_affinity = _stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
-            conflict_axis = _stable_unit("|".join(str(item) for item in params.get("scenario_conflict_axes") or []))
+            role_affinity = stable_unit(rk)
+            zone_affinity = stable_unit(zone_id or zone_label)
+            persona_affinity = stable_unit(f"{persona.get('persona_id') or persona_text or 'agent'}:{i}")
+            conflict_axis = stable_unit("|".join(str(item) for item in params.get("scenario_conflict_axes") or []))
             theta = math.tau * ((zone_index / max(1, zone_count)) + role_affinity * 0.12 + conflict_axis * 0.06)
             radius = spacing * (2.1 + zone_index * 0.38 + (0.35 if _role_is_policy(rk) else 0.0))
             boundary_pull = 0.55 if _role_is_bridge(rk) else 0.0
@@ -202,65 +172,6 @@ def _safe_age(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-_KOREAN_FAMILY_NAMES = ["김", "이", "박", "최", "정", "강", "조", "윤", "장", "임", "한", "오", "서", "신", "권", "황"]
-_KOREAN_GIVEN_NAMES = [
-    "민준",
-    "서연",
-    "지훈",
-    "하린",
-    "도윤",
-    "수빈",
-    "현우",
-    "예진",
-    "준호",
-    "나영",
-    "태민",
-    "가은",
-    "성민",
-    "유진",
-    "재호",
-    "소윤",
-    "민재",
-    "다은",
-    "지호",
-    "은서",
-]
-
-
-def _persona_agent_name(persona: dict, *, attrs: Dict[str, Any], i: int) -> str:
-    for key in ("name", "full_name", "person_name", "agent_name", "display_name"):
-        value = str(attrs.get(key) or persona.get(key) or "").strip()
-        if value:
-            return value.split("(")[0].strip()[:24]
-    seed = str(persona.get("persona_id") or persona.get("persona_text") or attrs.get("occupation") or f"agent-{i}")
-    family = _KOREAN_FAMILY_NAMES[int(_stable_unit(seed) * len(_KOREAN_FAMILY_NAMES)) % len(_KOREAN_FAMILY_NAMES)]
-    given = _KOREAN_GIVEN_NAMES[int(_stable_unit(f"{seed}:given:{i}") * len(_KOREAN_GIVEN_NAMES)) % len(_KOREAN_GIVEN_NAMES)]
-    return f"{family}{given}"
-
-
-def _identity_summary(
-    *,
-    name: str,
-    role: str,
-    persona_text: str,
-    attrs: Dict[str, Any],
-    zone_label: str,
-) -> str:
-    district = str(attrs.get("district") or attrs.get("province") or attrs.get("region") or zone_label or "").strip()
-    occupation = str(attrs.get("occupation") or role or "").strip()
-    values = str(attrs.get("values") or "").strip()
-    pieces = [f"{name}({role})"]
-    if occupation and occupation != role:
-        pieces.append(occupation)
-    if district:
-        pieces.append(district)
-    if values:
-        pieces.append(values[:40])
-    if persona_text:
-        pieces.append(" ".join(persona_text.split())[:90])
-    return " · ".join(piece for piece in pieces if piece)
 
 
 def _energy_bias_from_persona(*, label: str, attrs: Dict[str, Any], age: int | None) -> float:
@@ -339,84 +250,6 @@ def _seed_strategy_summary(*, label: str, attrs: Dict[str, Any], zone_index: int
         f"이유: {identity_clause} 정책·자원·협력 신호를 가늠해야 한다.{prior_clause} "
         f"대상: 같은 구역의 협의 대상과 역할 집단."
     )[:360]
-
-
-def _scenario_role_for_persona(persona: dict, roles: List[str], *, i: int, scenario_roles: List[str]) -> str:
-    if not roles:
-        return "agent"
-    if not scenario_roles:
-        return str(persona.get("role_key") or roles[i % len(roles)])
-    attrs = dict(persona.get("attrs") or {})
-    haystack = " ".join(
-        str(value)
-        for value in (
-            persona.get("role_key"),
-            persona.get("role_label"),
-            persona.get("persona_text"),
-            attrs.get("occupation"),
-            attrs.get("hobbies_and_interests"),
-            attrs.get("district"),
-            attrs.get("province"),
-            attrs.get("region"),
-            attrs.get("values"),
-        )
-        if value
-    ).lower()
-    scored = []
-    for idx, role in enumerate(scenario_roles):
-        role_tokens = _role_tokens(role)
-        overlap = sum(1 for token in role_tokens if token and token in haystack)
-        stable = _stable_unit(f"{persona.get('persona_id') or i}:{role}")
-        scored.append((overlap, stable, -idx, role))
-    scored.sort(reverse=True)
-    if scored and scored[0][0] > 0:
-        return str(scored[0][3])
-    return str(scenario_roles[i % len(scenario_roles)])
-
-
-def _scenario_zone_index(
-    *,
-    persona: dict,
-    role_key: str,
-    region_label: str,
-    zone_count: int,
-    region_zone_map: Dict[str, int],
-    scenario_zones: List[str],
-    i: int,
-) -> int:
-    if zone_count <= 0:
-        return 0
-    if region_label in region_zone_map:
-        return int(region_zone_map[region_label]) % zone_count
-    if not scenario_zones:
-        return i % zone_count
-    attrs = dict(persona.get("attrs") or {})
-    haystack = " ".join(
-        str(value)
-        for value in (
-            role_key,
-            persona.get("persona_text"),
-            attrs.get("occupation"),
-            attrs.get("district"),
-            attrs.get("province"),
-            attrs.get("region"),
-            attrs.get("values"),
-        )
-        if value
-    ).lower()
-    scored = []
-    for idx, zone in enumerate(scenario_zones[:zone_count]):
-        tokens = _role_tokens(zone)
-        overlap = sum(1 for token in tokens if token and token in haystack)
-        scored.append((overlap, _stable_unit(f"{role_key}:{zone}:{i}"), -idx, idx))
-    scored.sort(reverse=True)
-    if scored and scored[0][0] > 0:
-        return int(scored[0][3]) % zone_count
-    return int((_stable_unit(f"{role_key}:{persona.get('persona_id') or i}") * zone_count)) % zone_count
-
-
-def _role_tokens(value: Any) -> List[str]:
-    return [token.lower() for token in re.findall(r"[A-Za-z가-힣0-9]{2,}", str(value or ""))]
 
 
 def _role_is_policy(role: str) -> bool:
@@ -508,13 +341,6 @@ def _contains_any(text: str, needles: List[str]) -> bool:
     if not text:
         return False
     return any(needle in text for needle in needles)
-
-
-def _stable_unit(text: Any) -> float:
-    value = 0
-    for char in str(text or ""):
-        value = (value * 131 + ord(char)) % 10_000
-    return value / 10_000.0
 
 
 # State: TypedDict 대신 dict 사용 (Cell 직렬화 이슈 회피)

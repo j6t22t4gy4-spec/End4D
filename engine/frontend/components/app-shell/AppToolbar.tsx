@@ -4,6 +4,7 @@ import {
   WORKBENCH_ITEMS,
   type WorkbenchView,
 } from "@/components/app-shell/workbench-types";
+import { APP_VERSION } from "@/lib/app-version";
 import { UI_STRINGS, type UiLocale, getWorkbenchLabels } from "@/lib/ui-language";
 
 type AppToolbarProps = {
@@ -36,7 +37,7 @@ export function AppToolbar({
         <div className="min-w-0">
           <p className="app-eyebrow">{strings.shellEyebrow}</p>
           <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900">
-            {strings.shellTitle}
+            {strings.shellTitle} <span className="text-xs font-medium tracking-normal text-slate-500">· {APP_VERSION}</span>
           </h1>
         </div>
       </div>

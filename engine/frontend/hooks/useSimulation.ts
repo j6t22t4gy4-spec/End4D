@@ -10,8 +10,11 @@ import {
   type CollectiveDynamicsSummary,
   type IntraTSceneEvent,
   type IntraTSceneMetrics,
+  type RuntimeTiming,
+  type SocialActionRecord,
   getWorldWebSocketUrl,
   runSimulation,
+  stopSimulation,
 } from "@/lib/api";
 
 export type StreamMessage =
@@ -23,6 +26,8 @@ export type StreamMessage =
       cell_count?: number;
       heartbeat_at?: number;
       message?: string;
+      engine_revision?: string;
+      recent_actions?: SocialActionRecord[];
     }
   | {
       type: "step";
@@ -36,7 +41,10 @@ export type StreamMessage =
       group_state_summary?: CollectiveDynamicsSummary;
       scene_events?: IntraTSceneEvent[];
       scene_metrics?: IntraTSceneMetrics;
+      runtime_timing?: RuntimeTiming;
+      recent_actions?: SocialActionRecord[];
       heartbeat_at?: number;
+      engine_revision?: string;
     }
   | {
       type: "scene";
@@ -44,11 +52,26 @@ export type StreamMessage =
       t_max?: number;
       progress?: number;
       scene_event: IntraTSceneEvent;
+      action_event?: SocialActionRecord;
+      recent_actions?: SocialActionRecord[];
       scene_index?: number;
       scene_count?: number;
+      observer_cells?: CellSnapshot[];
+      observer_total_cells?: number;
+      observer_sampled?: boolean;
       heartbeat_at?: number;
+      engine_revision?: string;
     }
-  | { type: "heartbeat"; t?: number; t_max?: number; progress?: number; cell_count?: number; heartbeat_at?: number }
+  | {
+      type: "heartbeat";
+      t?: number;
+      t_max?: number;
+      progress?: number;
+      cell_count?: number;
+      runtime_timing?: RuntimeTiming;
+      heartbeat_at?: number;
+      engine_revision?: string;
+    }
   | { type: "done"; t?: number; t_max?: number; progress?: number; heartbeat_at?: number }
   | { type: "error"; message?: string }
   | { type: "pong" };
@@ -63,13 +86,17 @@ export type LiveObserverState = {
 
 export type LiveSceneStreamState = {
   currentT: number | null;
+  observedT: number | null;
+  activePhase: string | null;
   events: IntraTSceneEvent[];
   latestEvent: IntraTSceneEvent | null;
   metrics: IntraTSceneMetrics | null;
+  runtimeTiming: RuntimeTiming | null;
+  recentActions: SocialActionRecord[];
 };
 
 export type StreamStatus = {
-  phase: "idle" | "connecting" | "started" | "running" | "reconnecting" | "stalled" | "completed" | "error";
+  phase: "idle" | "connecting" | "started" | "running" | "reconnecting" | "stalled" | "completed" | "stopping" | "stopped" | "error";
   progress: number;
   t: number | null;
   tMax: number | null;
@@ -88,9 +115,13 @@ export function useSimulation() {
   const [liveObserver, setLiveObserver] = useState<LiveObserverState>(null);
   const [liveSceneStream, setLiveSceneStream] = useState<LiveSceneStreamState>({
     currentT: null,
+    observedT: null,
+    activePhase: null,
     events: [],
     latestEvent: null,
     metrics: null,
+    runtimeTiming: null,
+    recentActions: [],
   });
   const [isRunning, setIsRunning] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -112,6 +143,33 @@ export function useSimulation() {
     }
   }, []);
 
+  const stopStream = useCallback(
+    async (worldId?: string | null) => {
+      setStreamStatus((prev) => ({
+        ...prev,
+        phase: "stopping",
+        message: "stopping stream",
+        lastHeartbeatAt: Date.now(),
+      }));
+      if (worldId) {
+        try {
+          await stopSimulation(worldId);
+        } catch {
+          /* Closing the client stream is still useful even if the stop request fails. */
+        }
+      }
+      disconnectWebSocket();
+      setIsRunning(false);
+      setStreamStatus((prev) => ({
+        ...prev,
+        phase: "stopped",
+        message: "stopped",
+        lastHeartbeatAt: Date.now(),
+      }));
+    },
+    [disconnectWebSocket]
+  );
+
   /**
    * WebSocket 연결 → POST run(stream) → done/error 까지 대기
    */
@@ -122,7 +180,7 @@ export function useSimulation() {
       setLiveT(null);
       setLiveCellCount(null);
       setLiveObserver(null);
-      setLiveSceneStream({ currentT: null, events: [], latestEvent: null, metrics: null });
+      setLiveSceneStream({ currentT: null, observedT: null, activePhase: null, events: [], latestEvent: null, metrics: null, runtimeTiming: null, recentActions: [] });
       setIsRunning(true);
       setStreamStatus({
         phase: "connecting",
@@ -245,6 +303,16 @@ export function useSimulation() {
           try {
             const msg = JSON.parse(data) as StreamMessage;
             if (msg.type === "started") {
+              setLiveSceneStream({
+                currentT: null,
+                observedT: null,
+                activePhase: null,
+                events: [],
+                latestEvent: null,
+                metrics: null,
+                runtimeTiming: null,
+                recentActions: msg.recent_actions ?? [],
+              });
               setLiveCellCount(msg.cell_count ?? null);
               setStreamStatus({
                 phase: "started",
@@ -252,7 +320,7 @@ export function useSimulation() {
                 t: typeof msg.t === "number" ? msg.t : null,
                 tMax: typeof msg.t_max === "number" ? msg.t_max : null,
                 lastHeartbeatAt: Date.now(),
-                message: msg.message ?? "started",
+                message: msg.engine_revision ? `${msg.message ?? "started"} · ${msg.engine_revision}` : msg.message ?? "started",
               });
             } else if (msg.type === "step") {
               setLiveT(msg.t);
@@ -274,32 +342,75 @@ export function useSimulation() {
                 groupSummary: msg.group_state_summary ?? null,
               });
               if (msg.scene_events?.length) {
-                setLiveSceneStream({
-                  currentT: msg.t,
-                  events: msg.scene_events,
-                  latestEvent: msg.scene_events[msg.scene_events.length - 1] ?? null,
-                  metrics: msg.scene_metrics ?? null,
+                setLiveSceneStream((prev) => {
+                  const sameT = prev.currentT != null && Math.round(prev.currentT) === Math.round(msg.t);
+                  const hasLiveBeats = sameT && prev.events.some((event) => event.live_computed);
+                  if (hasLiveBeats) {
+                    return {
+                      ...prev,
+                      metrics: msg.scene_metrics ?? prev.metrics,
+                      runtimeTiming: msg.runtime_timing ?? prev.runtimeTiming,
+                      recentActions: msg.recent_actions ?? prev.recentActions,
+                    };
+                  }
+                  return {
+                    currentT: msg.t,
+                    observedT: msg.scene_events?.[msg.scene_events.length - 1]?.scene_t ?? msg.t,
+                    activePhase: msg.scene_events?.[msg.scene_events.length - 1]?.stream_phase ?? "step_snapshot",
+                    events: msg.scene_events ?? [],
+                    latestEvent: msg.scene_events?.[msg.scene_events.length - 1] ?? null,
+                    metrics: msg.scene_metrics ?? null,
+                    runtimeTiming: msg.runtime_timing ?? null,
+                    recentActions: msg.recent_actions ?? prev.recentActions,
+                  };
                 });
+              } else if (msg.recent_actions?.length) {
+                setLiveSceneStream((prev) => ({
+                  ...prev,
+                  runtimeTiming: msg.runtime_timing ?? prev.runtimeTiming,
+                  recentActions: msg.recent_actions ?? prev.recentActions,
+                }));
+              } else if (msg.runtime_timing) {
+                setLiveSceneStream((prev) => ({ ...prev, runtimeTiming: msg.runtime_timing ?? prev.runtimeTiming }));
               }
             } else if (msg.type === "scene") {
               const heartbeatAt = toMillis(msg.heartbeat_at) ?? Date.now();
-              setLiveT(msg.t);
+              const observedT = Number(msg.scene_event?.scene_t ?? msg.t);
+              if (msg.observer_cells?.length) {
+                setLiveObserver((prev) => ({
+                  cells: mergeLiveCells(prev?.cells ?? [], msg.observer_cells ?? []),
+                  totalCells: msg.observer_total_cells ?? prev?.totalCells ?? msg.observer_cells?.length ?? 0,
+                  sampled: Boolean(msg.observer_sampled ?? prev?.sampled),
+                  t: observedT,
+                  groupSummary: prev?.groupSummary ?? null,
+                }));
+                setLiveCellCount(msg.observer_total_cells ?? msg.observer_cells.length);
+              }
               setStreamStatus((prev) => ({
                 phase: "running",
                 progress: clampProgress(msg.progress ?? prev.progress),
-                t: msg.t,
+                t: typeof msg.t === "number" ? msg.t : prev.t,
                 tMax: typeof msg.t_max === "number" ? msg.t_max : prev.tMax,
                 lastHeartbeatAt: heartbeatAt,
-                message: `scene ${msg.scene_index ?? "?"}/${msg.scene_count ?? "?"}`,
+                message: `t chapter ${Math.round(Number(msg.t ?? 0))} · stream round ${msg.scene_event.stream_round_index ?? msg.scene_event.session_index ?? "?"}/${msg.scene_event.stream_round_count ?? msg.scene_event.session_count ?? "?"} · ${msg.scene_event.stream_phase ?? "scene"}`,
               }));
               setLiveSceneStream((prev) => {
                 const resetForNewT = prev.currentT == null || Math.round(prev.currentT) !== Math.round(msg.t);
-                const nextEvents = resetForNewT ? [msg.scene_event] : [...prev.events, msg.scene_event].slice(-36);
+                const nextEvents = resetForNewT ? [msg.scene_event] : [...prev.events, msg.scene_event].slice(-180);
+                const recentActions = msg.recent_actions?.length
+                  ? msg.recent_actions
+                  : msg.action_event
+                    ? [...prev.recentActions, msg.action_event].slice(-50)
+                    : prev.recentActions;
                 return {
                   currentT: msg.t,
+                  observedT,
+                  activePhase: msg.scene_event.stream_phase ?? "scene",
                   events: nextEvents,
                   latestEvent: msg.scene_event,
                   metrics: prev.metrics,
+                  runtimeTiming: prev.runtimeTiming,
+                  recentActions,
                 };
               });
             } else if (msg.type === "heartbeat") {
@@ -314,6 +425,9 @@ export function useSimulation() {
                 lastHeartbeatAt: heartbeatAt,
                 message: "heartbeat",
               }));
+              if (msg.runtime_timing) {
+                setLiveSceneStream((prev) => ({ ...prev, runtimeTiming: msg.runtime_timing ?? prev.runtimeTiming }));
+              }
             } else if (msg.type === "done") {
               streamActive = false;
               setIsRunning(false);
@@ -362,7 +476,7 @@ export function useSimulation() {
     setLiveT(null);
     setLiveCellCount(null);
     setLiveObserver(null);
-    setLiveSceneStream({ currentT: null, events: [], latestEvent: null, metrics: null });
+    setLiveSceneStream({ currentT: null, observedT: null, activePhase: null, events: [], latestEvent: null, metrics: null, runtimeTiming: null, recentActions: [] });
     setStreamStatus({
       phase: "started",
       progress: 0,
@@ -395,6 +509,7 @@ export function useSimulation() {
     streamStatus,
     runWithWebSocketStream,
     runSync,
+    stopStream,
     disconnectWebSocket,
   };
 }
@@ -446,6 +561,14 @@ function startRuntimeTimers(
 function clampProgress(value: unknown): number {
   const num = typeof value === "number" ? value : 0;
   return Math.max(0, Math.min(1, Number.isFinite(num) ? num : 0));
+}
+
+function mergeLiveCells(previous: CellSnapshot[], incoming: CellSnapshot[]): CellSnapshot[] {
+  if (!previous.length) return incoming;
+  const rows = new Map<string, CellSnapshot>();
+  for (const cell of previous) rows.set(cell.cell_id, cell);
+  for (const cell of incoming) rows.set(cell.cell_id, cell);
+  return Array.from(rows.values()).slice(-96);
 }
 
 function toMillis(value: unknown): number | null {

@@ -18,6 +18,7 @@ MAX_REVIEW_ANNOTATIONS = 8
 MAX_REVIEW_GRAPH_EDGES = 18
 MAX_REVIEW_TRAJECTORY_GROUPS = 6
 MAX_REVIEW_TRAJECTORY_POINTS = 8
+MAX_REVIEW_ACTIONS = 8
 
 
 def _validation_readout(entry: dict[str, Any]) -> dict[str, Any]:
@@ -85,6 +86,7 @@ def build_cached_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         len(available_t),
         len(list(entry["world"].nutrients or [])),
         len(list(entry.get("coalition_history") or [])),
+        len(list(entry.get("action_ledger") or [])),
     )
     cache = dict(entry.get("_review_payload_cache") or {})
     if cache.get("key") == key and isinstance(cache.get("payload"), dict):
@@ -133,6 +135,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
     zone_z_drift = _zone_z_drift(first, latest)
     belief_trajectory = _group_belief_trajectory_summary(store=store, available_t=available_t)
     decision_influence = _decision_influence_summary(store=store, available_t=available_t)
+    action_ledger = _action_ledger_summary(entry.get("action_ledger") or [])
     notable_agents = _notable_agents(first, latest)
     key_events = [_event_summary(event) for event in list(world.nutrients or [])[-MAX_REVIEW_EVENTS:]]
     summary_stats = {
@@ -208,6 +211,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
         "belief_drift": belief_drift,
         "belief_trajectory": belief_trajectory,
         "decision_influence": decision_influence,
+        "action_ledger": action_ledger,
         "group_analysis": group_analysis,
         "group_tables": group_tables,
         "lineage_summary": lineage_summary,
@@ -226,6 +230,7 @@ def build_world_review_payload(entry: dict[str, Any]) -> dict[str, Any]:
             belief_drift=belief_drift,
             zone_z_drift=zone_z_drift,
             notable_agents=notable_agents,
+            action_ledger=action_ledger,
             world_id=str(world.world_id),
         ),
         "causal_chains": _build_causal_chains(
@@ -391,6 +396,20 @@ def _decision_influence_delta(base_payload: dict[str, Any], target_payload: dict
         "latest_applied_rate_gap": applied_gap,
         "peak_max_delta_gap": peak_gap,
         "decision_influence_signal": signal,
+    }
+
+
+def _action_ledger_delta(base_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+    base = dict(base_payload.get("action_ledger") or {})
+    target = dict(target_payload.get("action_ledger") or {})
+    return {
+        "base_total": int(base.get("total_count") or 0),
+        "target_total": int(target.get("total_count") or 0),
+        "total_gap": int(target.get("total_count") or 0) - int(base.get("total_count") or 0),
+        "base_dominant_action": str(base.get("dominant_action_type") or ""),
+        "target_dominant_action": str(target.get("dominant_action_type") or ""),
+        "base_recent": [dict(item) for item in list(base.get("recent") or [])[:4]],
+        "target_recent": [dict(item) for item in list(target.get("recent") or [])[:4]],
     }
 
 
@@ -591,6 +610,7 @@ def build_review_diff_payload(
     lineage_delta = _lineage_delta(base_payload=base_payload, target_payload=target_payload)
     policy_lineage_delta = _policy_lineage_delta(base_payload=base_payload, target_payload=target_payload)
     decision_influence_delta = _decision_influence_delta(base_payload, target_payload)
+    action_ledger_delta = _action_ledger_delta(base_payload, target_payload)
     belief_trajectory_delta = _belief_trajectory_delta(
         base_payload=base_payload,
         target_payload=target_payload,
@@ -631,6 +651,7 @@ def build_review_diff_payload(
         "lineage_delta": lineage_delta,
         "policy_lineage_delta": policy_lineage_delta,
         "decision_influence_delta": decision_influence_delta,
+        "action_ledger_delta": action_ledger_delta,
         "belief_trajectory_delta": belief_trajectory_delta,
         "group_table_delta": _group_table_delta(
             group_drift_deltas=group_drift_deltas,
@@ -1268,6 +1289,51 @@ def _decision_influence_summary(*, store: Any, available_t: list[float]) -> dict
             "latest_dominant_reason": str(latest.get("dominant_reason") or "unknown"),
             "interpretation": _decision_influence_interpretation(latest, dict(peak)),
         },
+    }
+
+
+def _action_ledger_summary(records: Any) -> dict[str, Any]:
+    rows = [dict(item) for item in list(records or []) if isinstance(item, dict)]
+    if not rows:
+        return {
+            "total_count": 0,
+            "by_action_type": {},
+            "by_field_axis": {},
+            "dominant_action_type": "",
+            "recent": [],
+            "interpretation": "No social field action ledger records are available for this run.",
+        }
+    by_action = Counter(str(row.get("action_type") or "UNKNOWN") for row in rows)
+    by_axis = Counter(str(row.get("field_axis") or "field") for row in rows)
+    by_agent = Counter(str(row.get("agent_name") or row.get("agent_id") or "field") for row in rows)
+    dominant_action = by_action.most_common(1)[0][0] if by_action else ""
+    recent_rows = rows[-MAX_REVIEW_ACTIONS:]
+    recent = [
+        {
+            "anchor_id": f"action:{str(row.get('record_id') or idx)}",
+            "kind": "action",
+            "label": str(row.get("action_label") or row.get("action_type") or "field action"),
+            "action_type": str(row.get("action_type") or ""),
+            "field_axis": str(row.get("field_axis") or "field"),
+            "t": float(row.get("t") or 0.0),
+            "agent_name": str(row.get("agent_name") or ""),
+            "target_label": str(row.get("target_label") or ""),
+            "reason": str(row.get("interpretation") or row.get("reason") or row.get("result") or ""),
+            "result": str(row.get("result") or ""),
+        }
+        for idx, row in enumerate(recent_rows, start=1)
+    ]
+    return {
+        "total_count": len(rows),
+        "by_action_type": dict(by_action.most_common()),
+        "by_field_axis": dict(by_axis.most_common()),
+        "top_agents": [{"agent": key, "count": value} for key, value in by_agent.most_common(5)],
+        "dominant_action_type": dominant_action,
+        "recent": recent,
+        "interpretation": (
+            f"Recent social-field activity is dominated by {dominant_action or 'mixed actions'} "
+            f"across {len(rows)} ledger records. Use this as the live behavioral trace behind review claims."
+        ),
     }
 
 
@@ -2188,6 +2254,7 @@ def _build_grounding(
     belief_drift: dict[str, Any],
     zone_z_drift: list[dict[str, Any]],
     notable_agents: list[dict[str, Any]],
+    action_ledger: dict[str, Any],
     world_id: str,
 ) -> dict[str, Any]:
     groups = list(belief_drift.get("groups") or [])
@@ -2244,6 +2311,17 @@ def _build_grounding(
                 "world_id": world_id,
             }
             for item in notable_agents[: min(5, MAX_REVIEW_AGENTS)]
+        ],
+        "actions": [
+            {
+                "anchor_id": str(item.get("anchor_id") or f"action:{world_id}:{idx}"),
+                "kind": "action",
+                "label": str(item.get("label") or item.get("action_type") or "field action"),
+                "t": float(item.get("t") or 0.0),
+                "reason": str(item.get("reason") or item.get("result") or ""),
+                "world_id": world_id,
+            }
+            for idx, item in enumerate(list((action_ledger or {}).get("recent") or [])[:5], start=1)
         ],
     }
 

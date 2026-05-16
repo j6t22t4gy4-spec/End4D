@@ -1,18 +1,23 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import type { CellSnapshot, CollectiveDynamicsSummary, LocalRuntimeStatus } from "@/lib/api";
+import type { CellSnapshot, CollectiveDynamicsSummary, LocalRuntimeStatus, RuntimeTiming, SocialActionRecord } from "@/lib/api";
 import { AppPanel } from "@/components/app-shell/AppPanel";
+import { RuntimeTimingCard } from "@/components/app-shell/RuntimeTimingCard";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
+import { socialFieldActionLabel, socialFieldActionMeta } from "@/lib/socialFieldActions";
 
 type SimulationDockPayload = {
   timeControlContent?: ReactNode;
   controlsContent: ReactNode;
   runtimeContent: ReactNode;
+  llmCallsContent?: ReactNode;
   insightContent?: ReactNode;
   chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
+  actionRecords?: SocialActionRecord[];
+  runtimeTiming?: RuntimeTiming | null;
   currentT: number;
   collectiveSummary: CollectiveDynamicsSummary | null;
   collectiveSignal: string;
@@ -62,6 +67,10 @@ export function RuntimeDock({
         .sort((a, b) => Number(b.preview?.t ?? -1) - Number(a.preview?.t ?? -1))
         .slice(0, 10),
     [simulationDock]
+  );
+  const actionRecords = useMemo(
+    () => [...(simulationDock?.actionRecords ?? [])].reverse().slice(0, 16),
+    [simulationDock?.actionRecords]
   );
 
   return (
@@ -144,7 +153,10 @@ export function RuntimeDock({
 
           {dockView === "runtime" ? (
             simulationDock?.runtimeContent && simulationActive ? (
-              <div className="space-y-3">{simulationDock.runtimeContent}</div>
+              <div className="space-y-3">
+                <RuntimeTimingCard timing={simulationDock.runtimeTiming ?? null} isKo={isKo} />
+                {simulationDock.runtimeContent}
+              </div>
             ) : (
               <div className="space-y-3">
                 <InfoRow label={strings.api} value={apiBase} />
@@ -176,6 +188,9 @@ export function RuntimeDock({
 
           {dockView === "calls" ? (
             <div className="space-y-3">
+              {simulationDock?.llmCallsContent && simulationActive ? (
+                <div className="runtime-dock__live-insights">{simulationDock.llmCallsContent}</div>
+              ) : null}
               <div className="grid grid-cols-2 gap-2">
                 <InfoRow label={strings.recentCalls} value={String(runtime?.llm_runtime?.health?.recent_call_count ?? 0)} />
                 <InfoRow label={strings.liveRate} value={`${Math.round((runtime?.llm_runtime?.health?.live_call_rate ?? 0) * 100)}%`} />
@@ -246,7 +261,7 @@ export function RuntimeDock({
 
           {dockView === "thoughts" ? (
             <div className="space-y-3">
-              {!activeWorldId ? (
+              {!activeWorldId && !simulationDock?.insightContent ? (
                 <EmptyState text={isKo ? "시뮬레이션 world를 열면 현재 t 기준 thought stream이 여기에 표시됩니다." : "Open a simulation world to show current-t thought traces here."} />
               ) : (
                 <>
@@ -314,70 +329,104 @@ export function RuntimeDock({
                       </div>
                     </CollapsibleCard>
                   ) : null}
-                  <CollapsibleCard title={isKo ? "현재 관측 시점" : "Current observed t"} defaultOpen={false}>
+                  {actionRecords.length ? (
+                    <CollapsibleCard
+                      title={isKo ? "사회장 행동 원장" : "Social Field Ledger"}
+                      meta={`${actionRecords.length} actions`}
+                      defaultOpen
+                    >
+                      <div className="space-y-2">
+                        {actionRecords.map((record, index) => {
+                          const meta = socialFieldActionMeta(record.action_type);
+                          return (
+                            <article key={`${record.record_id ?? record.timestamp ?? "action"}-${index}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                              <div className="flex items-start justify-between gap-2">
+                                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${meta.className}`}>
+                                  {socialFieldActionLabel(record, isKo ? "ko" : "en")}
+                                </span>
+                                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                  t={Number(record.scene_t ?? record.t ?? 0).toFixed(2)}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-slate-700">
+                                {record.agent_name ?? "field"}
+                                {record.target_label ? ` → ${record.target_label}` : ""}
+                              </p>
+                              {record.result ? <p className="mt-1 text-xs leading-5 text-slate-500">{record.result}</p> : null}
+                              {record.interpretation ? <p className="mt-1 text-[11px] leading-4 text-slate-500">{record.interpretation}</p> : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </CollapsibleCard>
+                  ) : null}
+                  <CollapsibleCard title={isKo ? "현재 장면 시점" : "Current scene time"} defaultOpen={false}>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
-                      {isKo ? "현재 관측 시점" : "Current observed t"} · t={Number(simulationDock?.currentT ?? 0).toFixed(0)}
+                      {isKo
+                        ? "현재 관측은 t 완료 프레임이 아니라 진행 중인 MiroFish식 스트림을 기준으로 합니다"
+                        : "Observation follows the active MiroFish-style stream, not completed timestep frames"} · t={Number(simulationDock?.currentT ?? 0).toFixed(2)}
                     </div>
                   </CollapsibleCard>
                   {thoughtCards.length ? (
-                    thoughtCards.map(({ agent, preview }) => (
-                      <CollapsibleCard
-                        key={`dock-stream-${agent.cell_id}`}
-                        title={formatAgentIdentity(agent)}
-                        meta={`t=${Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)} · ${formatObserverFocus(agent, isKo)}`}
-                        defaultOpen={false}
-                      >
-                        <article className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-900">
-                                {formatAgentIdentity(agent)}
-                              </p>
-                              <p className="truncate text-xs text-slate-500">
-                                {formatAgentMeta(agent)}
-                              </p>
-                              <AgentIdentitySummary agent={agent} isKo={isKo} />
-                            </div>
-                            <div className="flex flex-col items-end gap-1">
-                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
-                                t={Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)}
-                              </span>
-                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                                {formatObserverFocus(agent, isKo)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="mt-3 max-h-44 space-y-3 overflow-y-auto rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 pr-2">
-                            {preview?.thought ? (
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                  {isKo ? "생각" : "Thought"}
+                    <CollapsibleCard
+                      title={isKo ? "에이전트 생각 스트림" : "Agent Thought Stream"}
+                      meta={`${thoughtCards.length} agents`}
+                      defaultOpen
+                    >
+                      <div className="space-y-3">
+                        {thoughtCards.map(({ agent, preview }) => (
+                          <article key={`dock-stream-${agent.cell_id}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-slate-900">
+                                  {formatAgentIdentity(agent)}
                                 </p>
-                                <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.thought}</p>
-                              </div>
-                            ) : null}
-                            {preview?.action ? (
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                                  {isKo ? "액션" : "Action"}
+                                <p className="truncate text-xs text-slate-500">
+                                  {formatAgentMeta(agent)}
                                 </p>
-                                <p className="mt-1 whitespace-pre-wrap text-xs leading-6 text-slate-700">{preview.action}</p>
+                                <AgentIdentitySummary agent={agent} isKo={isKo} />
                               </div>
-                            ) : null}
-                          </div>
-                          <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
-                            <span className={continuityPillClass(preview?.continuityState)}>
-                              {formatContinuity(preview, isKo)}
-                            </span>
-                            {typeof agent.action_state?.last_spatial_shift === "number" ? (
-                              <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
-                                move {Number(agent.action_state.last_spatial_shift).toFixed(2)}
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700">
+                                  t={Number(preview?.t ?? simulationDock?.currentT ?? 0).toFixed(0)}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                  {formatObserverFocus(agent, isKo)}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="mt-3 space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2 pr-2">
+                              {preview?.thought ? (
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    {isKo ? "생각" : "Thought"}
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-6 text-slate-700">{preview.thought}</p>
+                                </div>
+                              ) : null}
+                              {preview?.action ? (
+                                <div>
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                    {isKo ? "액션" : "Action"}
+                                  </p>
+                                  <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-6 text-slate-700">{preview.action}</p>
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.14em] text-slate-500">
+                              <span className={continuityPillClass(preview?.continuityState)}>
+                                {formatContinuity(preview, isKo)}
                               </span>
-                            ) : null}
-                          </div>
-                        </article>
-                      </CollapsibleCard>
-                    ))
+                              {typeof agent.action_state?.last_spatial_shift === "number" ? (
+                                <span className="rounded-full bg-slate-100 px-2 py-1 font-semibold text-slate-600">
+                                  move {Number(agent.action_state.last_spatial_shift).toFixed(2)}
+                                </span>
+                              ) : null}
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </CollapsibleCard>
                   ) : (
                     <EmptyState text={isKo ? "현재 t 기준으로 표시할 생각/액션 흔적이 없습니다." : "No thought or action traces are available for the current t yet."} />
                   )}
@@ -469,11 +518,11 @@ function AgentIdentitySummary({ agent, isKo }: { agent: CellSnapshot; isKo: bool
 function formatAgentIdentity(agent: CellSnapshot): string {
   const attrs = agent.persona_attrs ?? {};
   const name = firstText(
-    attrs.agent_name,
     attrs.display_name,
+    attrs.agent_name,
     attrs.name,
-    agent.persona_id?.replace(/^persona[-_:]/, "")
-  );
+    readablePersonaId(agent.persona_id)
+  ) || firstReadableName(formatAgentIdentitySummary(agent));
   const role = firstText(agent.role_label, agent.role_key, "agent");
   return name && name !== role ? `${name}(${role})` : role;
 }
@@ -500,9 +549,24 @@ function truncateText(value: string, limit: number): string {
 function firstText(...values: unknown[]): string {
   for (const value of values) {
     const text = String(value ?? "").trim();
-    if (text && text !== "undefined" && text !== "null") return text;
+    if (text && text !== "undefined" && text !== "null" && !looksLikeMachineId(text)) return text;
   }
   return "";
+}
+
+function looksLikeMachineId(value: string): boolean {
+  const text = String(value || "").trim();
+  return /^[a-f0-9]{16,}$/i.test(text) || /^persona[-_:]?[a-f0-9]{16,}$/i.test(text);
+}
+
+function readablePersonaId(value: unknown): string {
+  const text = String(value ?? "").trim().replace(/^persona[-_:]/, "");
+  return looksLikeMachineId(text) ? "" : text;
+}
+
+function firstReadableName(value: string): string {
+  const match = String(value || "").match(/([가-힣]{2,4})(?:\s*씨|은|는|이|가|\(|$)/);
+  return match?.[1] ?? "";
 }
 
 function getAgentStreamPreview(agent: CellSnapshot): {

@@ -9,6 +9,7 @@ import { ScenarioSummary } from "@/components/ScenarioSummary";
 import { AppPanel } from "@/components/app-shell/AppPanel";
 import { CenterMapShell } from "@/components/center-map/CenterMapShell";
 import { ChatPanel } from "@/components/ChatPanel";
+import { SwarmV2Workspace, type SwarmV2Telemetry } from "@/components/swarm-v2/SwarmV2Workspace";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import type { SessionSummary } from "@/lib/api";
 import {
@@ -30,6 +31,7 @@ import {
   syncDataPacks,
   testRuntimeLlmConfig,
   updateRuntimeLlmConfig,
+  updateWorldRuntimeConfig,
   type CreateWorldResult,
   type CellSnapshot,
   type CollectiveDynamicsListItem,
@@ -40,9 +42,13 @@ import {
   type RuntimeLlmTestResponse,
   type IntraTSceneEvent,
   type IntraTSceneMetrics,
+  type RuntimeTiming,
+  type SocialActionRecord,
+  type SwarmV2RunResponse,
   verifyRuntimeDataPack,
 } from "@/lib/api";
 import { UI_STRINGS, type UiLocale } from "@/lib/ui-language";
+import { socialFieldActionLabel, socialFieldToneFromRecord, socialFieldToneLabel } from "@/lib/socialFieldActions";
 import { useSimulation } from "@/hooks/useSimulation";
 
 const PROMPT_PLACEHOLDER =
@@ -91,7 +97,8 @@ const SWARM_AGENT_OPTIONS = ["512", "1000", "2000", "5000"];
 const SWARM_MESO_OPTIONS = ["8", "16", "24", "40", "64"];
 
 type SimulationMode = "precision" | "swarm";
-type SwarmLlmMode = "packet" | "agent";
+type SwarmLlmMode = "packet" | "agent" | "full-agent";
+type SetupRuntimeTab = "swarm-v2" | "legacy";
 
 const LLM_PROVIDER_PRESETS = [
   {
@@ -148,9 +155,12 @@ export default function GodView({
     timeControlContent?: ReactNode;
     controlsContent: ReactNode;
     runtimeContent: ReactNode;
+    llmCallsContent?: ReactNode;
     insightContent?: ReactNode;
     chatContent?: ReactNode;
     thoughtCells: CellSnapshot[];
+    actionRecords?: SocialActionRecord[];
+    runtimeTiming?: RuntimeTiming | null;
     currentT: number;
     collectiveSummary: CollectiveDynamicsSummary | null;
     collectiveSignal: string;
@@ -165,12 +175,15 @@ export default function GodView({
   const strings = UI_STRINGS[locale];
   const isKo = locale === "ko";
   const [stage, setStage] = useState<"setup" | "run" | "review">("setup");
-  const [simulationMode, setSimulationMode] = useState<SimulationMode>("precision");
-  const [swarmAgentCount, setSwarmAgentCount] = useState("1000");
-  const [swarmMesoGroups, setSwarmMesoGroups] = useState("24");
-  const [swarmLlmMode, setSwarmLlmMode] = useState<SwarmLlmMode>("packet");
+  const [setupRuntimeTab, setSetupRuntimeTab] = useState<SetupRuntimeTab>("swarm-v2");
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>("swarm");
+  const [swarmAgentCount, setSwarmAgentCount] = useState("2000");
+  const [swarmMesoGroups, setSwarmMesoGroups] = useState("40");
+  const [swarmLlmMode, setSwarmLlmMode] = useState<SwarmLlmMode>("agent");
   const [genesisPrompt, setGenesisPrompt] = useState("");
   const [lastGenesis, setLastGenesis] = useState<CreateWorldResult | null>(null);
+  const [swarmV2Result, setSwarmV2Result] = useState<SwarmV2RunResponse | null>(null);
+  const [swarmV2Telemetry, setSwarmV2Telemetry] = useState<SwarmV2Telemetry | null>(null);
   const [worldId, setWorldId] = useState<string | null>(null);
   const [availableT, setAvailableT] = useState<number[]>([]);
   const [currentT, setCurrentT] = useState(0);
@@ -191,10 +204,10 @@ export default function GodView({
   const [chartRefreshKey, setChartRefreshKey] = useState(0);
   const [personaRefreshKey, setPersonaRefreshKey] = useState(0);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [godModeEnabled, setGodModeEnabled] = useState(false);
+  const [godModeEnabled, setGodModeEnabled] = useState(true);
   const [godRoleMode, setGodRoleMode] = useState<"auto" | "manual">("auto");
   const [customTMax, setCustomTMax] = useState("160");
-  const [customInitialCells, setCustomInitialCells] = useState("16");
+  const [customInitialCells, setCustomInitialCells] = useState("240");
   const [customRoles, setCustomRoles] = useState("시민, 규제자, 시장참여자, 기업, 관측자");
   const [customCountry, setCustomCountry] = useState("KR");
   const [customNutrient, setCustomNutrient] = useState("1.0");
@@ -207,6 +220,18 @@ export default function GodView({
   const [zMode, setZMode] = useState("hybrid");
   const [zWeight, setZWeight] = useState("0.08");
   const [zScale, setZScale] = useState("12.0");
+  const [streamDensity, setStreamDensity] = useState("1.8");
+  const [streamDelayMs, setStreamDelayMs] = useState("2");
+  const [streamEpisodeMinDurationMs, setStreamEpisodeMinDurationMs] = useState("1200");
+  const [streamMinRounds, setStreamMinRounds] = useState("24");
+  const [streamMaxRounds, setStreamMaxRounds] = useState("48");
+  const [streamMaxActiveAgents, setStreamMaxActiveAgents] = useState("900");
+  const [streamInitialAgentRatio, setStreamInitialAgentRatio] = useState("0.22");
+  const [streamGrowthRate, setStreamGrowthRate] = useState("1.55");
+  const [streamMaxNeighbors, setStreamMaxNeighbors] = useState("12");
+  const [savedGodConfigKey, setSavedGodConfigKey] = useState<string | null>(null);
+  const [savedGodConfig, setSavedGodConfig] = useState<GodModePayload | null>(null);
+  const [godConfigStatus, setGodConfigStatus] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<CellSnapshot | null>(null);
   const [selectedZone, setSelectedZone] = useState<SelectedZone | null>(null);
   const [selectedBand, setSelectedBand] = useState<SelectedBand | null>(null);
@@ -255,6 +280,161 @@ export default function GodView({
   const [llmTestedConfigKey, setLlmTestedConfigKey] = useState<string | null>(null);
   const usesExternalRuntime = runtimeStatusExternal !== undefined;
   const hydratedInitialWorldKeyRef = useRef<string | null>(null);
+  const lastSwarmV2RuntimeRefreshRef = useRef(0);
+
+  const godConfigKey = useMemo(
+    () =>
+      JSON.stringify({
+        enabled: godModeEnabled,
+        roleMode: godRoleMode,
+        tMax: customTMax,
+        initialCells: customInitialCells,
+        roles: customRoles,
+        country: customCountry,
+        nutrient: customNutrient,
+        tUnit: customTUnit,
+        zoneCount,
+        zoneLayout,
+        zoneSpacing,
+        zoneInfluenceStep,
+        zoneFrictionStep,
+        zMode,
+        zWeight,
+        zScale,
+        streamDensity,
+        streamDelayMs,
+        streamEpisodeMinDurationMs,
+        streamMinRounds,
+        streamMaxRounds,
+        streamMaxActiveAgents,
+        streamInitialAgentRatio,
+        streamGrowthRate,
+        streamMaxNeighbors,
+        simulationMode,
+        swarmAgentCount,
+        swarmMesoGroups,
+        swarmLlmMode,
+      }),
+    [
+      customCountry,
+      customInitialCells,
+      customNutrient,
+      customRoles,
+      customTMax,
+      customTUnit,
+      godModeEnabled,
+      godRoleMode,
+      simulationMode,
+      streamDelayMs,
+      streamDensity,
+      streamEpisodeMinDurationMs,
+      streamGrowthRate,
+      streamInitialAgentRatio,
+      streamMaxActiveAgents,
+      streamMaxNeighbors,
+      streamMaxRounds,
+      streamMinRounds,
+      swarmAgentCount,
+      swarmLlmMode,
+      swarmMesoGroups,
+      zMode,
+      zScale,
+      zWeight,
+      zoneCount,
+      zoneFrictionStep,
+      zoneInfluenceStep,
+      zoneLayout,
+      zoneSpacing,
+    ]
+  );
+
+  const godConfigDirty = savedGodConfigKey !== godConfigKey;
+
+  const buildGodConfigPayload = useCallback((): GodModePayload => {
+    const swarmEnabled = simulationMode === "swarm";
+    return {
+      enabled: true,
+      auto_roles_from_personas: godRoleMode === "auto",
+      overrides: {
+        t_max: parsePositiveNumber(customTMax),
+        initial_cell_count: parsePositiveInt(swarmEnabled ? swarmAgentCount : customInitialCells),
+        role_catalog: godRoleMode === "manual" ? splitRoles(customRoles) : undefined,
+        simulation_mode: simulationMode,
+        t_step_unit: parseAutoText(customTUnit),
+        nutrient_per_step: parsePositiveNumber(customNutrient),
+        persona_country: parseAutoText(customCountry),
+      },
+      engine_params: {
+        simulation_mode: simulationMode,
+        swarm_llm_mode: swarmLlmMode,
+        swarm_tier_model: {
+          micro: { rule_based: true, visual_agents: parsePositiveInt(swarmAgentCount) },
+          meso: { group_count: parsePositiveInt(swarmMesoGroups), llm_mode: swarmLlmMode },
+          macro: { fields: ["pressure", "shock", "drift"] },
+        },
+        zone_count: parsePositiveInt(swarmEnabled ? swarmMesoGroups : zoneCount),
+        zone_layout: parseAutoText(swarmEnabled ? "swarm" : zoneLayout),
+        zone_spacing: parsePositiveNumber(swarmEnabled ? "1.25" : zoneSpacing),
+        zone_influence_step: parseNumber(zoneInfluenceStep),
+        zone_friction_step: parseNumber(zoneFrictionStep),
+        z_mode: parseAutoText(zMode),
+        z_weight: parseNumber(zWeight),
+        z_scale: parsePositiveNumber(zScale),
+        social_stream_density: parsePositiveNumber(streamDensity),
+        scene_stream_delay_ms: parsePositiveNumber(streamDelayMs),
+        stream_episode_min_duration_ms: parsePositiveNumber(streamEpisodeMinDurationMs),
+        min_interactions_per_step: parsePositiveInt(streamMinRounds),
+        max_interactions_per_step: parsePositiveInt(streamMaxRounds),
+        swarm_stream_rounds: parsePositiveInt(streamMaxRounds),
+        swarm_events_per_round: parsePositiveInt(streamMaxNeighbors),
+        swarm_max_session_events: parsePositiveInt(streamMaxRounds) && parsePositiveInt(streamMaxNeighbors)
+          ? Number(parsePositiveInt(streamMaxRounds)) * Number(parsePositiveInt(streamMaxNeighbors))
+          : undefined,
+        stream_topic_expansion: true,
+        stream_max_active_agents: parsePositiveInt(streamMaxActiveAgents),
+        stream_initial_agent_ratio: parsePositiveNumber(streamInitialAgentRatio),
+        stream_growth_rate: parsePositiveNumber(streamGrowthRate),
+        internal_max_neighbors: parsePositiveInt(streamMaxNeighbors),
+        stream_llm_agent_feel: true,
+        llm_agent_sample_size: parsePositiveInt(swarmAgentCount) ?? parsePositiveInt(customInitialCells),
+      },
+    };
+  }, [
+    customCountry,
+    customInitialCells,
+    customNutrient,
+    customRoles,
+    customTMax,
+    customTUnit,
+    godRoleMode,
+    simulationMode,
+    streamDelayMs,
+    streamDensity,
+    streamEpisodeMinDurationMs,
+    streamGrowthRate,
+    streamInitialAgentRatio,
+    streamMaxActiveAgents,
+    streamMaxNeighbors,
+    streamMaxRounds,
+    streamMinRounds,
+    swarmAgentCount,
+    swarmLlmMode,
+    swarmMesoGroups,
+    zMode,
+    zScale,
+    zWeight,
+    zoneCount,
+    zoneFrictionStep,
+    zoneInfluenceStep,
+    zoneLayout,
+    zoneSpacing,
+  ]);
+
+  const saveGodConfig = useCallback(() => {
+    setSavedGodConfig(buildGodConfigPayload());
+    setSavedGodConfigKey(godConfigKey);
+    setGodConfigStatus(isKo ? "생성 제어 설정 저장됨 · 다음 월드 생성에 적용됩니다" : "Genesis controls saved · applied to the next world creation");
+  }, [buildGodConfigPayload, godConfigKey, isKo]);
 
   const bumpChartRefresh = useCallback(() => {
     setChartRefreshKey((k) => k + 1);
@@ -272,6 +452,15 @@ export default function GodView({
       setZMode("policy");
       setZWeight("0.05");
       setZScale("8.0");
+      setStreamDensity("2.2");
+      setStreamDelayMs("0");
+      setStreamEpisodeMinDurationMs("0");
+      setStreamMinRounds("28");
+      setStreamMaxRounds("56");
+      setStreamMaxActiveAgents("900");
+      setStreamInitialAgentRatio("0.18");
+      setStreamGrowthRate("1.7");
+      setStreamMaxNeighbors("16");
       setLlmRuntimeProfile("balanced");
       setLlmCycleBudget("160");
       setLlmAgentSampleSize("256");
@@ -292,6 +481,7 @@ export default function GodView({
     streamStatus,
     runWithWebSocketStream,
     runSync,
+    stopStream,
     disconnectWebSocket,
   } = useSimulation();
 
@@ -341,6 +531,25 @@ export default function GodView({
     await onRefreshRuntimeExternal?.();
     return payload;
   }, [applyRuntimePayload, onRefreshRuntimeExternal]);
+
+  useEffect(() => {
+    if (stage !== "run" || setupRuntimeTab !== "swarm-v2") return;
+    if (!swarmV2Telemetry?.running && swarmV2Telemetry?.status !== "complete") return;
+    const now = Date.now();
+    const shouldRefresh =
+      swarmV2Telemetry.status === "complete" ||
+      now - lastSwarmV2RuntimeRefreshRef.current > 1500;
+    if (!shouldRefresh) return;
+    lastSwarmV2RuntimeRefreshRef.current = now;
+    void reloadRuntimeStatus().catch(() => undefined);
+  }, [
+    reloadRuntimeStatus,
+    setupRuntimeTab,
+    stage,
+    swarmV2Telemetry?.eventCount,
+    swarmV2Telemetry?.running,
+    swarmV2Telemetry?.status,
+  ]);
 
   const tSliderMin = useMemo(
     () => (availableT.length ? Math.min(...availableT) : 0),
@@ -560,43 +769,26 @@ export default function GodView({
     try {
       disconnectWebSocket();
       const swarmEnabled = simulationMode === "swarm";
-      const godMode: GodModePayload | null = godModeEnabled || swarmEnabled
-        ? {
-            enabled: true,
-            auto_roles_from_personas: godRoleMode === "auto",
-            overrides: {
-              t_max: parsePositiveNumber(customTMax),
-              initial_cell_count: parsePositiveInt(swarmEnabled ? swarmAgentCount : customInitialCells),
-              role_catalog: godRoleMode === "manual" ? splitRoles(customRoles) : undefined,
-              simulation_mode: simulationMode,
-              t_step_unit: customTUnit.trim() || undefined,
-              nutrient_per_step: parsePositiveNumber(customNutrient),
-              persona_country: customCountry.trim() || undefined,
-            },
-            engine_params: {
-              simulation_mode: simulationMode,
-              swarm_llm_mode: swarmLlmMode,
-              swarm_tier_model: {
-                micro: { rule_based: true, visual_agents: parsePositiveInt(swarmAgentCount) },
-                meso: { group_count: parsePositiveInt(swarmMesoGroups), llm_mode: swarmLlmMode },
-                macro: { fields: ["pressure", "shock", "drift"] },
-              },
-              zone_count: parsePositiveInt(swarmEnabled ? swarmMesoGroups : zoneCount),
-              zone_layout: swarmEnabled ? "swarm" : zoneLayout,
-              zone_spacing: parsePositiveNumber(swarmEnabled ? "1.25" : zoneSpacing),
-              zone_influence_step: parseNumber(zoneInfluenceStep),
-              zone_friction_step: parseNumber(zoneFrictionStep),
-              z_mode: zMode,
-              z_weight: parseNumber(zWeight),
-              z_scale: parsePositiveNumber(zScale),
-            },
-          }
-        : null;
+      const currentGodConfig = buildGodConfigPayload();
+      const godMode: GodModePayload | null = godModeEnabled || swarmEnabled ? (savedGodConfig && !godConfigDirty ? savedGodConfig : currentGodConfig) : null;
       const out = await createWorld({
         prompt,
         session_id: activeSessionId,
         god_mode: godMode,
       });
+      if (godMode) {
+        setSavedGodConfig(godMode);
+        setSavedGodConfigKey(godConfigKey);
+        setGodConfigStatus(
+          godConfigDirty || !savedGodConfig
+            ? isKo
+              ? "현재 God mode 값을 자동 저장하고 월드를 생성했습니다"
+              : "Auto-saved current God mode values and created the world"
+            : isKo
+              ? "이 설정으로 월드를 생성했습니다"
+              : "World created with these saved controls"
+        );
+      }
       setLastGenesis(out);
       setWorldId(out.world_id);
       onWorldSelected?.(out.world_id);
@@ -623,29 +815,17 @@ export default function GodView({
     }
   }, [
     activeSessionId,
+    buildGodConfigPayload,
     bumpChartRefresh,
-    customCountry,
-    customInitialCells,
-    customNutrient,
-    customRoles,
-    customTMax,
-    customTUnit,
     disconnectWebSocket,
-    godRoleMode,
     genesisPrompt,
+    godConfigDirty,
+    godConfigKey,
     godModeEnabled,
+    isKo,
+    onWorldSelected,
+    savedGodConfig,
     simulationMode,
-    swarmAgentCount,
-    swarmLlmMode,
-    swarmMesoGroups,
-    zoneCount,
-    zoneFrictionStep,
-    zoneInfluenceStep,
-    zoneLayout,
-    zoneSpacing,
-    zMode,
-    zScale,
-    zWeight,
   ]);
 
   const refreshSnapshots = useCallback(
@@ -670,12 +850,36 @@ export default function GodView({
     if (!worldId) return;
     setActionError(null);
     try {
+      const shouldApplyGodRuntime = godModeEnabled || simulationMode === "swarm";
+      if (shouldApplyGodRuntime) {
+        const runtimeConfig = savedGodConfig && !godConfigDirty ? savedGodConfig : buildGodConfigPayload();
+        if (!savedGodConfig || godConfigDirty) {
+          setSavedGodConfig(runtimeConfig);
+          setSavedGodConfigKey(godConfigKey);
+        }
+        await updateWorldRuntimeConfig(worldId, {
+          engine_params: runtimeConfig.engine_params,
+          role_catalog: runtimeConfig.overrides?.role_catalog,
+          initial_cell_count:
+            parsePositiveInt(simulationMode === "swarm" ? swarmAgentCount : customInitialCells) ??
+            runtimeConfig.overrides?.initial_cell_count,
+        });
+        setGodConfigStatus(
+          !savedGodConfig || godConfigDirty
+            ? isKo
+              ? "현재 God mode 값을 자동 저장하고 현재 월드 런타임에 적용했습니다"
+              : "Auto-saved current God mode values and applied them to this world runtime"
+            : isKo
+              ? "저장된 stream 설정을 현재 월드 런타임에 적용했습니다"
+              : "Saved stream controls applied to this world runtime"
+        );
+      }
       await runWithWebSocketStream(worldId);
       await refreshSnapshots(worldId, { preferLatest: true });
     } catch (e) {
       setActionError((e as Error).message);
     }
-  }, [refreshSnapshots, runWithWebSocketStream, worldId]);
+  }, [buildGodConfigPayload, customInitialCells, godConfigDirty, godConfigKey, godModeEnabled, isKo, refreshSnapshots, runWithWebSocketStream, savedGodConfig, simulationMode, swarmAgentCount, worldId]);
 
   const handleRunSync = useCallback(async () => {
     if (!worldId) return;
@@ -688,14 +892,23 @@ export default function GodView({
     }
   }, [refreshSnapshots, runSync, worldId]);
 
+  const handleStopStream = useCallback(async () => {
+    await stopStream(worldId);
+    if (worldId) {
+      await refreshSnapshots(worldId, { preferLatest: true });
+    }
+  }, [refreshSnapshots, stopStream, worldId]);
+
   const handleInjected = useCallback(async () => {
     if (!worldId) return;
     await refreshSnapshots(worldId, { preferLatest: true });
   }, [refreshSnapshots, worldId]);
 
   useEffect(() => {
-    if (!isRunning || !worldId || liveT == null) return;
-    const nextT = Math.max(0, Math.round(liveT));
+    if (!isRunning || !worldId) return;
+    const liveTargetT = liveT;
+    if (liveTargetT == null) return;
+    const nextT = Math.max(0, Math.round(liveTargetT));
     setAvailableT((prev) => (prev.includes(nextT) ? prev : [...prev, nextT].sort((a, b) => a - b)));
     setCurrentT(nextT);
   }, [isRunning, liveT, worldId]);
@@ -724,8 +937,8 @@ export default function GodView({
         setSnapshotCells(snap.cells);
         setSnapshotSceneEvents(snap.scene_events ?? []);
         setSnapshotSceneMetrics(snap.scene_metrics ?? null);
-        setSceneReplayIndex(Math.min(1, (snap.scene_events ?? []).length));
-        setSceneReplayPaused(false);
+        setSceneReplayIndex((snap.scene_events ?? []).length ? 1 : 0);
+        setSceneReplayPaused(true);
         setVisibleCells(cells);
         setVisualStats({ totalCells, sampled });
       })
@@ -744,12 +957,13 @@ export default function GodView({
   const shouldUseLiveObserver =
     Boolean(isRunning) &&
     liveObserver != null &&
-    Math.round(Number(liveObserver?.t ?? -1)) === Math.round(currentT) &&
     (liveObserver?.cells?.length ?? 0) > 0;
   const shouldUseLiveSceneStream =
     Boolean(isRunning) &&
-    liveSceneStream.currentT != null &&
-    Math.round(Number(liveSceneStream.currentT)) === Math.round(currentT);
+    liveSceneStream.events.length > 0;
+  const observedT = shouldUseLiveSceneStream
+    ? Number(liveSceneStream.observedT ?? liveSceneStream.latestEvent?.scene_t ?? liveSceneStream.currentT ?? currentT)
+    : currentT;
 
   const renderedSnapshotCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : snapshotCells;
   const renderedVisibleCells = shouldUseLiveObserver ? liveObserver?.cells ?? [] : visibleCells;
@@ -969,6 +1183,27 @@ export default function GodView({
           onZWeightChange={setZWeight}
           zScale={zScale}
           onZScaleChange={setZScale}
+          streamDensity={streamDensity}
+          onStreamDensityChange={setStreamDensity}
+          streamDelayMs={streamDelayMs}
+          onStreamDelayMsChange={setStreamDelayMs}
+          streamEpisodeMinDurationMs={streamEpisodeMinDurationMs}
+          onStreamEpisodeMinDurationMsChange={setStreamEpisodeMinDurationMs}
+          streamMinRounds={streamMinRounds}
+          onStreamMinRoundsChange={setStreamMinRounds}
+          streamMaxRounds={streamMaxRounds}
+          onStreamMaxRoundsChange={setStreamMaxRounds}
+          streamMaxActiveAgents={streamMaxActiveAgents}
+          onStreamMaxActiveAgentsChange={setStreamMaxActiveAgents}
+          streamInitialAgentRatio={streamInitialAgentRatio}
+          onStreamInitialAgentRatioChange={setStreamInitialAgentRatio}
+          streamGrowthRate={streamGrowthRate}
+          onStreamGrowthRateChange={setStreamGrowthRate}
+          streamMaxNeighbors={streamMaxNeighbors}
+          onStreamMaxNeighborsChange={setStreamMaxNeighbors}
+          dirty={godConfigDirty}
+          status={godConfigStatus}
+          onSave={saveGodConfig}
         />
         <DataPackPrepPanel
           locale={locale}
@@ -1038,15 +1273,18 @@ export default function GodView({
           worldId={worldId}
           isRunning={isRunning}
           liveT={liveT}
+          observedT={observedT}
           liveCellCount={liveCellCount}
           streamStatus={streamStatus}
           onRunStream={handleRunStream}
           onRunSync={handleRunSync}
+          onStopStream={handleStopStream}
           compact
         />
         <IntraTScenePanel
           locale={locale}
           sceneStream={liveSceneStream}
+          chapterT={currentT}
           snapshotEvents={snapshotSceneEvents}
           snapshotMetrics={snapshotSceneMetrics}
           renderedMetrics={renderedSceneMetrics}
@@ -1130,9 +1368,21 @@ export default function GodView({
       runtimeLoading,
       runtimeStatus,
       selectedPack,
+      streamDelayMs,
+      streamDensity,
+      streamEpisodeMinDurationMs,
+      streamGrowthRate,
+      streamInitialAgentRatio,
+      streamMaxActiveAgents,
+      streamMaxNeighbors,
+      streamMaxRounds,
+      streamMinRounds,
       worldId,
       zMode,
       zScale,
+      godConfigDirty,
+      godConfigStatus,
+      saveGodConfig,
       zWeight,
       zoneCount,
       zoneFrictionStep,
@@ -1387,10 +1637,12 @@ export default function GodView({
       <CompactTimeControl
         locale={locale}
         t={currentT}
+        liveObservedT={isRunning ? observedT : null}
         tMin={tSliderMin}
         tMax={tSliderMax}
         frameCount={availableT.length}
-        disabled={sliderDisabled}
+        disabled={sliderDisabled || isRunning}
+        isRunning={isRunning}
         markers={[...timelineMarkers, ...reviewMarkers]}
         bookmarks={bookmarks}
         onJump={setCurrentT}
@@ -1404,7 +1656,9 @@ export default function GodView({
       availableT.length,
       bookmarks,
       currentT,
+      isRunning,
       locale,
+      observedT,
       reviewMarkers,
       sliderDisabled,
       timelineMarkers,
@@ -1468,20 +1722,463 @@ export default function GodView({
     [currentT, locale, renderedSnapshotCells, selectedAgent, selectedZone, worldId]
   );
 
+  const swarmV2TimeDockContent = useMemo(
+    () => (
+      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Swarm V2 Session</p>
+        <p className="mt-1 text-sm font-semibold text-slate-950">
+          {swarmV2Telemetry?.sessionId ? swarmV2Telemetry.sessionId.slice(0, 8) : isKo ? "세션 대기" : "Idle"}
+        </p>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+          <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${swarmV2Telemetry?.activePercent ?? 0}%` }} />
+        </div>
+        <p className="mt-2 text-xs leading-5 text-slate-600">
+          {isKo ? "V2는 t 슬라이더가 아니라 독립 세션 스트림을 기준으로 관찰합니다." : "V2 is observed as independent session streams, not a legacy t slider."}
+        </p>
+      </div>
+    ),
+    [isKo, swarmV2Telemetry?.activePercent, swarmV2Telemetry?.sessionId]
+  );
+
+  const swarmV2SessionDockContent = useMemo(
+    () => (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                {isKo ? "세션 리드아웃" : "Session Readout"}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-950">
+                {swarmV2Telemetry?.status ?? "idle"} · {swarmV2Telemetry?.currentPhase ?? "opening"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="app-button app-button--ghost px-3 py-1 text-xs"
+              onClick={() => setStage("setup")}
+            >
+              {isKo ? "준비" : "Setup"}
+            </button>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <MetricChip
+              label={isKo ? "보이는 에이전트" : "visible agents"}
+              value={`${swarmV2Telemetry?.visibleAgentCount ?? 0}/${swarmV2Telemetry?.totalAgents ?? swarmV2Result?.agent_count ?? 0}`}
+            />
+            <MetricChip
+              label={isKo ? "이벤트" : "events"}
+              value={`${swarmV2Telemetry?.eventCount ?? swarmV2Result?.events.length ?? 0}/${swarmV2Telemetry?.expectedEvents ?? swarmV2Result?.events.length ?? 0}`}
+            />
+            <MetricChip label="agent LLM" value={String(swarmV2Telemetry?.agentChannelCount ?? 0)} />
+            <MetricChip label={isKo ? "응답 체인" : "reply chain"} value={String(swarmV2Telemetry?.replyChainCount ?? 0)} />
+          </div>
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] leading-5 text-slate-500">
+            LLM {String((swarmV2Telemetry?.summary.llm as Record<string, unknown> | undefined)?.mode ?? swarmV2Telemetry?.llmMode ?? "packet")}
+            {" · enriched "}
+            {String((swarmV2Telemetry?.summary.llm as Record<string, unknown> | undefined)?.enriched_events ?? 0)}
+            {" · samples "}
+            {swarmV2Telemetry?.llmMode === "full-agent" ? "all" : String(swarmV2Telemetry?.llmSampleSize ?? 0)}
+            {" · persisted "}
+            {swarmV2Telemetry?.sessionId ? "yes" : "no"}
+          </div>
+          {swarmV2Telemetry?.thinkingEvent ? (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+                </span>
+                <span className="font-semibold">
+                  {isKo ? "지금 생각 중" : "Thinking now"}
+                </span>
+              </div>
+              <p className="mt-1 text-amber-800/80">
+                {swarmV2Telemetry.thinkingEvent.source_label || swarmV2Telemetry.thinkingEvent.source_id}
+                {" → "}
+                {swarmV2Telemetry.thinkingEvent.target_label || swarmV2Telemetry.thinkingEvent.target_id}
+              </p>
+              {swarmV2Telemetry.thinkingEvent.topic ? (
+                <p className="mt-1 text-[11px] text-amber-700/75">{swarmV2Telemetry.thinkingEvent.topic}</p>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 px-3 py-3 text-xs leading-5 text-slate-600">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-600">
+                {isKo ? "Scenario Director" : "Scenario Director"}
+              </p>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                {String(swarmV2Telemetry?.summary.scenario_director_mode ?? "pending")}
+              </span>
+            </div>
+            <p className="mt-2 line-clamp-3 text-slate-700">
+              {String(
+                swarmV2Telemetry?.summary.scenario_actor_roles
+                  ? (swarmV2Telemetry.summary.scenario_actor_roles as unknown[]).join(" · ")
+                  : isKo
+                    ? "세션 시작 시 원문을 실행용 브리프로 보정합니다."
+                    : "The raw scenario is compiled into a runtime brief on session start."
+              )}
+            </p>
+            {swarmV2Telemetry?.summary.scenario_director_fallback_reason ? (
+              <p className="mt-1 text-[11px] text-slate-400">
+                fallback: {String(swarmV2Telemetry.summary.scenario_director_fallback_reason)}
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            {isKo ? "현재 토론" : "Current Debate"}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-5 text-slate-900">
+            {swarmV2Telemetry?.latestEvent?.topic ?? (isKo ? "아직 형성 전" : "Not formed yet")}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {swarmV2Telemetry?.latestEvent?.summary ?? (isKo ? "세션을 시작하면 최근 상호작용이 여기에 고정됩니다." : "Start a session to pin the latest interaction here.")}
+          </p>
+          {swarmV2Telemetry?.latestEvent ? (
+            <p className="mt-2 rounded-xl bg-white px-2 py-2 text-xs leading-5 text-slate-700">
+              <span className="font-semibold text-slate-900">
+                {swarmV2Telemetry.latestEvent.llm_enriched ? (isKo ? "LLM 생각" : "LLM thought") : (isKo ? "생각" : "Thought")}:{" "}
+              </span>
+              {swarmEventThought(swarmV2Telemetry.latestEvent)}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    ),
+    [
+      isKo,
+      swarmV2Result?.agent_count,
+      swarmV2Result?.events.length,
+      swarmV2Telemetry?.agentChannelCount,
+      swarmV2Telemetry?.currentPhase,
+      swarmV2Telemetry?.eventCount,
+      swarmV2Telemetry?.expectedEvents,
+      swarmV2Telemetry?.latestEvent?.summary,
+      swarmV2Telemetry?.latestEvent?.topic,
+      swarmV2Telemetry?.latestEvent,
+      swarmV2Telemetry?.replyChainCount,
+      swarmV2Telemetry?.llmMode,
+      swarmV2Telemetry?.llmSampleSize,
+      swarmV2Telemetry?.sessionId,
+      swarmV2Telemetry?.status,
+      swarmV2Telemetry?.summary,
+      swarmV2Telemetry?.thinkingEvent,
+      swarmV2Telemetry?.totalAgents,
+      swarmV2Telemetry?.visibleAgentCount,
+    ]
+  );
+
+  const swarmV2RuntimeDockContent = useMemo(
+    () => (
+      <div className="space-y-3">
+        <div className="grid gap-3">
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs font-semibold text-slate-700">
+            <input type="checkbox" checked={llmEnabled} onChange={(event) => setLlmEnabled(event.target.checked)} />
+            {isKo ? "V2 LLM 채널 사용" : "enable V2 LLM channels"}
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <ConnectionMetric
+              label={isKo ? "API 연결" : "api connection"}
+              value={runtimeStatus?.llm?.provider ?? "stub"}
+              tone={llmConnectionState.tone}
+              detail={runtimeStatus?.llm?.model ?? "stub"}
+            />
+            <ConnectionMetric
+              label={isKo ? "V2 모드" : "v2 mode"}
+              value={swarmV2Telemetry?.llmMode ?? "packet"}
+              tone={llmConnectionState.tone}
+              detail={
+                swarmV2Telemetry?.llmMode === "full-agent"
+                  ? `${swarmV2Telemetry?.llmParallelism ?? 1} parallel`
+                  : `${swarmV2Telemetry?.llmSampleSize ?? 12} samples`
+              }
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            {isKo ? "API 설정" : "API Settings"}
+          </p>
+          <div className="grid gap-2 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              {isKo ? "연결 프리셋" : "connection preset"}
+              <select className="app-input" value={llmProviderPreset} onChange={(event) => setLlmProviderPreset(event.target.value)}>
+                {LLM_PROVIDER_PRESETS.map((item) => (
+                  <option key={`v2-${item.id}`} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+                <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              {isKo ? "프로바이더" : "provider"}
+              <select
+                className="app-input"
+                value={llmProvider}
+                onChange={(event) => {
+                  setLlmProviderPreset("custom");
+                  setLlmProvider(event.target.value);
+                }}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="openai-compatible">OpenAI-compatible</option>
+                <option value="ollama">Ollama</option>
+                <option value="stub">Stub</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              {isKo ? "추천 모델" : "model preset"}
+              <select className="app-input" value={llmModelPreset} onChange={(event) => setLlmModelPreset(event.target.value)}>
+                {availableModelPresets.map((item) => (
+                  <option key={`v2-model-${item}`} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value="custom">{isKo ? "직접 입력" : "Custom"}</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-slate-500">
+              {isKo ? "모델" : "model"}
+              <input
+                className="app-input"
+                value={llmModel}
+                onChange={(event) => {
+                  setLlmModelPreset("custom");
+                  setLlmModel(event.target.value);
+                }}
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "Base URL" : "base url"}
+            <input
+              className="app-input"
+              value={llmBaseUrl}
+              onChange={(event) => {
+                setLlmProviderPreset("custom");
+                setLlmBaseUrl(event.target.value);
+              }}
+              placeholder="https://api.openai.com/v1"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">
+            {isKo ? "API 키" : "api key"}
+            <input type="password" className="app-input" value={llmApiKey} onChange={(event) => setLlmApiKey(event.target.value)} />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="app-button app-button--ghost" onClick={() => void handleSaveLlmConfig()}>
+            {isKo ? "API 설정 저장" : "Save API Config"}
+          </button>
+          <button type="button" className="app-button app-button--ghost" onClick={() => void handleTestLlmConnection()}>
+            {isKo ? "연결 테스트" : "Test Connection"}
+          </button>
+        </div>
+        {llmConfigStatus ? <p className="text-xs text-slate-500">{llmConfigStatus}</p> : null}
+        {llmTestResult ? (
+          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+            <p className="text-xs font-semibold text-slate-900">
+              {llmTestResult.ok ? (isKo ? "연결됨" : "connected") : (isKo ? "연결 확인 필요" : "needs check")}
+            </p>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              {llmTestResult.provider} · {llmTestResult.model}
+              {llmTestResult.fallback_reason ? ` · ${llmTestResult.fallback_reason}` : ""}
+            </p>
+          </div>
+        ) : null}
+        <details className="group rounded-2xl border border-slate-200 bg-slate-50" open={false}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {isKo ? "호출 내역 / 예산" : "Call History / Budgets"}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {isKo ? "V2에서 쓰는 전역 LLM 호출 상태입니다." : "Global LLM call state used by V2."}
+              </p>
+            </div>
+            <span className="text-xs font-medium text-slate-500 group-open:hidden">{isKo ? "접힘" : "Collapsed"}</span>
+            <span className="hidden text-xs font-medium text-slate-500 group-open:inline">{isKo ? "열림" : "Open"}</span>
+          </summary>
+          <div className="grid gap-2 border-t border-slate-200 p-3">
+            {llmTaskRows.map((row) => (
+              <div key={`v2-${row.task}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-700">{row.task}</p>
+                  <span className="text-[11px] text-slate-500">
+                    live {row.totals?.prompt_count_sent ?? 0}/{row.totals?.prompt_count_in ?? 0}
+                  </span>
+                </div>
+                {row.totals?.fallback_calls ? (
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    fallback {row.totals.fallback_calls}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      </div>
+    ),
+    [
+      handleSaveLlmConfig,
+      handleTestLlmConnection,
+      isKo,
+      availableModelPresets,
+      llmApiKey,
+      llmBaseUrl,
+      llmConfigStatus,
+      llmConnectionState.tone,
+      llmEnabled,
+      llmModel,
+      llmModelPreset,
+      llmProvider,
+      llmProviderPreset,
+      llmTaskRows,
+      llmTestResult,
+      runtimeStatus?.llm?.model,
+      runtimeStatus?.llm?.provider,
+      swarmV2Telemetry?.llmMode,
+      swarmV2Telemetry?.llmParallelism,
+      swarmV2Telemetry?.llmSampleSize,
+    ]
+  );
+
+  const swarmV2LlmCallsDockContent = useMemo(
+    () => (
+      <div className="rounded-2xl border border-slate-900 bg-slate-950 px-3 py-3 font-mono text-[11px] leading-5 text-slate-200 shadow-inner">
+        <div className="mb-2 flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
+          <span className="font-semibold text-emerald-300">
+            {isKo ? "V2 LLM 호출 로그" : "V2 LLM call log"}
+          </span>
+          <span className="text-slate-500">
+            {swarmV2Telemetry?.llmMode ?? "packet"} · x{swarmV2Telemetry?.llmParallelism ?? 1}
+          </span>
+        </div>
+        <div className="max-h-[360px] space-y-1 overflow-y-auto pr-1">
+          {swarmV2Telemetry?.llmLogs?.length ? swarmV2Telemetry.llmLogs.map((log, index) => {
+            const time = new Date(log.loggedAt).toLocaleTimeString(isKo ? "ko-KR" : "en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            });
+            const tone = log.status === "completed"
+              ? "text-emerald-300"
+              : log.status === "fallback"
+                ? "text-amber-300"
+                : "text-sky-300";
+            return (
+              <div key={`${log.status}-${log.event_id ?? log.event_ids?.join("-") ?? index}-${index}`} className="whitespace-pre-wrap break-words">
+                <span className="text-slate-500">[{time}] </span>
+                <span className={tone}>{log.status}</span>
+                <span className="text-slate-400"> {log.task}</span>
+                {log.batch_size ? <span className="text-slate-500"> batch={log.batch_size}/p{log.parallelism ?? 1}</span> : null}
+                {log.event_id ? <span className="text-slate-500"> event={log.event_id}</span> : null}
+                {log.source_label ? <span className="text-slate-300"> {log.source_label} → {log.target_label}</span> : null}
+                {log.topic ? <span className="text-slate-500"> · {log.topic}</span> : null}
+                {log.elapsed_ms ? <span className="text-slate-500"> · {Math.round(log.elapsed_ms)}ms</span> : null}
+                {log.fallback_reason ? <span className="text-amber-300"> · {log.fallback_reason}</span> : null}
+              </div>
+            );
+          }) : (
+            <p className="text-slate-500">
+              {isKo ? "V2 full-agent/agent 실행을 시작하면 호출 로그가 터미널처럼 쌓입니다." : "Start a V2 full-agent/agent run to stream terminal-like call logs."}
+            </p>
+          )}
+        </div>
+      </div>
+    ),
+    [isKo, swarmV2Telemetry?.llmLogs, swarmV2Telemetry?.llmMode, swarmV2Telemetry?.llmParallelism]
+  );
+
+  const swarmV2InsightDockContent = useMemo(
+    () => (
+      <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+            {isKo ? "최근 V2 상호작용" : "Recent V2 Interactions"}
+          </p>
+          <div className="mt-2 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+            {swarmV2Telemetry?.recentEvents.length ? swarmV2Telemetry.recentEvents.map((event) => (
+              <div key={`dock-${event.event_id}`} className="rounded-2xl bg-slate-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-semibold text-slate-500">#{event.event_index}</span>
+                  <span className="text-[11px] font-semibold text-sky-700">
+                    {event.llm_mode ?? "packet"}{event.llm_action ? ` · ${event.llm_action}` : ""}
+                    {event.llm_influenced_by_event_id ? " · influenced" : ""}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">{event.topic}</p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                  {event.source_label ?? event.source_id} → {event.target_label ?? event.target_id}
+                </p>
+                <p className="mt-1 rounded-xl bg-white px-2 py-1 text-xs leading-5 text-slate-700">
+                  <span className="font-semibold text-slate-900">
+                    {event.llm_enriched ? (isKo ? "LLM 생각" : "LLM thought") : (isKo ? "생각" : "Thought")}:{" "}
+                  </span>
+                  {swarmEventThought(event)}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-slate-700">
+                  <span className="font-semibold text-slate-900">{isKo ? "발화" : "Speech"}: </span>
+                  {event.agent_speech || event.llm_content || event.summary}
+                </p>
+                {typeof event.llm_action_effect === "number" ? (
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">
+                    action effect {event.llm_action_effect.toFixed(3)}
+                  </p>
+                ) : null}
+                {typeof event.decision_relation_delta === "number" || typeof event.decision_pressure_delta === "number" ? (
+                  <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    relation {formatSignedDelta(event.decision_relation_delta)} · pressure {formatSignedDelta(event.decision_pressure_delta)}
+                  </p>
+                ) : null}
+                {event.memory_write || event.next_intent ? (
+                  <p className="mt-1 rounded-xl bg-white px-2 py-1 text-[11px] leading-4 text-slate-500">
+                    {event.memory_write ? `${isKo ? "기억" : "Memory"}: ${event.memory_write}` : ""}
+                    {event.memory_write && event.next_intent ? " · " : ""}
+                    {event.next_intent ? `${isKo ? "다음 의도" : "Next"}: ${event.next_intent}` : ""}
+                  </p>
+                ) : null}
+                {event.llm_reasoning ? (
+                  <p className="mt-1 rounded-xl bg-white px-2 py-1 text-[11px] leading-4 text-slate-500">
+                    {event.llm_reasoning}
+                  </p>
+                ) : null}
+              </div>
+            )) : (
+              <p className="rounded-2xl bg-slate-50 px-3 py-4 text-xs leading-5 text-slate-500">
+                {isKo ? "V2 세션을 시작하면 이벤트가 여기에 쌓입니다." : "Start a V2 session to stream events here."}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+    [isKo, swarmV2Telemetry?.recentEvents]
+  );
+
   useEffect(() => {
+    const useSwarmV2Dock = stage === "run" && setupRuntimeTab === "swarm-v2";
     onDockPayloadChange?.({
-      timeControlContent: timeDockContent,
-      controlsContent: controlsDockContent,
-      runtimeContent: runtimeDockContent,
-      insightContent: insightDockContent,
+      timeControlContent: useSwarmV2Dock ? swarmV2TimeDockContent : timeDockContent,
+      controlsContent: useSwarmV2Dock ? swarmV2SessionDockContent : controlsDockContent,
+      runtimeContent: useSwarmV2Dock ? swarmV2RuntimeDockContent : runtimeDockContent,
+      llmCallsContent: useSwarmV2Dock ? swarmV2LlmCallsDockContent : undefined,
+      insightContent: useSwarmV2Dock ? swarmV2InsightDockContent : insightDockContent,
       chatContent: chatDockContent,
       thoughtCells: renderedSnapshotCells,
-      currentT,
+      actionRecords: liveSceneStream.recentActions,
+      runtimeTiming: liveSceneStream.runtimeTiming,
+      currentT: observedT,
       collectiveSummary: renderedCollectiveSummary,
       collectiveSignal: renderedCollectiveSignal,
       connectionState: llmConnectionState,
     });
-  }, [chatDockContent, controlsDockContent, currentT, insightDockContent, llmConnectionState, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent, timeDockContent]);
+  }, [chatDockContent, controlsDockContent, currentT, insightDockContent, liveSceneStream.recentActions, liveSceneStream.runtimeTiming, llmConnectionState, observedT, onDockPayloadChange, renderedCollectiveSignal, renderedCollectiveSummary, renderedSnapshotCells, runtimeDockContent, setupRuntimeTab, stage, swarmV2InsightDockContent, swarmV2LlmCallsDockContent, swarmV2RuntimeDockContent, swarmV2SessionDockContent, swarmV2TimeDockContent, timeDockContent]);
 
 
   useEffect(() => {
@@ -1546,8 +2243,11 @@ export default function GodView({
       <AppPanel
         title={strings.simulationWorkspace}
         subtitle={
+          swarmV2Result
+            ? `Swarm V2 · ${swarmV2Result.agent_count.toLocaleString()} agents · ${swarmV2Result.events.length.toLocaleString()} events`
+            :
           stage === "run" && worldId
-            ? `${worldId} · t=${currentT.toFixed(1)} · ${renderedVisibleCells.length.toLocaleString()} agents`
+            ? `${worldId} · ${isKo ? "장면" : "scene"} t=${observedT.toFixed(2)} · ${renderedVisibleCells.length.toLocaleString()} agents`
             : isKo
               ? "설정 · 실행 · 리뷰를 한 흐름으로 엽니다"
               : "Open setup, run, and review in one flow"
@@ -1567,7 +2267,7 @@ export default function GodView({
               type="button"
               className={`godview-stage-switch__button ${stage === "run" ? "is-active" : ""}`}
               onClick={() => setStage("run")}
-              disabled={!worldId}
+              disabled={setupRuntimeTab === "legacy" && !worldId}
             >
               02 {strings.run}
             </button>
@@ -1584,29 +2284,45 @@ export default function GodView({
             <div className="unified-dashboard__mode-toggle" aria-label="simulation mode">
               <button
                 type="button"
-                className={simulationMode === "precision" ? "is-active" : ""}
-                onClick={() => applySimulationMode("precision")}
+                className={setupRuntimeTab === "swarm-v2" ? "is-active" : ""}
+                onClick={() => {
+                  setSetupRuntimeTab("swarm-v2");
+                  setSimulationMode("swarm");
+                }}
               >
-                Precision
+                Swarm V2
               </button>
               <button
                 type="button"
-                className={simulationMode === "swarm" ? "is-active" : ""}
-                onClick={() => applySimulationMode("swarm")}
+                className={setupRuntimeTab === "legacy" ? "is-active" : ""}
+                onClick={() => {
+                  setSetupRuntimeTab("legacy");
+                  applySimulationMode("precision");
+                }}
               >
-                Swarm
+                Legacy Precision
               </button>
             </div>
           ) : null}
           {stage === "run" ? (
             <div className="unified-dashboard__status-strip">
-              <span>{renderedCollectiveSignal}</span>
-              <span>{isKo ? "압력" : "pressure"} {Math.round((renderedCollectiveSummary?.role?.avg_fracture_risk ?? 0) * 100)}</span>
-              {renderedVisualStats?.sampled ? (
-                <span className="is-warn">
-                  {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
-                </span>
-              ) : null}
+              {setupRuntimeTab === "swarm-v2" ? (
+                <>
+                  <span>Swarm V2</span>
+                  <span>{swarmV2Result ? `${swarmV2Result.events.length.toLocaleString()} events` : isKo ? "세션 대기" : "session idle"}</span>
+                  <span>{swarmV2Result ? `${swarmV2Result.agent_count.toLocaleString()} agents` : isKo ? "새 런타임" : "new runtime"}</span>
+                </>
+              ) : (
+                <>
+                  <span>{renderedCollectiveSignal}</span>
+                  <span>{isKo ? "압력" : "pressure"} {Math.round((renderedCollectiveSummary?.role?.avg_fracture_risk ?? 0) * 100)}</span>
+                  {renderedVisualStats?.sampled ? (
+                    <span className="is-warn">
+                      {isKo ? "샘플링" : "sampled"} {renderedVisibleCells.length.toLocaleString()} / {renderedVisualStats.totalCells.toLocaleString()}
+                    </span>
+                  ) : null}
+                </>
+              )}
             </div>
           ) : null}
         </div>
@@ -1616,10 +2332,53 @@ export default function GodView({
       {stage === "setup" && (
         <div className="godview-setup">
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1">
+            <div className="flex flex-wrap gap-2 rounded-[24px] border border-slate-200 bg-white p-2">
+              <button
+                type="button"
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  setupRuntimeTab === "swarm-v2" ? "bg-sky-600 text-white shadow" : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setSetupRuntimeTab("swarm-v2")}
+              >
+                Swarm V2
+              </button>
+              <button
+                type="button"
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                  setupRuntimeTab === "legacy" ? "bg-slate-900 text-white shadow" : "text-slate-600 hover:bg-slate-50"
+                }`}
+                onClick={() => setSetupRuntimeTab("legacy")}
+              >
+                Legacy Precision
+              </button>
+            </div>
+
+            {setupRuntimeTab === "swarm-v2" ? (
+            <div>
+              <SwarmV2Workspace
+                variant="setup"
+                prompt={genesisPrompt || PROMPT_PLACEHOLDER}
+                scenarioPrompt={genesisPrompt}
+                onScenarioPromptChange={setGenesisPrompt}
+                locale={locale}
+                onOpenRun={() => {
+                  setSetupRuntimeTab("swarm-v2");
+                  setSimulationMode("swarm");
+                  setStage("run");
+                }}
+                onTelemetryChange={setSwarmV2Telemetry}
+                onResult={(result) => {
+                  setSwarmV2Result(result);
+                  setSimulationMode("swarm");
+                }}
+              />
+            </div>
+            ) : (
+            <>
             <div className="grid gap-4 xl:grid-cols-2">
             <AppPanel
-              title={isKo ? "시나리오 생성" : "Scenario Genesis"}
-              subtitle={isKo ? "프롬프트, 페르소나 팩, 월드 시드 구성을 먼저 정합니다" : "Prompt, persona packs, and world seed configuration"}
+              title={isKo ? "Legacy Precision 생성" : "Legacy Precision Genesis"}
+              subtitle={isKo ? "기존 엔진은 보조/비교용으로 남겨둡니다" : "The legacy engine remains only as a secondary comparison path"}
               bodyClassName="space-y-4"
             >
               <label className="flex flex-col gap-2">
@@ -1660,7 +2419,7 @@ export default function GodView({
                 >
                   <span className="block text-xs font-semibold uppercase tracking-[0.18em] opacity-70">Swarm Mode</span>
                   <span className="mt-1 block text-sm font-semibold">
-                    {isKo ? "대량 에이전트 + Meso packet LLM" : "Mass agents + meso packet LLM"}
+                    {isKo ? "MiroFish식 대량 에이전트 스트림" : "MiroFish-style mass-agent stream"}
                   </span>
                 </button>
               </div>
@@ -1687,18 +2446,19 @@ export default function GodView({
                     <select value={swarmLlmMode} onChange={(e) => setSwarmLlmMode(e.target.value as SwarmLlmMode)} className="app-input">
                       <option value="packet">{isKo ? "Packet: group/state 단위" : "Packet: group/state"}</option>
                       <option value="agent">{isKo ? "1:1 Agent: 개별 호출" : "1:1 Agent calls"}</option>
+                      <option value="full-agent">{isKo ? "Full Agent: 모든 이벤트 LLM" : "Full Agent: every event"}</option>
                     </select>
                   </label>
                   <p className="md:col-span-3 rounded-2xl bg-white/75 px-3 py-2 text-[11px] leading-5 text-sky-900">
                     {isKo
-                      ? "MVP에서는 Micro agent는 rule 기반으로 빠르게 움직이고, Meso group packet 설정을 engine params에 보존합니다. Packet/1:1 실제 호출 전략은 다음 단계에서 이 설정을 소비하도록 확장합니다."
-                      : "In this MVP, micro agents move through rules while meso group packet settings are persisted in engine params. The next step wires Packet/1:1 settings into the live LLM scheduler."}
+                      ? "기본 실행은 clean-room MiroFish식 Swarm 런타임을 탑니다. 한 번의 stream session에서 다수 에이전트 관계 이벤트가 쏟아지고, session 완료 후 다음 t로 커밋됩니다."
+                      : "Default execution uses the clean-room MiroFish-style Swarm runtime: one stream session emits many agent relationship events, then commits the next t."}
                   </p>
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={handleCreateWorld} className="app-button app-button--primary">
-                  {isKo ? "월드 생성" : "Create world"}
+                  {isKo ? "Legacy 월드 생성" : "Create legacy world"}
                 </button>
                 {worldId && (
                   <button type="button" onClick={() => setStage("run")} className="app-button app-button--secondary">
@@ -1748,6 +2508,8 @@ export default function GodView({
               </AppPanel>
             )}
           </div>
+            </>
+            )}
         </div>
       </div>
       )}
@@ -1834,12 +2596,43 @@ export default function GodView({
         </div>
       )}
       {stage === "run" && (
+        setupRuntimeTab === "swarm-v2" ? (
+        <div className="grid min-h-0 gap-4 overflow-y-auto pr-1">
+          <div className="rounded-[28px] border border-sky-200 bg-sky-50/70 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+              {isKo ? "Swarm V2 실행면" : "Swarm V2 Runtime Surface"}
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              {isKo
+                ? "이 탭은 레거시 t-step 엔진과 분리된 새 세션 스트림입니다. 한 번의 세션이 끝나면 그 결과가 하나의 t 챕터 후보가 됩니다."
+                : "This tab is the new session-stream runtime, separated from the legacy t-step engine. One completed session becomes one candidate t chapter."}
+            </p>
+          </div>
+          <SwarmV2Workspace
+            variant="run"
+            prompt={genesisPrompt || PROMPT_PLACEHOLDER}
+            scenarioPrompt={genesisPrompt}
+            onScenarioPromptChange={setGenesisPrompt}
+            locale={locale}
+            onTelemetryChange={setSwarmV2Telemetry}
+            onResult={(result) => {
+              setSwarmV2Result(result);
+              setSimulationMode("swarm");
+            }}
+          />
+        </div>
+        ) : (
         <div className="unified-dashboard">
           <main className="unified-dashboard__center">
             <div className="unified-dashboard__center-header">
               <div>
                 <p className="unified-dashboard__section-label">{isKo ? "Center Visualization" : "Center Visualization"}</p>
                 <h3>{isKo ? "실시간 소셜 필드" : "Live Social Field"}</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {isKo
+                    ? "현재 t 내부에서 발생하는 에이전트 접촉, 압력, 구역 흐름을 관찰합니다."
+                    : "Observe intra-t agent contact, pressure, and zone flow."}
+                </p>
               </div>
               <div className="unified-dashboard__status-strip">
                 <span>{simulationMode}</span>
@@ -1862,7 +2655,7 @@ export default function GodView({
               cells={renderedVisibleCells}
               totalCells={renderedVisualStats?.totalCells ?? renderedVisibleCells.length}
               sampled={renderedVisualStats?.sampled ?? false}
-              currentT={currentT}
+              currentT={observedT}
               annotations={reviewSummary?.timeline_annotations ?? []}
               groundingItems={flattenReviewGrounding(reviewSummary?.grounding ?? {})}
               collectiveSummary={renderedCollectiveSummary}
@@ -1889,6 +2682,7 @@ export default function GodView({
           </main>
 
         </div>
+        )
       )}
     </div>
   );
@@ -1909,6 +2703,12 @@ function parseNumber(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseAutoText(value: string): string | undefined {
+  const text = String(value || "").trim();
+  if (!text || text.toLowerCase() === "auto") return undefined;
+  return text;
+}
+
 function splitRoles(value: string): string[] | undefined {
   const roles = value
     .split(",")
@@ -1920,10 +2720,12 @@ function splitRoles(value: string): string[] | undefined {
 function CompactTimeControl({
   locale,
   t,
+  liveObservedT = null,
   tMin,
   tMax,
   frameCount,
   disabled,
+  isRunning = false,
   markers,
   bookmarks,
   onJump,
@@ -1933,10 +2735,12 @@ function CompactTimeControl({
 }: {
   locale: UiLocale;
   t: number;
+  liveObservedT?: number | null;
   tMin: number;
   tMax: number;
   frameCount: number;
   disabled: boolean;
+  isRunning?: boolean;
   markers: TimelineMarker[];
   bookmarks: TimelineMarker[];
   onJump: (t: number) => void;
@@ -1950,9 +2754,23 @@ function CompactTimeControl({
   return (
     <div className={`rounded-[22px] border border-slate-200 bg-white shadow-sm ${compact ? "px-3 py-2" : "px-4 py-3"}`}>
       <div className={`${compact ? "mb-1.5" : "mb-2"} flex items-center justify-between gap-3`}>
-        <p className={`${compact ? "text-xs" : "text-sm"} font-semibold text-slate-900`}>
-          {isKo ? "시간 t" : "time t"} <span className="font-mono">{t.toFixed(1)}/{frameCount}{isKo ? "프레임" : " frames"}</span>
-        </p>
+        <div>
+          <p className={`${compact ? "text-xs" : "text-sm"} font-semibold text-slate-900`}>
+            {isKo ? "t 챕터 선택" : "t chapter"}{" "}
+            <span className="font-mono">
+              {t.toFixed(0)} / {frameCount}{isKo ? "개 스냅샷" : " snapshots"}
+            </span>
+          </p>
+          <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+            {isRunning
+              ? isKo
+                ? `실행 중에는 stream 관찰 우선 · 현재 내부시점 ${Number(liveObservedT ?? t).toFixed(2)}`
+                : `Locked while streaming · observed intra-t ${Number(liveObservedT ?? t).toFixed(2)}`
+              : isKo
+                ? "완료된 t 챕터 스냅샷을 선택합니다. 내부 stream 재생은 아래 패널에서 조절합니다."
+                : "Select completed t snapshots. Control intra-t stream replay below."}
+          </p>
+        </div>
         <div className="flex items-center gap-1">
           <button type="button" className="app-button app-button--ghost !px-3 !py-2 text-xs" onClick={onAddBookmark} disabled={disabled}>
             {isKo ? "북마크" : "Bookmark"}
@@ -1990,7 +2808,15 @@ function CompactTimeControl({
           </details>
         </div>
       </div>
-      <TimeSlider t={t} tMin={tMin} tMax={safeMax} step={1} onChange={onJump} disabled={disabled} />
+      <TimeSlider
+        t={t}
+        tMin={tMin}
+        tMax={safeMax}
+        step={1}
+        onChange={onJump}
+        disabled={disabled}
+        label={isKo ? "t 챕터" : "t chapter"}
+      />
       <div className="relative mt-2 h-4 rounded-full bg-slate-100">
         {markers.map((marker) => (
           <button
@@ -2049,6 +2875,27 @@ function GodModePrepPanel({
   onZWeightChange,
   zScale,
   onZScaleChange,
+  streamDensity,
+  onStreamDensityChange,
+  streamDelayMs,
+  onStreamDelayMsChange,
+  streamEpisodeMinDurationMs,
+  onStreamEpisodeMinDurationMsChange,
+  streamMinRounds,
+  onStreamMinRoundsChange,
+  streamMaxRounds,
+  onStreamMaxRoundsChange,
+  streamMaxActiveAgents,
+  onStreamMaxActiveAgentsChange,
+  streamInitialAgentRatio,
+  onStreamInitialAgentRatioChange,
+  streamGrowthRate,
+  onStreamGrowthRateChange,
+  streamMaxNeighbors,
+  onStreamMaxNeighborsChange,
+  dirty,
+  status,
+  onSave,
 }: {
   locale: UiLocale;
   enabled: boolean;
@@ -2083,6 +2930,27 @@ function GodModePrepPanel({
   onZWeightChange: (value: string) => void;
   zScale: string;
   onZScaleChange: (value: string) => void;
+  streamDensity: string;
+  onStreamDensityChange: (value: string) => void;
+  streamDelayMs: string;
+  onStreamDelayMsChange: (value: string) => void;
+  streamEpisodeMinDurationMs: string;
+  onStreamEpisodeMinDurationMsChange: (value: string) => void;
+  streamMinRounds: string;
+  onStreamMinRoundsChange: (value: string) => void;
+  streamMaxRounds: string;
+  onStreamMaxRoundsChange: (value: string) => void;
+  streamMaxActiveAgents: string;
+  onStreamMaxActiveAgentsChange: (value: string) => void;
+  streamInitialAgentRatio: string;
+  onStreamInitialAgentRatioChange: (value: string) => void;
+  streamGrowthRate: string;
+  onStreamGrowthRateChange: (value: string) => void;
+  streamMaxNeighbors: string;
+  onStreamMaxNeighborsChange: (value: string) => void;
+  dirty: boolean;
+  status: string | null;
+  onSave: () => void;
 }) {
   const isKo = locale === "ko";
   return (
@@ -2100,14 +2968,33 @@ function GodModePrepPanel({
         </label>
       </summary>
       <div className="grid gap-3 border-t border-slate-200 p-3">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-800">
+                {dirty ? (isKo ? "저장되지 않은 변경 있음" : "Unsaved changes") : isKo ? "설정 저장됨" : "Settings saved"}
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                {status ??
+                  (isKo
+                    ? "값을 조정한 뒤 저장 버튼을 누르면 다음 월드 생성에 적용됩니다."
+                    : "Adjust values, then save to apply them to the next world creation.")}
+              </p>
+            </div>
+            <button type="button" className={`app-button ${dirty ? "app-button--primary" : "app-button--ghost"}`} onClick={onSave}>
+              {isKo ? "설정 저장" : "Save"}
+            </button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-2">
-          <MiniField label="t_max" value={customTMax} onChange={onCustomTMaxChange} />
-          <MiniField label={isKo ? "에이전트" : "agents"} value={customInitialCells} onChange={onCustomInitialCellsChange} />
-          <MiniField label={isKo ? "국가" : "country"} value={customCountry} onChange={onCustomCountryChange} />
-          <MiniField label={isKo ? "자원/step" : "nutrient/step"} value={customNutrient} onChange={onCustomNutrientChange} />
+          <MiniField label="t_max" value={customTMax} onChange={onCustomTMaxChange} placeholder="auto" />
+          <MiniField label={isKo ? "에이전트" : "agents"} value={customInitialCells} onChange={onCustomInitialCellsChange} placeholder="auto" />
+          <MiniField label={isKo ? "국가" : "country"} value={customCountry} onChange={onCustomCountryChange} placeholder="auto" />
+          <MiniField label={isKo ? "자원/step" : "nutrient/step"} value={customNutrient} onChange={onCustomNutrientChange} placeholder="auto" />
           <label className="flex flex-col gap-1 text-[11px] text-slate-500">
             {isKo ? "시간 단위" : "time unit"}
             <select value={customTUnit} onChange={(event) => onCustomTUnitChange(event.target.value)} className="app-input">
+              <option value="auto">{isKo ? "자동" : "auto"}</option>
               <option value="hour">hour</option>
               <option value="day">day</option>
               <option value="month">month</option>
@@ -2123,23 +3010,25 @@ function GodModePrepPanel({
             </select>
           </label>
         </div>
-        {godRoleMode === "manual" ? <MiniField label={isKo ? "역할 목록" : "roles"} value={customRoles} onChange={onCustomRolesChange} /> : null}
+        {godRoleMode === "manual" ? <MiniField label={isKo ? "역할 목록" : "roles"} value={customRoles} onChange={onCustomRolesChange} placeholder="auto" /> : null}
         <div className="grid grid-cols-2 gap-2">
-          <MiniField label={isKo ? "구역 수" : "zones"} value={zoneCount} onChange={onZoneCountChange} />
+          <MiniField label={isKo ? "구역 수" : "zones"} value={zoneCount} onChange={onZoneCountChange} placeholder="auto" />
           <label className="flex flex-col gap-1 text-[11px] text-slate-500">
             {isKo ? "구역 레이아웃" : "zone layout"}
             <select value={zoneLayout} onChange={(event) => onZoneLayoutChange(event.target.value)} className="app-input">
+              <option value="auto">{isKo ? "자동" : "auto"}</option>
               <option value="grid">grid</option>
               <option value="bands">bands</option>
               <option value="ring">ring</option>
             </select>
           </label>
-          <MiniField label={isKo ? "구역 간격" : "spacing"} value={zoneSpacing} onChange={onZoneSpacingChange} />
-          <MiniField label={isKo ? "영향 단계" : "influence"} value={zoneInfluenceStep} onChange={onZoneInfluenceStepChange} />
-          <MiniField label={isKo ? "마찰 단계" : "friction"} value={zoneFrictionStep} onChange={onZoneFrictionStepChange} />
+          <MiniField label={isKo ? "구역 간격" : "spacing"} value={zoneSpacing} onChange={onZoneSpacingChange} placeholder="auto" />
+          <MiniField label={isKo ? "영향 단계" : "influence"} value={zoneInfluenceStep} onChange={onZoneInfluenceStepChange} placeholder="auto" />
+          <MiniField label={isKo ? "마찰 단계" : "friction"} value={zoneFrictionStep} onChange={onZoneFrictionStepChange} placeholder="auto" />
           <label className="flex flex-col gap-1 text-[11px] text-slate-500">
             {isKo ? "z 모드" : "z mode"}
             <select value={zMode} onChange={(event) => onZModeChange(event.target.value)} className="app-input">
+              <option value="auto">{isKo ? "자동" : "auto"}</option>
               <option value="hybrid">hybrid</option>
               <option value="wealth">wealth</option>
               <option value="influence">influence</option>
@@ -2148,8 +3037,34 @@ function GodModePrepPanel({
               <option value="flat">flat</option>
             </select>
           </label>
-          <MiniField label={isKo ? "z 가중치" : "z weight"} value={zWeight} onChange={onZWeightChange} />
-          <MiniField label={isKo ? "z 스케일" : "z scale"} value={zScale} onChange={onZScaleChange} />
+          <MiniField label={isKo ? "z 가중치" : "z weight"} value={zWeight} onChange={onZWeightChange} placeholder="auto" />
+          <MiniField label={isKo ? "z 스케일" : "z scale"} value={zScale} onChange={onZScaleChange} placeholder="auto" />
+        </div>
+        <div className="rounded-2xl border border-sky-100 bg-sky-50/70 px-3 py-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-900">{isKo ? "Stream 확장 / 페이싱" : "Stream expansion / pacing"}</p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-600">
+                {isKo
+                  ? "한 t 안에서 주제 주변으로 참여자가 점점 모이고, stream 장면을 충분히 보여준 뒤 다음 t로 넘어가게 합니다."
+                  : "Grow the cast around one topic inside t, then pace scene playback before advancing to the next t."}
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-sky-700">
+              {isKo ? "자동 확장" : "auto grow"}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <MiniField label={isKo ? "장면 간격 ms" : "scene delay ms"} value={streamDelayMs} onChange={onStreamDelayMsChange} placeholder="24" />
+            <MiniField label={isKo ? "t당 최소 재생 ms" : "min session ms"} value={streamEpisodeMinDurationMs} onChange={onStreamEpisodeMinDurationMsChange} placeholder="4500" />
+            <MiniField label={isKo ? "stream 밀도" : "stream density"} value={streamDensity} onChange={onStreamDensityChange} placeholder="1.45" />
+            <MiniField label={isKo ? "최소 라운드" : "min rounds"} value={streamMinRounds} onChange={onStreamMinRoundsChange} placeholder="16" />
+            <MiniField label={isKo ? "최대 라운드" : "max rounds"} value={streamMaxRounds} onChange={onStreamMaxRoundsChange} placeholder="28" />
+            <MiniField label={isKo ? "최대 참여자" : "max active agents"} value={streamMaxActiveAgents} onChange={onStreamMaxActiveAgentsChange} placeholder="320" />
+            <MiniField label={isKo ? "이웃 fanout" : "neighbor fanout"} value={streamMaxNeighbors} onChange={onStreamMaxNeighborsChange} placeholder="10" />
+            <MiniField label={isKo ? "초기 참여율" : "initial ratio"} value={streamInitialAgentRatio} onChange={onStreamInitialAgentRatioChange} placeholder="0.35" />
+            <MiniField label={isKo ? "확장 속도" : "growth rate"} value={streamGrowthRate} onChange={onStreamGrowthRateChange} placeholder="1.35" />
+          </div>
         </div>
       </div>
     </details>
@@ -2260,16 +3175,19 @@ function RunPanel({
   worldId,
   isRunning,
   liveT,
+  observedT = null,
   liveCellCount,
   streamStatus,
   onRunStream,
   onRunSync,
+  onStopStream,
   compact = false,
 }: {
   locale?: UiLocale;
   worldId: string | null;
   isRunning: boolean;
   liveT: number | null;
+  observedT?: number | null;
   liveCellCount: number | null;
   streamStatus?: {
     phase: string;
@@ -2281,6 +3199,7 @@ function RunPanel({
   };
   onRunStream: () => Promise<void>;
   onRunSync: () => Promise<void>;
+  onStopStream: () => Promise<void>;
   compact?: boolean;
 }) {
   const strings = UI_STRINGS[locale];
@@ -2321,6 +3240,14 @@ function RunPanel({
         >
           {strings.runSync}
         </button>
+        <button
+          type="button"
+          disabled={!worldId || !isRunning}
+          onClick={() => void onStopStream()}
+          className="app-button app-button--ghost"
+        >
+          {isKo ? "스트림 중지" : "Stop Stream"}
+        </button>
       </div>
       <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
         {isRunning ? (
@@ -2328,8 +3255,9 @@ function RunPanel({
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
               <span>
-                {isKo ? "실행 중 · stream active" : "Running · stream active"}
-                {liveT != null ? ` · t ${liveT.toFixed(1)}` : ""}
+                {isKo ? "stream 실행 중" : "stream active"}
+                {liveT != null ? ` · t 챕터 ${liveT.toFixed(0)}` : ""}
+                {observedT != null ? ` · 내부 ${observedT.toFixed(2)}` : ""}
                 {streamStatus?.tMax != null ? ` / ${streamStatus.tMax.toFixed(0)}` : ""}
                 {liveCellCount != null ? ` · ${liveCellCount} cells` : ""}
               </span>
@@ -2350,6 +3278,11 @@ function RunPanel({
                   : streamStatus?.phase ?? "starting"}
               </span>
             </div>
+            {streamStatus?.message ? (
+              <p className="rounded-xl bg-white px-2 py-1 text-[11px] text-slate-500">
+                {streamStatus.message}
+              </p>
+            ) : null}
           </div>
         ) : (
           strings.runtimeReadyLocal
@@ -2362,6 +3295,7 @@ function RunPanel({
 function IntraTScenePanel({
   locale = "ko",
   sceneStream,
+  chapterT,
   snapshotEvents,
   snapshotMetrics,
   renderedMetrics,
@@ -2376,7 +3310,14 @@ function IntraTScenePanel({
   selectedGroupId = null,
 }: {
   locale?: UiLocale;
-  sceneStream: { currentT: number | null; events: IntraTSceneEvent[]; latestEvent: IntraTSceneEvent | null };
+  sceneStream: {
+    currentT: number | null;
+    observedT?: number | null;
+    activePhase?: string | null;
+    events: IntraTSceneEvent[];
+    latestEvent: IntraTSceneEvent | null;
+  };
+  chapterT: number;
   snapshotEvents: IntraTSceneEvent[];
   snapshotMetrics: IntraTSceneMetrics | null;
   renderedMetrics: IntraTSceneMetrics | null;
@@ -2395,39 +3336,82 @@ function IntraTScenePanel({
   const focusedEvents = filterSceneEvents(sourceEvents, selectedAgentId, selectedGroupId);
   const events = focusedEvents.slice(-8).reverse();
   const latest = isRunning ? sceneStream.latestEvent : sourceEvents[sourceEvents.length - 1] ?? null;
+  const observedT = Number(sceneStream.observedT ?? latest?.scene_t ?? sceneStream.currentT ?? 0);
+  const chapter = Number(sceneStream.currentT ?? chapterT ?? latest?.t ?? 0);
+  const streamRound = Number(latest?.stream_round_index ?? latest?.session_index ?? 0);
+  const streamRoundCount = Number(latest?.stream_round_count ?? latest?.session_count ?? 0);
+  const eventCursor = isRunning ? sourceEvents.length : Math.max(0, Math.min(snapshotEvents.length, replayIndex));
+  const activeEvent = isRunning ? latest : snapshotEvents[Math.max(0, eventCursor - 1)] ?? latest;
   const metrics = renderedMetrics ?? snapshotMetrics;
   const progress =
-    latest?.scene_index && latest?.scene_count
-      ? Math.max(0, Math.min(1, Number(latest.scene_index) / Math.max(1, Number(latest.scene_count))))
+    streamRound && streamRoundCount
+      ? Math.max(0, Math.min(1, streamRound / Math.max(1, streamRoundCount)))
+      : latest?.scene_index && latest?.scene_count
+        ? Math.max(0, Math.min(1, Number(latest.scene_index) / Math.max(1, Number(latest.scene_count))))
       : snapshotEvents.length
         ? Math.max(0, Math.min(1, replayIndex / snapshotEvents.length))
         : 0;
   return (
     <AppPanel
-      title={isKo ? "t 내부 장면 스트림" : "Intra-T Scene Stream"}
+      title={isKo ? "Stream 재생 콘솔" : "Stream Playback Console"}
       subtitle={
         isKo
-          ? "선택한 t는 그대로 유지하고, 그 안의 상호작용을 장면처럼 재생합니다"
-          : "Keep discrete t selection while replaying its internal interaction beats"
+          ? "t 챕터 안에서 흐르는 에이전트 협의/압력/관계 이벤트를 재생합니다"
+          : "Play the consultation, pressure, and relationship events inside the selected t chapter"
       }
       bodyClassName="space-y-3"
     >
       <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-        <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-          <span>
-            {sceneStream.currentT != null ? `t ${sceneStream.currentT.toFixed(0)}` : isKo ? "대기 중" : "idle"}
-            {latest?.scene_index && latest?.scene_count ? ` · scene ${latest.scene_index}/${latest.scene_count}` : ""}
-          </span>
-          <span className={isRunning ? "text-emerald-600" : "text-slate-400"}>
-            {isRunning ? (isKo ? "재생 중" : "playing") : isKo ? "정지" : "paused"}
-          </span>
+        <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-start">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              {isKo ? "현재 t 챕터" : "current t chapter"}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">
+              t {chapter.toFixed(0)}
+              <span className="ml-2 text-xs font-normal text-slate-500">
+                {isKo ? `내부 관찰시점 ${observedT.toFixed(2)}` : `intra-t ${observedT.toFixed(2)}`}
+              </span>
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {isKo
+                ? "t는 책 한 권이고, 아래 round/event가 그 안에서 재생되는 장면입니다."
+                : "t is the chapter; round/event is the scene stream inside it."}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 text-right">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+              {isKo ? "stream round" : "stream round"}
+            </p>
+            <p className="mt-1 font-mono text-sm font-semibold text-slate-900">
+              {streamRound || "-"} / {streamRoundCount || "-"}
+            </p>
+            <p className={isRunning ? "mt-1 text-xs text-emerald-600" : "mt-1 text-xs text-slate-400"}>
+              {isRunning ? (isKo ? "라이브 재생" : "live") : replayPaused ? (isKo ? "일시정지" : "paused") : (isKo ? "리플레이" : "replay")}
+            </p>
+          </div>
         </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${Math.round(progress * 100)}%` }} />
+        <div className="mt-3 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>{isKo ? "round 진행" : "round progress"}</span>
+            <span>{Math.round(progress * 100)}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-sky-500 transition-all duration-300" style={{ width: `${Math.round(progress * 100)}%` }} />
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500">
+            <span>{isKo ? "event 커서" : "event cursor"}</span>
+            <span>{eventCursor}/{isRunning ? sourceEvents.length : snapshotEvents.length}</span>
+          </div>
         </div>
+        {activeEvent?.summary ? (
+          <p className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+            {activeEvent.summary}
+          </p>
+        ) : null}
       </div>
       {!isRunning && snapshotEvents.length ? (
-        <div className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-3">
           <input
             type="range"
             min={0}
@@ -2437,15 +3421,49 @@ function IntraTScenePanel({
             className="w-full accent-sky-500"
             aria-label={isKo ? "장면 스크러버" : "Scene scrubber"}
           />
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs text-slate-500">
+              {isKo ? "stream event 재생" : "stream event replay"} · {eventCursor}/{snapshotEvents.length}
+            </span>
+            <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="app-button app-button--ghost px-2 py-1 text-xs"
+              onClick={() => {
+                onReplayPausedChange(true);
+                onReplayIndexChange(0);
+              }}
+            >
+              ⏮
+            </button>
+            <button
+              type="button"
+              className="app-button app-button--ghost px-2 py-1 text-xs"
+              onClick={() => {
+                onReplayPausedChange(true);
+                onReplayIndexChange(Math.max(0, replayIndex - 1));
+              }}
+            >
+              ←
+            </button>
             <button type="button" className="app-button app-button--ghost px-2 py-1 text-xs" onClick={() => onReplayPausedChange(!replayPaused)}>
               {replayPaused ? (isKo ? "재생" : "Play") : isKo ? "정지" : "Pause"}
             </button>
+            <button
+              type="button"
+              className="app-button app-button--ghost px-2 py-1 text-xs"
+              onClick={() => {
+                onReplayPausedChange(true);
+                onReplayIndexChange(Math.min(snapshotEvents.length, replayIndex + 1));
+              }}
+            >
+              →
+            </button>
             <button type="button" className="app-button app-button--ghost px-2 py-1 text-xs" onClick={() => {
-              onReplayIndexChange(0);
-              onReplayPausedChange(false);
+              onReplayIndexChange(snapshotEvents.length);
+              onReplayPausedChange(true);
             }}>
-              {isKo ? "다시" : "Replay"}
+              ⏭
             </button>
             <button
               type="button"
@@ -2454,12 +3472,13 @@ function IntraTScenePanel({
             >
               {replaySpeed.toFixed(1)}x
             </button>
+            </div>
           </div>
         </div>
       ) : null}
       {metrics ? (
         <div className="grid grid-cols-3 gap-2 text-xs">
-          <MetricPill label={isKo ? "장면" : "Scenes"} value={String(metrics.scenes_per_t ?? sourceEvents.length)} />
+          <MetricPill label={isKo ? "협의" : "Talks"} value={String(metrics.scenes_per_t ?? sourceEvents.length)} />
           <MetricPill label={isKo ? "참여율" : "Participation"} value={`${Math.round(Number(metrics.agent_participation_rate ?? 0) * 100)}%`} />
           <MetricPill label={isKo ? "연속성" : "Continuity"} value={`${Math.round(Number(metrics.narrative_continuity_score ?? 0) * 100)}%`} />
           <MetricPill label={isKo ? "구체성" : "Specificity"} value={`${Math.round(Number(metrics.narrative_specificity_score ?? 0) * 100)}%`} />
@@ -2469,7 +3488,7 @@ function IntraTScenePanel({
       ) : null}
       {metrics?.quality_warnings?.length ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-          <span className="font-semibold">{isKo ? "장면 품질 경고" : "Scene quality warnings"}</span>
+          <span className="font-semibold">{isKo ? "협의 품질 경고" : "Consultation quality warnings"}</span>
           <span className="ml-1">
             {metrics.quality_warnings.map((item) => sceneWarningLabel(item, isKo)).join(" · ")}
           </span>
@@ -2480,10 +3499,25 @@ function IntraTScenePanel({
           {events.map((event) => (
             <div key={`${event.scene_id}-${event.scene_index}`} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
               <div className="flex items-center justify-between gap-2 text-[11px] uppercase tracking-[0.14em] text-slate-400">
-                <span>{sceneToneLabel(event.interaction_type, isKo)}</span>
-                <span>{event.scene_index ?? "-"} / {event.scene_count ?? "-"}</span>
+                <span>{sceneToneLabel(event.interaction_type, event.action_record, isKo)}</span>
+                <span>
+                  {event.action_record ? `${socialFieldActionLabel(event.action_record, isKo ? "ko" : "en")} · ` : ""}
+                  {isKo ? "스트림" : "stream"} {event.stream_round_index ?? event.session_index ?? "-"} / {event.stream_round_count ?? event.session_count ?? "-"}
+                </span>
               </div>
-              <p className="mt-1 text-sm leading-5 text-slate-700">{event.summary || (isKo ? "장면 요약 없음" : "No scene summary")}</p>
+              <p className="mt-1 text-sm leading-5 text-slate-700">{event.summary || (isKo ? "협의 이벤트 없음" : "No consultation event")}</p>
+              {event.action_record?.agent_name || event.action_record?.target_label ? (
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                  {isKo ? "행동 원장" : "Action log"}: {event.action_record?.agent_name ?? "field"}
+                  {event.action_record?.target_label ? ` → ${event.action_record.target_label}` : ""}
+                  {event.action_record?.field_axis ? ` · ${event.action_record.field_axis}` : ""}
+                </p>
+              ) : null}
+              {event.action_record?.interpretation ? (
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                  {event.action_record.interpretation}
+                </p>
+              ) : null}
               {event.narrative_reason ? (
                 <p className="mt-1 text-xs leading-5 text-slate-500">{event.narrative_reason}</p>
               ) : null}
@@ -2498,8 +3532,8 @@ function IntraTScenePanel({
       ) : (
         <p className="rounded-2xl bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-500">
           {isKo
-            ? "실행을 시작하면 한 t 내부의 협의, 긴장, 압력 변화가 장면 단위로 표시됩니다."
-            : "Run the simulation to see conversations, tension, and pressure shifts inside each t."}
+            ? "실행을 시작하면 한 t 내부의 협의, 긴장, 압력 변화가 빠른 이벤트로 표시됩니다."
+            : "Run the simulation to see fast consultation, tension, and pressure events inside each t."}
         </p>
       )}
     </AppPanel>
@@ -2526,12 +3560,8 @@ function filterSceneEvents(events: IntraTSceneEvent[], selectedAgentId?: string 
   });
 }
 
-function sceneToneLabel(type: IntraTSceneEvent["interaction_type"], isKo: boolean): string {
-  if (type === "positive") return isKo ? "협력" : "positive";
-  if (type === "negative") return isKo ? "갈등" : "negative";
-  if (type === "hostile") return isKo ? "적대" : "hostile";
-  if (type === "dialogue") return isKo ? "대화" : "dialogue";
-  return isKo ? "압력" : "pressure";
+function sceneToneLabel(type: IntraTSceneEvent["interaction_type"], record: SocialActionRecord | null | undefined, isKo: boolean): string {
+  return socialFieldToneLabel(socialFieldToneFromRecord(record, type), isKo ? "ko" : "en");
 }
 
 function sceneQualityLabel(value: unknown, isKo: boolean): string {
@@ -2658,6 +3688,18 @@ function inferCollectiveSignal(summary: CollectiveDynamicsSummary | null | undef
   if (roleFracture >= 0.72 || zoneFracture >= 0.72) return "fracturing";
   if (roleDrift >= 0.42 || zoneDrift >= 0.42) return "realigning";
   return "stable";
+}
+
+function formatSignedDelta(value: number | undefined) {
+  if (typeof value !== "number") return "0.000";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+}
+
+function swarmEventThought(event: SwarmV2RunResponse["events"][number] | undefined): string {
+  if (!event) return "";
+  const decision = event.agent_decision ?? {};
+  const thought = decision.thought ?? event.agent_thought ?? event.llm_reasoning ?? event.summary;
+  return String(thought ?? "");
 }
 
 function inferCollectiveSignalFromCells(cells: CellSnapshot[]): string {

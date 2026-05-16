@@ -182,6 +182,7 @@ def world_entry_to_dict(entry: Dict[str, Any]) -> Dict[str, Any]:
             str(key): dict(value)
             for key, value in dict(entry.get("chat_sessions") or {}).items()
         },
+        "action_ledger": [dict(item) for item in list(entry.get("action_ledger") or [])[-2000:]],
         "snapshot_index": store.snapshot_index(),
         "snapshot_archive": store.archive_summary(),
         "snapshots": [snapshot_to_dict(store.get(t)) for t in store.list_t() if store.get(t) is not None],

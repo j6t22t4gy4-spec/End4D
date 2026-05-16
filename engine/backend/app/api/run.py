@@ -7,6 +7,7 @@ IMPLEMENTATION §0: POST /worlds/{id}/run
 from __future__ import annotations
 
 import asyncio
+import heapq
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import time
@@ -16,6 +17,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 import numpy as np
 
 from app.api.interaction_events import compact_interaction_events
+from app.core.action_ledger import action_record_from_scene_event, attach_action_record
+from app.core.consultation_kernel import CONSULTATION_KERNEL_REVISION
 from app.core.store import world_store
 from app.core.world_genesis import refine_scenario_for_runtime
 from app.core.ws_manager import ws_manager
@@ -139,6 +142,12 @@ def _compact_action_state(action_state: dict) -> dict:
         "zone_group_drift_velocity",
         "internal_interactions",
         "last_internal_interaction_t",
+        "last_consultation_t",
+        "last_consultation_neighbors",
+        "last_consultation_alignment",
+        "last_consultation_quality",
+        "last_consultation_summary",
+        "last_consultation_target",
         "persona_prior_summary",
     )
     compact = {key: action_state[key] for key in keep if key in action_state}
@@ -278,6 +287,43 @@ def _build_live_observer_cells(cells: list[Cell], limit: int = 72) -> tuple[list
     return [_serialize_live_cell(cell) for cell in selected], sampled
 
 
+def _build_live_scene_observer_cells(
+    cells: list[Cell] | None,
+    scene_event: dict,
+    *,
+    limit: int = 42,
+) -> tuple[list[dict], bool]:
+    """Return a tiny frame for intra-t streaming without full observer scoring."""
+    if not cells:
+        return [], False
+    by_id = {cell.cell_id: cell for cell in cells}
+    selected: list[Cell] = []
+    selected_ids: set[str] = set()
+    involved = [str(scene_event.get("source_id") or "")]
+    involved.extend(str(item) for item in scene_event.get("target_ids") or [])
+    for cell_id in involved:
+        cell = by_id.get(cell_id)
+        if cell is not None and cell.cell_id not in selected_ids:
+            selected.append(cell)
+            selected_ids.add(cell.cell_id)
+    if len(selected) < limit:
+        ranked = heapq.nlargest(
+            limit - len(selected),
+            (cell for cell in cells if cell.cell_id not in selected_ids),
+            key=lambda cell: (
+                float(dict(cell.action_state).get("collective_pressure", 0.0) or 0.0),
+                float(dict(cell.action_state).get("decision_pressure_delta", 0.0) or 0.0),
+                float(cell.energy),
+            ),
+        )
+        for cell in ranked:
+            selected.append(cell)
+            selected_ids.add(cell.cell_id)
+            if len(selected) >= limit:
+                break
+    return [_serialize_live_cell(cell) for cell in selected], len(cells) > len(selected)
+
+
 class RunRequest(BaseModel):
     """POST /worlds/{id}/run 요청."""
     stream: bool = False
@@ -327,6 +373,15 @@ def _run_stream_producer(
         )
         role_catalog = list(engine_params.get("scenario_actor_roles") or world_store.get_role_catalog(world_id))
         world_store.update_runtime_config(world_id, engine_params=engine_params, role_catalog=role_catalog)
+        scene_delay_ms = max(0.0, min(80.0, float(engine_params.get("scene_stream_delay_ms", 2.0) or 0.0)))
+        if str(engine_params.get("simulation_mode") or "precision").strip().lower() == "swarm":
+            scene_delay_ms = max(0.0, min(8.0, float(engine_params.get("scene_stream_delay_ms", 0.0) or 0.0)))
+        stream_episode_min_duration_ms = max(
+            0.0,
+            min(12_000.0, float(engine_params.get("stream_episode_min_duration_ms", 1200.0) or 0.0)),
+        )
+        episode_started_at: dict[float, float] = {}
+        episode_scene_counts: dict[float, int] = {}
         started_at = time.time()
         _queue_put(msg_queue, {
             "type": "started",
@@ -337,22 +392,43 @@ def _run_stream_producer(
             "heartbeat_at": started_at,
             "message": "simulation started",
             "scenario_director_mode": str(engine_params.get("scenario_director_mode") or ""),
+            "engine_revision": CONSULTATION_KERNEL_REVISION,
+            "recent_actions": [],
         })
-        def emit_live_scene(scene_event: dict) -> None:
-            scene_t = float(scene_event.get("t") or scene_event.get("scene_t") or 0.0)
+        def emit_live_scene(scene_event: dict, cells: list[Cell] | None = None) -> None:
+            if world_store.is_stop_requested(world_id):
+                return
+            # Use intra-t scene_t for progress so the UI feels like a live
+            # stream inside the interval, while t remains the discrete target
+            # frame used for selection/snapshot matching.
+            scene_t = float(scene_event.get("scene_t") or scene_event.get("t") or 0.0)
             progress_t = max(0.0, min(float(t_max), scene_t))
+            chapter_t = float(scene_event.get("t") or scene_t)
+            episode_started_at.setdefault(chapter_t, time.time())
+            episode_scene_counts[chapter_t] = int(episode_scene_counts.get(chapter_t, 0)) + 1
+            scene_event = attach_action_record(scene_event)
+            action_record = world_store.append_action_record(
+                world_id,
+                dict(scene_event.get("action_record") or action_record_from_scene_event(scene_event)),
+            )
+            observer_cells, observer_sampled = _build_live_scene_observer_cells(cells, scene_event)
             _queue_put(msg_queue, {
                 "type": "scene",
-                "t": float(scene_event.get("t") or scene_t),
+                "t": chapter_t,
                 "t_max": float(t_max),
                 "progress": _normalized_metric(progress_t, float(t_max)),
                 "scene_event": dict(scene_event),
+                "action_event": action_record,
+                "recent_actions": world_store.get_recent_action_records(world_id, limit=24),
                 "scene_index": int(scene_event.get("scene_index") or 0),
                 "scene_count": int(scene_event.get("scene_count") or 0),
+                "observer_cells": observer_cells,
+                "observer_total_cells": len(cells or []),
+                "observer_sampled": observer_sampled,
                 "heartbeat_at": time.time(),
                 "message": "scene computed",
+                "engine_revision": CONSULTATION_KERNEL_REVISION,
             })
-            scene_delay_ms = max(0.0, min(80.0, float(engine_params.get("scene_stream_delay_ms", 0.0) or 0.0)))
             if scene_delay_ms > 0:
                 time.sleep(scene_delay_ms / 1000.0)
 
@@ -373,6 +449,22 @@ def _run_stream_producer(
             },
             config={"recursion_limit": int(t_max) + 50},
         ):
+            if world_store.is_stop_requested(world_id):
+                world_store.clear_stop_request(world_id)
+                world_store.set_status(world_id, "idle")
+                _queue_put(
+                    msg_queue,
+                    {
+                        "type": "done",
+                        "t": 0.0,
+                        "t_max": float(t_max),
+                        "progress": 0.0,
+                        "heartbeat_at": time.time(),
+                        "message": "stopped by user",
+                    },
+                    force=True,
+                )
+                return
             if "step_loop" in chunk:
                 s = chunk["step_loop"]
                 current_t = float(s["current_t"])
@@ -390,17 +482,36 @@ def _run_stream_producer(
                 scene_events = [dict(item) for item in s.get("scene_events") or []]
                 if not s.get("scene_events_live_emitted"):
                     for scene_event in scene_events:
+                        episode_started_at.setdefault(current_t, time.time())
+                        episode_scene_counts[current_t] = int(episode_scene_counts.get(current_t, 0)) + 1
+                        scene_event = attach_action_record(scene_event)
+                        action_record = world_store.append_action_record(
+                            world_id,
+                            dict(scene_event.get("action_record") or action_record_from_scene_event(scene_event)),
+                        )
                         _queue_put(msg_queue, {
                             "type": "scene",
                             "t": current_t,
                             "t_max": float(t_max),
                             "progress": progress,
                             "scene_event": scene_event,
+                            "action_event": action_record,
+                            "recent_actions": world_store.get_recent_action_records(world_id, limit=24),
                             "scene_index": int(scene_event.get("scene_index") or 0),
                             "scene_count": int(scene_event.get("scene_count") or len(scene_events)),
                             "heartbeat_at": time.time(),
                             "message": "scene replay",
+                            "engine_revision": CONSULTATION_KERNEL_REVISION,
                         })
+                        if scene_delay_ms > 0:
+                            time.sleep(scene_delay_ms / 1000.0)
+                _wait_for_stream_episode_budget(
+                    chapter_t=current_t,
+                    episode_started_at=episode_started_at,
+                    episode_scene_counts=episode_scene_counts,
+                    min_duration_ms=stream_episode_min_duration_ms,
+                    scene_delay_ms=scene_delay_ms,
+                )
                 _queue_put(msg_queue, {
                     "type": "step",
                     "t": current_t,
@@ -413,7 +524,10 @@ def _run_stream_producer(
                     "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
                     "scene_events": scene_events,
                     "scene_metrics": dict(s.get("scene_metrics") or {}),
+                    "runtime_timing": dict(s.get("runtime_timing") or {}),
+                    "recent_actions": world_store.get_recent_action_records(world_id, limit=50),
                     "heartbeat_at": time.time(),
+                    "engine_revision": CONSULTATION_KERNEL_REVISION,
                 })
                 _queue_put(msg_queue, {
                     "type": "heartbeat",
@@ -421,7 +535,9 @@ def _run_stream_producer(
                     "t_max": float(t_max),
                     "progress": progress,
                     "cell_count": len(s["cells"]),
+                    "runtime_timing": dict(s.get("runtime_timing") or {}),
                     "heartbeat_at": time.time(),
+                    "engine_revision": CONSULTATION_KERNEL_REVISION,
                 })
             elif "init" in chunk:
                 s = chunk["init"]
@@ -440,6 +556,7 @@ def _run_stream_producer(
                     "observer_total_cells": len(s["cells"]),
                     "observer_sampled": observer_sampled,
                     "group_state_summary": dict((s.get("group_state") or {}).get("summary") or {}),
+                    "recent_actions": world_store.get_recent_action_records(world_id, limit=50),
                     "heartbeat_at": time.time(),
                 })
         _queue_put(msg_queue, {"type": "done", "t": float(t_max), "t_max": float(t_max), "progress": 1.0, "heartbeat_at": time.time()}, force=True)
@@ -465,6 +582,33 @@ def _queue_put(msg_queue: queue.Queue, message: dict, *, force: bool = False) ->
     except queue.Full:
         if force:
             msg_queue.put(message, timeout=1.0)
+
+
+def _wait_for_stream_episode_budget(
+    *,
+    chapter_t: float,
+    episode_started_at: dict[float, float],
+    episode_scene_counts: dict[float, int],
+    min_duration_ms: float,
+    scene_delay_ms: float,
+) -> None:
+    """Prevent a t snapshot from outrunning its own visible stream session."""
+    if min_duration_ms <= 0:
+        return
+    started_at = episode_started_at.get(float(chapter_t))
+    if started_at is None:
+        return
+    elapsed_ms = (time.time() - started_at) * 1000.0
+    remaining_ms = min_duration_ms - elapsed_ms
+    if remaining_ms <= 0:
+        return
+    # If the session emitted very few visible events, do not freeze for the
+    # whole budget. Otherwise hold the t-boundary just long enough for the
+    # frontend to experience the stream as an independent run.
+    event_count = int(episode_scene_counts.get(float(chapter_t), 0))
+    if event_count < 12:
+        remaining_ms = min(remaining_ms, max(120.0, scene_delay_ms * 3.0))
+    time.sleep(remaining_ms / 1000.0)
 
 
 async def _stream_consumer(world_id: str, msg_queue: queue.Queue) -> None:
@@ -505,7 +649,9 @@ def run_simulation(
 
     if req.stream:
         world_store.set_status(world_id, "running")
-        msg_queue = queue.Queue(maxsize=256)
+        world_store.clear_stop_request(world_id)
+        world_store.reset_action_ledger(world_id)
+        msg_queue = queue.Queue(maxsize=4096)
         _executor.submit(
             _run_stream_producer,
             world_id,
@@ -517,6 +663,8 @@ def run_simulation(
         return RunAcceptedResponse(world_id=world_id)
 
     world_store.set_status(world_id, "running")
+    world_store.clear_stop_request(world_id)
+    world_store.reset_action_ledger(world_id)
     try:
         graph = create_time_flow_graph()
         nps = world_store.get_nutrient_per_step(world_id)
@@ -546,6 +694,12 @@ def run_simulation(
         )
         final_t = result["current_t"]
         cell_count = len(result["cells"])
+        for scene_event in result.get("scene_events") or []:
+            event = attach_action_record(dict(scene_event))
+            world_store.append_action_record(
+                world_id,
+                dict(event.get("action_record") or action_record_from_scene_event(event)),
+            )
         world_store.update_coalition_state(
             world_id,
             coalition_state=result.get("coalition_state"),
@@ -564,3 +718,15 @@ def run_simulation(
         final_t=final_t,
         cell_count=cell_count,
     )
+
+
+@router.post("/{world_id}/stop")
+def stop_simulation(world_id: str):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    if entry["status"] == "running":
+        world_store.request_stop(world_id)
+        return {"world_id": world_id, "status": "stopping"}
+    world_store.clear_stop_request(world_id)
+    return {"world_id": world_id, "status": entry["status"]}

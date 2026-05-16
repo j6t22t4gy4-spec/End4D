@@ -7,7 +7,20 @@ import pytest
 
 from app.api.run import _build_live_observer_cells
 from app.api.snapshots import _cell_to_dict
+from app.core.agent_interactions import apply_lightweight_consultations
+from app.core.consultation_kernel import (
+    precision_active_agent_limit,
+    precision_internal_interaction_count,
+    scene_source_cells,
+    scene_source_limit,
+)
+from app.core.deep_commit_runtime import run_deep_commit
+from app.core.microbeat_events import build_microbeat_consultation_events
+from app.core.scene_narrator import render_consultation_scene
+from app.core.scene_events import build_intra_t_scene_events
+from app.core.scene_selector import select_scene_candidates
 from app.core.snapshot import SnapshotStore
+from app.core.stream_episode_runtime import run_stream_episode
 from app.graph.nodes import step_loop_node
 from app.graph.time_flow import _create_initial_cells, create_time_flow_graph
 from app.llm import thought as thought_module
@@ -145,6 +158,222 @@ def test_scenario_director_roles_and_positions_shape_initial_cells():
     assert len(unique_positions) > 4
 
 
+def test_intra_t_scene_sampler_emits_multiple_neighbor_beats():
+    source = Cell(
+        x=0,
+        y=0,
+        z=0,
+        t=0,
+        energy=1,
+        gene_vec=np.zeros(4),
+        cell_id="source",
+        role_key="merchant",
+        role_label="상점 경영자",
+        persona_attrs={"agent_name": "고문옥"},
+        behavior_log=[
+            {
+                "event_type": "social_observation",
+                "t": 0.4,
+                "quality_score": 0.7,
+                "payload": {
+                    "neighbor_ids": ["target-a", "target-b"],
+                    "alignment": "mixed",
+                    "quality_score": 0.7,
+                },
+            }
+        ],
+    )
+    target_a = source.copy(cell_id="target-a", role_key="worker", role_label="노동자", persona_attrs={"agent_name": "김아무개"})
+    target_b = source.copy(cell_id="target-b", role_key="admin", role_label="행정 담당자", persona_attrs={"agent_name": "이아무개"})
+
+    events = build_intra_t_scene_events(
+        [source, target_a, target_b],
+        current_t=0,
+        next_t=1,
+        internal_interactions=4,
+        group_state={},
+        limit=6,
+    )
+    interaction_events = [event for event in events if event.get("scene_type") in {"interaction", "consultation"}]
+
+    assert len(interaction_events) >= 2
+    assert {tuple(event.get("target_ids") or []) for event in interaction_events} >= {("target-a",), ("target-b",)}
+    assert all("→" in str(event.get("summary") or "") for event in interaction_events)
+
+
+def test_scene_selector_and_narrator_contracts_are_separate():
+    source = Cell(
+        x=0,
+        y=0,
+        z=0,
+        t=0,
+        energy=1,
+        gene_vec=np.zeros(4),
+        cell_id="selector-source",
+        role_key="merchant",
+        role_label="상점 경영자",
+        persona_attrs={
+            "agent_name": "고문옥",
+            "occupation": "소규모 상점 경영자",
+            "district": "안양",
+            "scenario_prompt": "상권 침체와 기본소득 정책 충격",
+        },
+        action_state={
+            "last_action_summary": "골목 상권 매출과 이웃 소비 여력을 비교",
+            "collective_pressure": 0.28,
+        },
+        behavior_log=[
+            {
+                "event_type": "social_observation",
+                "t": 0.3,
+                "quality_score": 0.72,
+                "payload": {
+                    "neighbor_ids": ["selector-target"],
+                    "alignment": "tension",
+                    "belief_shift": 0.11,
+                    "quality_score": 0.72,
+                },
+            }
+        ],
+    )
+    target = source.copy(
+        cell_id="selector-target",
+        role_key="worker",
+        role_label="저소득 노동자",
+        persona_attrs={"agent_name": "김아무개", "occupation": "저소득 노동자", "district": "안양"},
+        action_state={"last_thought_summary": "지원 정책의 체감 속도를 의심", "collective_pressure": 0.31},
+        behavior_log=[],
+    )
+
+    narrative = render_consultation_scene(
+        source=source,
+        target=target,
+        event_type="hostile",
+        payload={"belief_shift": 0.11, "cluster_signal": "ideological_tension"},
+    )
+    assert narrative["source_label"].startswith("고문옥")
+    assert narrative["target_label"].startswith("김아무개")
+    assert "→" in narrative["summary"]
+    assert narrative["narrative_reason"]
+    assert narrative["scenario_relevance"] == "상권 침체와 기본소득 정책 충격"
+
+    events = select_scene_candidates(
+        [source, target],
+        current_t=0,
+        next_t=1,
+        internal_interactions=5,
+        group_state={
+            "groups": {
+                "merchant": {
+                    "group_id": "merchant",
+                    "group_label": "상점 경영자",
+                    "avg_collective_pressure": 0.5,
+                    "tension": 0.46,
+                    "fracture_risk": 0.3,
+                }
+            }
+        },
+        limit=4,
+    )
+
+    assert events
+    assert all(event["scene_count"] == len(events) for event in events)
+    assert any(event["scene_type"] == "consultation" for event in events)
+    assert any(event["scene_type"] == "pressure_shift" for event in events)
+
+
+def test_lightweight_consultations_emit_person_like_micro_utterances():
+    source = Cell(
+        cell_id="micro-source",
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        t=0.0,
+        energy=50.0,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.ones(256) * 0.04,
+        worldview_vec=np.ones(384) * 0.03,
+        role_key="merchant",
+        role_label="상점 경영자",
+        persona_attrs={"agent_name": "고문옥", "occupation": "소품점 운영자"},
+        action_state={"last_thought_summary": "기본소득 이후 손님들의 소비 여력이 바뀔지 걱정한다."},
+    )
+    target = source.copy(
+        cell_id="micro-target",
+        x=0.8,
+        y=0.0,
+        role_key="worker",
+        role_label="저소득 노동자",
+        persona_attrs={"agent_name": "김아무개", "occupation": "저소득 노동자"},
+        thought_vec=np.ones(256) * -0.02,
+    )
+
+    out = apply_lightweight_consultations(
+        [source, target],
+        0.25,
+        radius=2.0,
+        max_neighbors=1,
+        active_cell_limit=None,
+        beat_index=0,
+    )
+    updated = next(cell for cell in out if cell.cell_id == "micro-source")
+    payload = dict(updated.behavior_log[-1]["payload"])
+
+    assert payload["micro_utterance"]
+    assert "고문옥" in payload["micro_utterance"]
+    assert "김아무개" in payload["micro_utterance"]
+    assert updated.action_state["last_consultation_summary"] == payload["micro_utterance"]
+
+
+def test_microbeat_events_turn_recent_consultations_into_dense_stream():
+    source = Cell(
+        cell_id="beat-source",
+        x=0.0,
+        y=0.0,
+        z=0.0,
+        t=0.0,
+        energy=50.0,
+        gene_vec=np.zeros(32),
+        emotion_vec=np.zeros(8),
+        thought_vec=np.ones(256) * 0.04,
+        worldview_vec=np.ones(384) * 0.03,
+        role_key="merchant",
+        role_label="상점 경영자",
+        persona_attrs={"agent_name": "고문옥"},
+        behavior_log=[
+            {
+                "event_type": "social_observation",
+                "t": 0.4,
+                "quality_score": 0.82,
+                "payload": {
+                    "neighbor_ids": ["beat-target-a", "beat-target-b"],
+                    "alignment": "mixed",
+                    "quality_score": 0.82,
+                    "micro_utterance": "고문옥(상점 경영자) → 김아무개(노동자): 손님 감소 이야기를 꺼내고, 공감과 불신이 섞인 반응을 주고받는다.",
+                },
+            }
+        ],
+    )
+    target_a = source.copy(cell_id="beat-target-a", role_key="worker", role_label="노동자", persona_attrs={"agent_name": "김아무개"})
+    target_b = source.copy(cell_id="beat-target-b", role_key="admin", role_label="행정 담당자", persona_attrs={"agent_name": "이아무개"})
+
+    events = build_microbeat_consultation_events(
+        [source, target_a, target_b],
+        current_t=0.0,
+        next_t=1.0,
+        scene_t=0.4,
+        beat_index=3,
+        beat_count=10,
+        limit=4,
+    )
+
+    assert len(events) >= 2
+    assert {tuple(event["target_ids"]) for event in events} >= {("beat-target-a",), ("beat-target-b",)}
+    assert all(event["visual_hint"]["kind"] == "microbeat_arc" for event in events)
+    assert all(event["stream_phase"] == "micro_consultation" for event in events)
+
+
 def test_precision_step_runs_internal_interactions_inside_t():
     cells = [
         Cell(
@@ -191,16 +420,101 @@ def test_precision_step_runs_internal_interactions_inside_t():
     assert out["scene_events"]
     assert out["scene_events"][0]["scene_count"] == len(out["scene_events"])
     assert all(0.0 < float(event["scene_progress"]) <= 1.0 for event in out["scene_events"])
-    assert any(event["scene_type"] == "interaction" for event in out["scene_events"])
-    interaction = next(event for event in out["scene_events"] if event["scene_type"] == "interaction")
-    assert "시나리오 연결" in interaction["summary"]
+    assert any(event["scene_type"] in {"interaction", "consultation"} for event in out["scene_events"])
+    interaction = next(event for event in out["scene_events"] if event["scene_type"] in {"interaction", "consultation"})
+    assert "→" in interaction["summary"]
     assert "월세 부담" in interaction["summary"] or "조건 조정" in interaction["summary"]
     assert interaction["narrative_reason"]
     assert interaction["scenario_relevance"]
     assert interaction["agent_context"]["source"]["persona"]
+    assert interaction["action_record"]["platform"] == "social_field"
+    assert interaction["action_record"]["domain"] == "end4d_social_field"
+    assert interaction["action_record"]["action_type"].startswith("FIELD_")
+    assert interaction["action_record"]["action_label"]
+    assert interaction["action_record"]["interpretation"]
+    assert interaction["action_record"]["result"] == interaction["summary"]
     assert out["scene_metrics"]["scenes_per_t"] == len(out["scene_events"])
     assert out["scene_metrics"]["relationship_event_count"] >= 1
+    assert out["runtime_timing"]["total_ms"] >= 0
+    assert "stream_episode" in out["runtime_timing"]["phases"]
+    assert "scene_select" in out["runtime_timing"]["phases"]
     assert any("scene_participation_count" in cell.action_state for cell in out["cells"])
+
+
+def test_stream_episode_runner_wraps_one_t_as_complete_social_stream():
+    cells = [
+        Cell(
+            cell_id=f"episode-agent-{i}",
+            x=float(i),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=64.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.zeros(256),
+            worldview_vec=np.zeros(384),
+            role_key="resident",
+            role_label="주민",
+            zone_id="zone-a" if i % 2 == 0 else "zone-b",
+            action_state={"last_thought_summary": "상권 변화에 대해 이웃 반응을 살핀다."},
+            persona_attrs={"display_name": f"주민{i}"},
+        )
+        for i in range(8)
+    ]
+    emitted: list[dict] = []
+
+    result = run_stream_episode(
+        cells,
+        current_t=0.0,
+        next_t=1.0,
+        engine_params={
+            "min_interactions_per_step": 4,
+            "max_interactions_per_step": 4,
+            "social_stream_density": 1.0,
+        },
+        previous_group_state=None,
+        scene_event_sink=lambda event, *_: emitted.append(dict(event)),
+    )
+
+    assert result.round_count == 4
+    assert result.live_scene_events
+    assert emitted
+    assert {event["stream_episode_id"] for event in result.live_scene_events} == {"t1-00-mirofish-stream"}
+    assert all(event["stream_round_count"] == 4 for event in result.live_scene_events)
+    assert any(event.get("stream_phase") == "micro_consultation" for event in emitted)
+
+
+def test_deep_commit_runtime_returns_stable_state_shapes():
+    cells = [
+        Cell(
+            cell_id=f"deep-agent-{i}",
+            x=float(i),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=50.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.zeros(256),
+            worldview_vec=np.zeros(384),
+            role_key="citizen",
+            role_label="citizen",
+            action_state={"last_thought_summary": "지역 반응을 관찰"},
+        )
+        for i in range(3)
+    ]
+
+    next_cells, coalition_state, coalition_history = run_deep_commit(
+        cells,
+        next_t=1.0,
+        coalition_state={},
+        coalition_history=[],
+    )
+
+    assert len(next_cells) == len(cells)
+    assert isinstance(coalition_state, dict)
+    assert isinstance(coalition_history, list)
 
 
 def test_precision_step_emits_live_scene_events_during_internal_interactions():
@@ -241,8 +555,62 @@ def test_precision_step_emits_live_scene_events_during_internal_interactions():
 
     assert emitted
     assert out["scene_events_live_emitted"] is True
+    assert len(emitted) >= 10
+    assert any(event.get("stream_phase") == "micro_consultation" for event in emitted)
     assert all(event["live_computed"] is True for event in emitted)
     assert all(0.0 < float(event["scene_progress"]) <= 1.0 for event in emitted)
+    assert all(event.get("action_record", {}).get("platform") == "social_field" for event in out["scene_events"])
+
+
+def test_consultation_kernel_limits_live_scene_sources_to_active_cast():
+    cells = [
+        Cell(
+            cell_id=f"agent-{i}",
+            x=float(i),
+            y=0.0,
+            z=0.0,
+            t=0.0,
+            energy=50.0,
+            gene_vec=np.zeros(32),
+            emotion_vec=np.zeros(8),
+            thought_vec=np.zeros(256),
+            worldview_vec=np.zeros(384),
+            action_state={
+                "collective_pressure": 0.1,
+                "decision_pressure_delta": 0.02,
+                "policy_sensitivity": 0.45,
+            },
+        )
+        for i in range(320)
+    ]
+    cells[10] = cells[10].copy(
+        action_state={
+            "last_consultation_t": 0.5,
+            "last_consultation_quality": 0.9,
+            "collective_pressure": 0.7,
+            "decision_pressure_delta": 0.2,
+        },
+        behavior_log=[
+            {
+                "event_type": "social_observation",
+                "payload": {"neighbor_ids": ["agent-11", "agent-12"]},
+            }
+        ],
+    )
+
+    limit = scene_source_limit(cells, interactions=4)
+    selected = scene_source_cells(cells, scene_t=0.5, limit=limit)
+    selected_ids = {cell.cell_id for cell in selected}
+
+    assert limit < len(cells)
+    assert {"agent-10", "agent-11", "agent-12"}.issubset(selected_ids)
+    assert len(selected) <= limit
+    assert precision_active_agent_limit(cells, engine_params={"simulation_mode": "precision"}) < len(cells)
+    assert precision_internal_interaction_count(
+        cells,
+        engine_params={"simulation_mode": "precision", "min_interactions_per_step": 3, "max_interactions_per_step": 8},
+        previous_group_state={"groups": {"g": {"avg_collective_pressure": 0.7, "fracture_risk": 0.4}}},
+    ) >= 3
 
 
 def test_snapshot_store_keeps_intra_t_scene_events():
@@ -339,7 +707,7 @@ def test_dialogue_memory_feeds_human_thought_fallback():
     assert "들" in thought or "말" in thought
 
 
-def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
+def test_swarm_mode_uses_cleanroom_session_runtime(monkeypatch):
     captured: dict[str, str | None] = {}
 
     def capture_action_env(cells, current_t):
@@ -353,10 +721,10 @@ def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
 
     monkeypatch.setattr("app.graph.nodes.update_thoughts_if_due", lambda cells, current_t: cells)
     monkeypatch.setattr("app.graph.nodes.update_worldviews_if_due", lambda cells, current_t: cells)
-    monkeypatch.setattr("app.graph.nodes.update_action_states_if_due", capture_action_env)
-    monkeypatch.setattr("app.graph.nodes.apply_agent_dialogues_if_due", lambda cells, current_t: cells)
+    monkeypatch.setattr("app.core.deep_commit_runtime.update_action_states_if_due", capture_action_env)
+    monkeypatch.setattr("app.core.deep_commit_runtime.apply_agent_dialogues_if_due", lambda cells, current_t: cells)
     monkeypatch.setattr(
-        "app.graph.nodes.apply_group_deliberation_if_due",
+        "app.core.deep_commit_runtime.apply_group_deliberation_if_due",
         lambda cells, current_t, coalition_state=None, coalition_history=None: (
             cells,
             dict(coalition_state or {}),
@@ -384,11 +752,11 @@ def test_swarm_packet_mode_overrides_llm_cadence_during_step(monkeypatch):
     )
 
     assert out["current_t"] == 1.0
-    assert captured["action_interval"] == "16"
-    assert captured["deliberation_interval"] == "6"
-    assert captured["deliberation_groups"] == "24"
-    assert captured["action_priority"] == "3"
-    assert captured["group_priority"] == "0"
+    assert captured == {}
+    assert out["scene_events_live_emitted"] is True
+    assert out["scene_events"]
+    assert out["scene_events"][0]["t_composition_role"] == "mirofish_cleanroom_swarm_session"
+    assert out["runtime_timing"]["dominant_phase"] == "miro_swarm_session"
     assert os.environ.get("ORGANIC4D_ACTION_INTERVAL") is None
 
 

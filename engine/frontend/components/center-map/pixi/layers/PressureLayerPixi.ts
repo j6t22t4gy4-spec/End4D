@@ -55,13 +55,13 @@ export class PressureLayerPixi {
     this.sceneFlashes = this.sceneFlashes.filter((item) => renderTime - item.bornAt < 1300);
     for (const item of this.sceneFlashes) {
       const age = Math.max(0, Math.min(1, (renderTime - item.bornAt) / 1300));
-      const alpha = (1 - age) * (0.24 + item.intensity * 0.22);
-      const radius = 20 + age * 52 + item.intensity * 26;
-      this.flash.beginFill(fieldColor(Math.abs(item.pressureDelta) * 4 + item.intensity * 0.55), alpha * 0.22);
-      this.flash.drawRect(item.x - radius * 0.7, item.y - radius * 0.42, radius * 1.4, radius * 0.84);
+      const alpha = (1 - age) * (0.18 + item.intensity * 0.18);
+      const radius = 18 + age * 44 + item.intensity * 20;
+      this.flash.beginFill(fieldColor(Math.abs(item.pressureDelta) * 4 + item.intensity * 0.55), alpha * 0.12);
+      this.flash.drawRoundedRect(item.x - radius * 0.72, item.y - radius * 0.42, radius * 1.44, radius * 0.84, 16);
       this.flash.endFill();
-      this.flash.lineStyle(1, colorForType(item.type), alpha);
-      this.flash.drawRect(item.x - radius * 0.62, item.y - radius * 0.36, radius * 1.24, radius * 0.72);
+      this.flash.lineStyle(1, colorForType(item.type), alpha * 0.78);
+      this.flash.drawEllipse(item.x, item.y, radius * 0.66, radius * 0.38);
     }
   }
 
@@ -73,8 +73,8 @@ export class PressureLayerPixi {
     this.field.clear();
     if (this.zones.length === 0) return;
 
-    const cellSize = 28;
-    const gap = 2;
+    const cellSize = 18;
+    const gap = 1.5;
 
     for (let y = 62; y <= 574; y += cellSize) {
       for (let x = 62; x <= 898; x += cellSize) {
@@ -88,19 +88,30 @@ export class PressureLayerPixi {
           return sum + pressure * falloff;
         }, 0);
 
-        if (intensity < 0.045) continue;
+        if (intensity < 0.055) continue;
 
         const normalized = Math.min(1, intensity);
         const fill = fieldColor(normalized);
-        const alpha = Math.min(0.36, 0.06 + normalized * 0.25);
+        const alpha = Math.min(0.24, 0.035 + normalized * 0.16);
         this.field.beginFill(fill, alpha);
-        this.field.drawRect(
+        this.field.drawRoundedRect(
           x - cellSize / 2 + gap,
           y - cellSize / 2 + gap,
           cellSize - gap * 2,
-          cellSize - gap * 2
+          cellSize - gap * 2,
+          4
         );
         this.field.endFill();
+        if (normalized >= 0.36) {
+          this.field.lineStyle(0.6, fill, Math.min(0.22, normalized * 0.18));
+          this.field.drawRoundedRect(
+            x - cellSize / 2 + gap,
+            y - cellSize / 2 + gap,
+            cellSize - gap * 2,
+            cellSize - gap * 2,
+            4
+          );
+        }
       }
     }
   }

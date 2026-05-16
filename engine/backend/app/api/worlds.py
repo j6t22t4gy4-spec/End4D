@@ -125,6 +125,18 @@ class DeleteWorldResponse(BaseModel):
     deleted: bool
 
 
+class RuntimeConfigPatchRequest(BaseModel):
+    engine_params: Dict[str, Any] = Field(default_factory=dict)
+    role_catalog: Optional[List[str]] = None
+    initial_cell_count: Optional[int] = Field(default=None, ge=6, le=20_000)
+
+
+class RuntimeConfigPatchResponse(BaseModel):
+    world_id: str
+    engine_params: Dict[str, Any] = Field(default_factory=dict)
+    role_catalog: List[str] = Field(default_factory=list)
+
+
 @router.post("", response_model=CreateWorldResponse)
 def create_world(req: CreateWorldRequest):
     """프롬프트 → 세계 제안 → 저장. (후속: 외부 LLM API로 propose_world_from_prompt 대체)"""
@@ -239,6 +251,25 @@ def create_world(req: CreateWorldRequest):
         simulation_config=dict((entry or {}).get("simulation_config") or {}),
         persona_distribution_summary=persona_distribution_summary,
     )
+
+
+@router.patch("/{world_id}/runtime-config", response_model=RuntimeConfigPatchResponse)
+def patch_world_runtime_config(world_id: str, req: RuntimeConfigPatchRequest):
+    entry = world_store.get(world_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="World not found")
+    if entry["status"] == "running":
+        raise HTTPException(status_code=409, detail="Cannot update runtime config while running")
+    current_params = world_store.get_engine_params(world_id)
+    next_params = {**current_params, **dict(req.engine_params or {})}
+    role_catalog = list(req.role_catalog or world_store.get_role_catalog(world_id))
+    world_store.update_runtime_config(
+        world_id,
+        engine_params=next_params,
+        role_catalog=role_catalog,
+        initial_cell_count=req.initial_cell_count,
+    )
+    return RuntimeConfigPatchResponse(world_id=world_id, engine_params=next_params, role_catalog=role_catalog)
 
 
 @router.get("/{world_id}", response_model=WorldResponse)

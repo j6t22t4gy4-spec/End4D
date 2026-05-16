@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import SimulationMap2D from "@/components/SimulationMap2D";
+import SocialFieldStage from "@/components/SocialFieldStage";
 import type { CellSnapshot, IntraTSceneEvent, ReviewGroundingItem, TimelineAnnotation } from "@/lib/api";
 import type { SelectedBand, SelectedZone } from "@/components/SimulationInspectorPanel";
 import type { CenterMapMode, CenterMapVisibleLayers } from "@/components/center-map/types";
@@ -49,6 +49,7 @@ export function CenterMapViewport({
   onJumpToT,
 }: CenterMapViewportProps) {
   const [transitionPhase, setTransitionPhase] = useState(0);
+  const latestStreamKey = latestSceneStreamKey(sceneEvents);
   const [pointerField, setPointerField] = useState({
     x: 0.5,
     y: 0.5,
@@ -68,7 +69,7 @@ export function CenterMapViewport({
     setTransitionPhase(1);
     frame = window.requestAnimationFrame(animate);
     return () => window.cancelAnimationFrame(frame);
-  }, [currentT]);
+  }, [currentT, latestStreamKey]);
 
   void mode;
 
@@ -93,7 +94,7 @@ export function CenterMapViewport({
           })
         }
       >
-        <SimulationMap2D
+        <SocialFieldStage
           cells={cells}
           totalCells={totalCells}
           sampled={sampled}
@@ -125,4 +126,14 @@ export function CenterMapViewport({
       </div>
     </div>
   );
+}
+
+function latestSceneStreamKey(sceneEvents: IntraTSceneEvent[]) {
+  const latest = sceneEvents[sceneEvents.length - 1];
+  if (!latest) return "none";
+  return [
+    latest.stream_episode_id ?? latest.stream_session_id ?? latest.t ?? "t",
+    latest.stream_round_index ?? latest.session_index ?? latest.scene_index ?? "round",
+    latest.session_event_index ?? latest.stream_event_index ?? latest.scene_id ?? "event",
+  ].join(":");
 }

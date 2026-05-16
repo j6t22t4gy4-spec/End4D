@@ -15,7 +15,9 @@ import {
   updateRuntimeUiLanguage,
   type ReviewSummaryResponse,
   type LocalRuntimeStatus,
+  type RuntimeTiming,
   type SessionSummary,
+  type SocialActionRecord,
 } from "@/lib/api";
 import { AppToolbar } from "@/components/app-shell/AppToolbar";
 import { RuntimeDock } from "@/components/app-shell/RuntimeDock";
@@ -39,6 +41,8 @@ type SimulationDockPayload = {
   insightContent?: ReactNode;
   chatContent?: ReactNode;
   thoughtCells: CellSnapshot[];
+  actionRecords?: SocialActionRecord[];
+  runtimeTiming?: RuntimeTiming | null;
   currentT: number;
   collectiveSummary: CollectiveDynamicsSummary | null;
   collectiveSignal: string;

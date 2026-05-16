@@ -38,6 +38,8 @@ export class PixiSceneController {
   private readonly agentLayer = new AgentLayerPixi();
 
   private sceneAgents: CenterMapScene["agents"] = [];
+  private sceneInteractions: CenterMapScene["interactions"] = [];
+  private activeSession: CenterMapScene["activeSession"] = null;
 
   private pointerField: PointerField = { x: 0.5, y: 0.5, active: false };
   private transitionPhase = 0;
@@ -70,6 +72,8 @@ export class PixiSceneController {
     this.sceneWidth = scene.width;
     this.sceneHeight = scene.height;
     this.sceneAgents = scene.agents;
+    this.sceneInteractions = scene.interactions;
+    this.activeSession = scene.activeSession;
     this.zoneRegionLayer.updateZones(scene.zones);
     this.clusterLayer.updateZones(scene.zones);
     this.heatLayer.updateAgents(scene.agents);
@@ -234,6 +238,62 @@ export class PixiSceneController {
     }
     this.fieldLayer.addChild(grid);
 
+    if (this.activeSession) {
+      const swarmMode = this.sceneInteractions.some((interaction) => interaction.swarmSession);
+      const activeAgents = this.sceneAgents.filter((agent) => agent.sessionActive).slice(0, swarmMode ? 220 : 80);
+      if (activeAgents.length) {
+        const focus = new Graphics();
+        const focusColor = toneColor(this.activeSession.dominantTone);
+        const pulse = 0.5 + 0.5 * Math.sin(renderTime * (swarmMode ? 0.014 : 0.006));
+        for (const agent of activeAgents) {
+          const size = swarmMode ? 5 + agent.sessionIntensity * 10 + pulse * 2.6 : 10 + agent.sessionIntensity * 18 + pulse * 4;
+          focus.beginFill(focusColor, swarmMode ? 0.028 + agent.sessionIntensity * 0.022 : 0.035 + agent.sessionIntensity * 0.035);
+          focus.drawEllipse(agent.x, agent.y, size * (swarmMode ? 1.0 : 1.35), size * (swarmMode ? 1.0 : 0.85));
+          focus.endFill();
+        }
+        this.fieldLayer.addChild(focus);
+      }
+
+      const streamRidges = new Graphics();
+      const ridgeColor = toneColor(this.activeSession.dominantTone);
+      const recent = this.sceneInteractions.filter((interaction) => interaction.fresh || (swarmMode && interaction.swarmSession)).slice(0, swarmMode ? 180 : 48);
+      recent.forEach((interaction, index) => {
+        const progress = Math.max(0, Math.min(1, Number(interaction.sessionIndex ?? 1) / Math.max(1, Number(interaction.sessionCount ?? 1))));
+        const x = 86 + progress * Math.min(300, this.sceneWidth - 172);
+        const y = this.sceneHeight - 42 - (index % (swarmMode ? 9 : 4)) * (swarmMode ? 3 : 5);
+        streamRidges.lineStyle(swarmMode ? 0.45 : 0.8, interaction.color ?? ridgeColor, swarmMode ? 0.08 + interaction.intensity * 0.1 : 0.16 + interaction.intensity * 0.14);
+        streamRidges.moveTo(x - (swarmMode ? 5 : 8), y);
+        streamRidges.lineTo(x + (swarmMode ? 5 : 8) + interaction.intensity * (swarmMode ? 6 : 10), y);
+      });
+      this.fieldLayer.addChild(streamRidges);
+
+      const lane = new Graphics();
+      const progress = Math.max(
+        0,
+        Math.min(1, this.activeSession.index / Math.max(1, this.activeSession.count))
+      );
+      const laneX = 74;
+      const laneY = this.sceneHeight - 72;
+      const laneW = Math.min(340, this.sceneWidth - 148);
+      const pulse = 0.5 + 0.5 * Math.sin(renderTime * 0.018);
+      lane.lineStyle(1, toneColor(this.activeSession.dominantTone), 0.16);
+      lane.beginFill(0xffffff, 0.44);
+      lane.drawRoundedRect(laneX, laneY, laneW, 24, 12);
+      lane.endFill();
+      lane.beginFill(toneColor(this.activeSession.dominantTone), 0.12 + this.activeSession.intensity * 0.1);
+      lane.drawRoundedRect(laneX + 4, laneY + 4, Math.max(10, (laneW - 8) * progress), 16, 8);
+      lane.endFill();
+      const beadCount = Math.min(swarmMode ? 42 : 24, Math.max(1, this.activeSession.count));
+      for (let idx = 0; idx < beadCount; idx += 1) {
+        const x = laneX + 12 + ((laneW - 24) * idx) / Math.max(1, beadCount - 1);
+        const active = idx + 1 === Math.min(beadCount, Math.max(1, Math.round(progress * beadCount)));
+        lane.beginFill(toneColor(this.activeSession.dominantTone), active ? 0.68 + pulse * 0.18 : 0.18);
+        lane.drawCircle(x, laneY + 12, active ? 3.4 + pulse * 1.1 : 1.8);
+        lane.endFill();
+      }
+      this.fieldLayer.addChild(lane);
+    }
+
     const pointerX = 56 + this.pointerField.x * (this.sceneWidth - 112);
     const pointerY = 56 + this.pointerField.y * (this.sceneHeight - 112);
     const crosshair = new Graphics();
@@ -244,4 +304,11 @@ export class PixiSceneController {
     crosshair.lineTo(pointerX, pointerY + 18);
     this.fieldLayer.addChild(crosshair);
   }
+}
+
+function toneColor(tone: "positive" | "negative" | "hostile" | "dialogue") {
+  if (tone === "hostile") return 0xdc2626;
+  if (tone === "negative") return 0xf97316;
+  if (tone === "positive") return 0x16a34a;
+  return 0x0284c7;
 }

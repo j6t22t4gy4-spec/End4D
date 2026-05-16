@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import uuid
 from typing import Dict, List, Optional, Protocol
 
 from app.core.storage_manifest import unwrap_payload, wrap_payload
@@ -38,7 +39,7 @@ class DiskWorldPersistence:
         path = self._path(world_id)
         payload = world_entry_to_dict(entry)
         envelope = wrap_payload(payload)
-        tmp_path = path.with_suffix(".json.tmp")
+        tmp_path = path.with_name(f".{path.stem}.{uuid.uuid4().hex}.json.tmp")
         tmp_path.write_text(
             json.dumps(envelope, ensure_ascii=False, separators=(",", ":")),
             encoding="utf-8",
@@ -76,6 +77,7 @@ class DiskWorldPersistence:
                 str(key): dict(value)
                 for key, value in dict(payload.get("chat_sessions") or {}).items()
             },
+            "action_ledger": [dict(item) for item in list(payload.get("action_ledger") or [])],
             "snapshot_index": list(payload.get("snapshot_index") or []),
             "snapshot_archive": dict(payload.get("snapshot_archive") or {}),
             "snapshots": [snapshot_from_dict(item) for item in payload.get("snapshots") or []],

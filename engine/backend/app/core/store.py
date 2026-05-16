@@ -134,6 +134,8 @@ class WorldStore:
             "group_state": {},
             "review_cache": {},
             "chat_sessions": {},
+            "stop_requested": False,
+            "action_ledger": [],
         }
         session_store.attach_world(str(session.get("session_id") or ""), wid)
         self._persist(wid)
@@ -174,6 +176,20 @@ class WorldStore:
             self._worlds[world_id]["status"] = status
             self._persist(world_id)
 
+    def request_stop(self, world_id: str) -> None:
+        if world_id in self._worlds:
+            self._worlds[world_id]["stop_requested"] = True
+            self._persist(world_id)
+
+    def clear_stop_request(self, world_id: str) -> None:
+        if world_id in self._worlds:
+            self._worlds[world_id]["stop_requested"] = False
+            self._persist(world_id)
+
+    def is_stop_requested(self, world_id: str) -> bool:
+        entry = self.get(world_id)
+        return bool(entry and entry.get("stop_requested"))
+
     def update_coalition_state(
         self,
         world_id: str,
@@ -198,12 +214,43 @@ class WorldStore:
         self._worlds[world_id]["group_state"] = dict(group_state)
         self._persist(world_id)
 
+    def reset_action_ledger(self, world_id: str) -> None:
+        if world_id in self._worlds:
+            self._worlds[world_id]["action_ledger"] = []
+            self._persist(world_id)
+
+    def append_action_record(self, world_id: str, record: dict, *, max_records: int = 2000) -> dict:
+        entry = self.get(world_id)
+        if entry is None:
+            return {}
+        ledger = [dict(item) for item in list(entry.get("action_ledger") or [])]
+        item = dict(record or {})
+        if not item:
+            return {}
+        ledger.append(item)
+        if len(ledger) > max_records:
+            ledger = ledger[-max_records:]
+        entry["action_ledger"] = ledger
+        # Persist less aggressively than snapshots: action records are compact,
+        # but saving every single live beat can still dominate local runs.
+        if len(ledger) <= 1 or len(ledger) % 100 == 0:
+            self._persist(world_id)
+        return item
+
+    def get_recent_action_records(self, world_id: str, *, limit: int = 50) -> list:
+        entry = self.get(world_id)
+        if entry is None:
+            return []
+        rows = [dict(item) for item in list(entry.get("action_ledger") or [])]
+        return rows[-max(0, int(limit)):]
+
     def update_runtime_config(
         self,
         world_id: str,
         *,
         engine_params: Optional[dict] = None,
         role_catalog: Optional[list] = None,
+        initial_cell_count: Optional[int] = None,
     ) -> None:
         if world_id not in self._worlds:
             return
@@ -223,6 +270,12 @@ class WorldStore:
                 config = dict(entry.get("simulation_config") or {})
                 config["role_catalog"] = roles
                 entry["simulation_config"] = config
+        if initial_cell_count is not None:
+            count = max(6, int(initial_cell_count))
+            entry["initial_cell_count"] = count
+            config = dict(entry.get("simulation_config") or {})
+            config["initial_cell_count"] = count
+            entry["simulation_config"] = config
         self._persist(world_id)
 
     def get_review_cache(self, world_id: str) -> dict:

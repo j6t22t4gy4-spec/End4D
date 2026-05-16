@@ -24,7 +24,9 @@ def compact_interaction_events(cell: Cell, *, limit: int = 3) -> list[dict]:
                 "alignment": alignment,
                 "cluster_signal": str(payload.get("cluster_signal") or ""),
                 "quality": round(float(item.get("quality_score") or payload.get("quality_score") or 0.0), 4),
-                "summary": str(item.get("summary") or "")[:180],
+                "summary": str(payload.get("micro_utterance") or item.get("summary") or "")[:220],
+                "target_label": str(payload.get("primary_target_label") or ""),
+                "intensity": round(float(payload.get("consultation_intensity") or item.get("quality_score") or 0.0), 4),
             }
         )
         if len(events) >= limit:

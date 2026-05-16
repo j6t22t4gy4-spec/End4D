@@ -19,6 +19,46 @@
 `예`면 상위 우선순위,
 `아니오`면 후순위다.
 
+백엔드 전역 개편 기준 문서:
+
+- [Backend Engine Reform Target](./BACKEND_ENGINE_REFORM_TARGET.md)
+
+---
+
+## 0.4 Backend Engine Refactor 기준
+
+MiroFish에서 참고할 핵심은 화면 효과가 아니라 **입력 정규화 → 행위자 생성 → 빠른 상호작용 원장 → 사람이 읽는 해석**으로 이어지는 파이프라인이다. End4D는 이를 `x/y/z/t` 사회장, persona, pressure, worldview, reviewable causality라는 고유 정체성 안에서만 흡수한다.
+
+### 목표 파이프라인
+
+```text
+Raw Scenario Prompt
+→ Scenario Compiler
+→ Actor Factory
+→ World Genesis / Initial Field Placement
+→ Fast Intra-T Interaction Events
+→ Deep Commit at t boundary
+→ Review / Chat / Dashboard Explanation
+```
+
+### 구현 상태
+
+| 영역 | 상태 | 완료 기준 |
+|------|------|-----------|
+| Scenario Compiler | 1차 구현 | 짧은 프롬프트도 domain, actor roles, zones, conflict axes, observables로 확장 |
+| Actor Factory | 1차 구현 | raw persona를 name/role/occupation/zone/goal/fear/speech style/relationship bias가 있는 actor sheet로 변환 |
+| World Genesis Wrapper | 1차 정리 | 기존 API는 유지하되 scenario normalization/director 책임은 전용 compiler로 이동 |
+| Dead Code Diet | 진행 중 | `time_flow.py`, `world_genesis.py`의 중복 role/zone/director helper 제거 |
+| Consultation Kernel | 1차 구현 | t 내부는 LLM-heavy deep thought가 아니라 compact rule interaction event로 빠르게 흐름 |
+| Deep Commit Boundary | 미구현 | t 경계에서만 3계층 Thought/Worldview/Review 해석을 무겁게 수행 |
+
+### 성능 원칙
+
+- `t` 내부 장면은 빠른 rule/field/event 계산으로 생성한다.
+- LLM은 모든 micro interaction에 쓰지 않고, scenario compile, packet/director, t boundary deep commit, review/chat에서만 우선 사용한다.
+- persona는 단순 역할명이 아니라 `이름(사회적 역할) + 직업/정체성 + zone + 목표/두려움 + 말투`로 분리한다.
+- 시각화는 이미 끝난 계산을 보여주는 화면이 아니라, compact event stream을 tail하는 관찰자 콘솔이어야 한다.
+
 ---
 
 ## 0.5 Swarm Mode 복구 목표
@@ -155,14 +195,26 @@ Timestep(t)
 | `relationship_delta` | 관계/협력/갈등 신호 |
 | `visual_hint` | field에서 선/pulse/ripple/heat update로 보여줄 힌트 |
 
+### End4D Action Ledger 원칙
+
+MiroFish에서 참고할 부분은 "행동 로그가 먼저 흐르고 UI가 이를 tail한다"는 구조다. End4D는 이를 그대로 복제하지 않고, `social_field` 도메인의 4D 행동 원장으로 해석한다.
+
+- 원장 레코드는 `platform=social_field`, `domain=end4d_social_field`를 가진다.
+- 행동 타입은 소셜미디어 액션이 아니라 `FIELD_CONTACT`, `FIELD_ALIGN`, `FIELD_CONTEST`, `FIELD_NEGOTIATE`, `FIELD_PRESSURE_SHIFT`, `FIELD_DRIFT`, `DEEP_COMMIT`이다.
+- 각 레코드는 `field_axis(agent/role/zone/macro/field)`를 가져야 한다.
+- 각 레코드는 `interpretation`을 통해 "이 사건이 다음 t의 압력/관계/생각에 어떤 의미인지"를 설명해야 한다.
+- Scene Stream은 이 원장을 사람이 읽기 좋은 narrative로 보여주는 계층이고, 원장 자체가 replay/observer/review의 공통 근거가 된다.
+
 ### 구현 체크리스트
 
 | 순위 | 작업 | 완료 기준 |
 |------|------|-----------|
 | 1 | `IntraTSceneEvent` 모델 정의 | 완료: `Snapshot.scene_events`, REST snapshot DTO, frontend `IntraTSceneEvent` 타입 추가 |
-| 2 | Scene Generator | 완료: 기존 internal interaction과 group pressure를 top-K scene event로 변환 |
+| 2 | Scene Generator | 완료: dense microbeat consultation event + review-grade top-K scene event를 분리 |
 | 3 | Scene Accumulation | 완료: scene pressure/relationship delta를 참여 agent action_state와 collective_pressure에 소프트 누적 |
-| 4 | WebSocket Scene Stream | 완료: internal substep 계산 중 `scene` event를 즉시 보내고 `t`, `scene_index`, `scene_count`, `progress` 포함 |
+| 4 | WebSocket Scene Stream | 완료: internal substep 계산 중 `micro_consultation` scene event를 즉시 보내고 `t`, `scene_index`, `scene_count`, `progress` 포함 |
+| 4.1 | Stream-first Observation | 완료: `stream_episode_id`, `stream_round_index`, `stream_round_count`를 scene event에 추가해 하나의 MiroFish식 stream이 하나의 t를 구성하도록 표시 |
+| 4.2 | Stream Episode Runner | 완료: `stream_episode_runtime.py`가 t 내부의 다중 경량 협의 라운드를 전담하고, graph node는 stream episode 완료 후 t 경계 commit만 조율 |
 | 5 | Snapshot Scene Replay | 완료: snapshot 조회 응답에 `scene_events` 포함, 완료된 t에서도 관계선 replay 가능 |
 | 6 | Field Playback Layer | 완료: scene event를 CenterMap interaction layer에 연결하고 live/fresh scene pulse 강조 |
 | 7 | Agent/Group Scene Log | 완료: 실행 패널에 `t 내부 장면 스트림`, 선택 agent/group 기준 scene 필터 표시 |

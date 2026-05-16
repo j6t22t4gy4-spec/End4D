@@ -1,6 +1,6 @@
 /**
  * Organic4D Engine — API 클라이언트 (Phase 4.5)
- * IMPLEMENTATION_SEQUENCE: fetch /worlds, /snapshots
+ * End4D API client: fetch /worlds, /snapshots, runtime streams, and review/chat data.
  */
 
 const API_BASE =
@@ -58,6 +58,46 @@ export type IntraTSceneEvent = {
   pressure_delta?: number;
   relationship_delta?: number;
   visual_hint?: Record<string, unknown>;
+  action_record?: SocialActionRecord;
+  live_computed?: boolean;
+  stream_phase?: string;
+  stream_episode_id?: string;
+  stream_session_id?: string;
+  stream_round_index?: number;
+  stream_round_count?: number;
+  stream_event_index?: number;
+  session_index?: number;
+  session_count?: number;
+  session_event_index?: number;
+  t_composition_role?: string;
+  beat_index?: number;
+  beat_count?: number;
+  llm_agent_channel?: string;
+};
+
+export type SocialActionRecord = {
+  record_id?: string;
+  round_num?: number;
+  t?: number;
+  scene_t?: number;
+  timestamp?: string;
+  platform?: string;
+  domain?: string;
+  field_axis?: string;
+  agent_id?: string;
+  agent_name?: string;
+  target_ids?: string[];
+  target_label?: string;
+  action_type?: string;
+  action_label?: string;
+  action_description?: string;
+  interaction_type?: string;
+  action_args?: Record<string, unknown>;
+  result?: string;
+  reason?: string;
+  scenario_relevance?: string;
+  interpretation?: string;
+  success?: boolean;
 };
 
 export type IntraTSceneMetrics = {
@@ -77,6 +117,170 @@ export type IntraTSceneMetrics = {
   quality_warnings?: string[];
   pressure_delta_abs_sum?: number;
 };
+
+export type RuntimeTiming = {
+  total_ms?: number;
+  dominant_phase?: string;
+  phases?: Record<
+    string,
+    {
+      ms?: number;
+      count?: number;
+    }
+  >;
+};
+
+export type SwarmV2Agent = {
+  agent_id: string;
+  name: string;
+  role: string;
+  zone: string;
+  x: number;
+  y: number;
+  pressure: number;
+  stance: number;
+  energy: number;
+  llm_channel: string;
+  identity?: string;
+  cohort?: string;
+  participation?: number;
+};
+
+export type SwarmV2Event = {
+  event_id: string;
+  round: number;
+  event_index: number;
+  source_id: string;
+  target_id: string;
+  source_label?: string;
+  target_label?: string;
+  interaction_type: "positive" | "negative" | "hostile" | "dialogue" | string;
+  intensity: number;
+  pressure_delta: number;
+  summary: string;
+  agent_thought?: string;
+  agent_speech?: string;
+  llm_channel: string;
+  llm_mode?: "packet" | "agent" | "full-agent" | string;
+  topic?: string;
+  cohort?: string;
+  active_agent_count?: number;
+  participant_growth?: number;
+  reply_to_event_id?: string | null;
+  reply_depth?: number;
+  source_memory?: string;
+  target_memory?: string;
+  relationship_score?: number;
+  phase?: "opening" | "escalation" | "branching" | "convergence" | "outcome" | string;
+  phase_index?: number;
+  phase_progress?: number;
+  llm_action?: string;
+  llm_reasoning?: string;
+  llm_content?: string;
+  llm_enriched?: boolean;
+  llm_summary?: string;
+  llm_action_effect?: number;
+  llm_influenced_by_event_id?: string;
+  target_event_id?: string;
+  decision_tone?: string;
+  decision_relation_delta?: number;
+  decision_pressure_delta?: number;
+  memory_write?: string;
+  next_intent?: string;
+  agent_decision?: Record<string, unknown>;
+};
+
+export type SwarmV2RunResponse = {
+  runtime: string;
+  raw_prompt?: string;
+  prompt: string;
+  agent_count: number;
+  rounds: number;
+  events_per_round: number;
+  zone_count: number;
+  llm_mode?: string;
+  llm_parallelism?: number;
+  agents: SwarmV2Agent[];
+  events: SwarmV2Event[];
+  summary: Record<string, unknown>;
+  scenario?: Record<string, unknown>;
+};
+
+export type SwarmV2SessionResponse = {
+  session_id: string;
+  runtime: string;
+  raw_prompt?: string;
+  prompt: string;
+  agent_count: number;
+  rounds: number;
+  events_per_round: number;
+  zone_count: number;
+  pace_ms: number;
+  llm_mode?: string;
+  llm_parallelism?: number;
+  persisted?: boolean;
+  agents: SwarmV2Agent[];
+  summary: Record<string, unknown>;
+  event_count: number;
+  scenario?: Record<string, unknown>;
+};
+
+export type SwarmV2SavedSession = {
+  session_id: string;
+  created_at: string;
+  runtime: string;
+  raw_prompt?: string;
+  prompt: string;
+  agent_count: number;
+  rounds: number;
+  events_per_round: number;
+  zone_count: number;
+  pace_ms: number;
+  llm_mode?: string;
+  llm_parallelism?: number;
+  event_count: number;
+  summary: Record<string, unknown>;
+  scenario?: Record<string, unknown>;
+};
+
+export type SwarmV2ReplayResponse = SwarmV2SessionResponse & {
+  events: SwarmV2Event[];
+};
+
+export type SwarmV2StreamMessage =
+  | (SwarmV2SessionResponse & { type: "session_started" })
+  | { type: "round_started"; session_id: string; round: number; progress: number }
+  | {
+      type: "agent_thinking";
+      session_id: string;
+      round: number;
+      event_index: number;
+      source_id: string;
+      target_id: string;
+      source_label?: string;
+      target_label?: string;
+      topic?: string;
+      phase?: string;
+      llm_mode?: string;
+    }
+  | {
+      type: "llm_log";
+      session_id: string;
+      status: "batch_started" | "completed" | "fallback" | "info" | string;
+      task: string;
+      event_id?: string;
+      event_ids?: string[];
+      source_label?: string;
+      target_label?: string;
+      topic?: string;
+      batch_size?: number;
+      parallelism?: number;
+      elapsed_ms?: number;
+      llm_enriched?: boolean;
+      fallback_reason?: string;
+    }
+  | { type: "event"; session_id: string; cursor: number; event: SwarmV2Event }
+  | { type: "session_completed"; session_id: string; agents: SwarmV2Agent[]; summary: Record<string, unknown>; events_sent: number };
 
 export type AgentInterviewResponse = {
   world_id: string;
@@ -489,8 +693,23 @@ export type GodModePayload = {
     z_weight?: number;
     z_scale?: number;
     simulation_mode?: "precision" | "swarm";
-    swarm_llm_mode?: "packet" | "agent";
+    swarm_llm_mode?: "packet" | "agent" | "full-agent";
     swarm_tier_model?: Record<string, unknown>;
+    social_stream_density?: number;
+    scene_stream_delay_ms?: number;
+    stream_episode_min_duration_ms?: number;
+    min_interactions_per_step?: number;
+    max_interactions_per_step?: number;
+    swarm_stream_rounds?: number;
+    swarm_events_per_round?: number;
+    swarm_max_session_events?: number;
+    stream_topic_expansion?: boolean;
+    stream_max_active_agents?: number;
+    stream_initial_agent_ratio?: number;
+    stream_growth_rate?: number;
+    internal_max_neighbors?: number;
+    stream_llm_agent_feel?: boolean;
+    llm_agent_sample_size?: number;
   };
 };
 
@@ -551,6 +770,7 @@ export type ReviewSummaryResponse = {
   stance_groups: Array<Record<string, unknown>>;
   belief_trajectory: Record<string, unknown>;
   decision_influence: Record<string, unknown>;
+  action_ledger: Record<string, unknown>;
   group_analysis: Record<string, unknown>;
   group_tables: Record<string, unknown>;
   lineage_summary: Record<string, unknown>;
@@ -717,6 +937,27 @@ export async function createWorld(body: {
     }),
   });
   if (!res.ok) throw new Error(`createWorld: ${res.status}`);
+  return res.json();
+}
+
+export async function updateWorldRuntimeConfig(
+  worldId: string,
+  body: {
+    engine_params?: Record<string, unknown>;
+    role_catalog?: string[];
+    initial_cell_count?: number;
+  }
+): Promise<{
+  world_id: string;
+  engine_params: Record<string, unknown>;
+  role_catalog: string[];
+}> {
+  const res = await fetch(`${API_BASE}/worlds/${worldId}/runtime-config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`updateWorldRuntimeConfig: ${res.status}`);
   return res.json();
 }
 
@@ -1137,6 +1378,71 @@ export async function runSimulation(
   return res.json();
 }
 
+export async function stopSimulation(
+  worldId: string
+): Promise<{
+  world_id: string;
+  status: string;
+}> {
+  const res = await fetch(`${API_BASE}/worlds/${worldId}/stop`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(`stopSimulation: ${res.status}`);
+  return res.json();
+}
+
+export async function runSwarmV2Session(body: {
+  prompt: string;
+  agent_count?: number;
+  rounds?: number;
+  events_per_round?: number;
+  zone_count?: number;
+  llm_mode?: "off" | "packet" | "agent" | "hybrid" | "full-agent";
+  llm_sample_size?: number;
+  llm_parallelism?: number;
+}): Promise<SwarmV2RunResponse> {
+  const res = await fetch(`${API_BASE}/swarm-v2/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`runSwarmV2Session: ${res.status}`);
+  return res.json();
+}
+
+export async function createSwarmV2Session(body: {
+  prompt: string;
+  agent_count?: number;
+  rounds?: number;
+  events_per_round?: number;
+  zone_count?: number;
+  pace_ms?: number;
+  llm_mode?: "off" | "packet" | "agent" | "hybrid" | "full-agent";
+  llm_sample_size?: number;
+  llm_parallelism?: number;
+}): Promise<SwarmV2SessionResponse> {
+  const res = await fetch(`${API_BASE}/swarm-v2/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`createSwarmV2Session: ${res.status}`);
+  return res.json();
+}
+
+export async function listSwarmV2Sessions(limit = 20): Promise<{ sessions: SwarmV2SavedSession[] }> {
+  const res = await fetch(`${API_BASE}/swarm-v2/sessions?limit=${encodeURIComponent(String(limit))}`);
+  if (!res.ok) throw new Error(`listSwarmV2Sessions: ${res.status}`);
+  return res.json();
+}
+
+export async function replaySwarmV2Session(sessionId: string): Promise<SwarmV2ReplayResponse> {
+  const res = await fetch(`${API_BASE}/swarm-v2/sessions/${encodeURIComponent(sessionId)}/replay`);
+  if (!res.ok) throw new Error(`replaySwarmV2Session: ${res.status}`);
+  return res.json();
+}
+
 /** t 미지정 시 저장된 t 목록 */
 export async function listSnapshotTimes(
   worldId: string
@@ -1254,6 +1560,11 @@ export function getApiBase(): string {
 export function getWorldWebSocketUrl(worldId: string): string {
   const wsBase = API_BASE.replace(/^http/, "ws");
   return `${wsBase}/worlds/${encodeURIComponent(worldId)}/ws`;
+}
+
+export function getSwarmV2WebSocketUrl(sessionId: string): string {
+  const wsBase = API_BASE.replace(/^http/, "ws");
+  return `${wsBase}/swarm-v2/sessions/${encodeURIComponent(sessionId)}/ws`;
 }
 
 /**

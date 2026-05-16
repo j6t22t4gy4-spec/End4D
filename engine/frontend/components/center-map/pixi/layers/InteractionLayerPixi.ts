@@ -10,25 +10,42 @@ export class InteractionLayerPixi {
   updateInteractions(interactions: CenterMapSceneInteraction[]) {
     this.interactions = interactions
       .slice()
-      .sort((a, b) => Number(b.fresh) - Number(a.fresh) || b.intensity - a.intensity)
-      .slice(0, 96);
+      .sort(
+        (a, b) =>
+          Number(b.swarmSession) - Number(a.swarmSession) ||
+          Number(b.fresh) - Number(a.fresh) ||
+          Number(b.sessionIndex ?? 0) - Number(a.sessionIndex ?? 0) ||
+          b.intensity - a.intensity
+      )
+      .slice(0, interactions.some((item) => item.swarmSession) ? 900 : 420);
   }
 
   animate(renderTime: number) {
     this.container.removeChildren().forEach((child) => child.destroy());
     if (!this.interactions.length) return;
 
-    const flow = (renderTime * 0.0024) % 1;
+    const flow = (renderTime * 0.0018) % 1;
+    const swarmBatch = new Graphics();
+    let hasSwarmBatch = false;
     for (const interaction of this.interactions) {
-      const g = new Graphics();
-      const color = colorForType(interaction.type);
-      const style = styleForType(interaction.type);
-      const pulse = interaction.fresh ? 0.5 + 0.5 * Math.sin(renderTime * style.pulseSpeed + interaction.intensity * 4.2) : 0;
+      const isSwarm = Boolean(interaction.swarmSession);
+      const g = isSwarm ? swarmBatch : new Graphics();
+      const color = interaction.color ?? colorForType(interaction.type);
+      const style = isSwarm ? swarmStyleForType(interaction.type) : styleForType(interaction.type);
+      const sessionCount = Math.max(1, Number(interaction.sessionCount ?? 1));
+      const sessionIndex = Math.max(1, Number(interaction.sessionIndex ?? 1));
+      const sessionProgress = Math.max(0, Math.min(1, sessionIndex / sessionCount));
+      const pulse = interaction.fresh
+        ? 0.5 + 0.5 * Math.sin(renderTime * style.pulseSpeed + interaction.intensity * 4.2)
+        : 0;
       const alpha = Math.max(
-        interaction.fresh ? 0.08 : 0.025,
+        interaction.fresh ? 0.13 : 0.026,
         Math.min(
           style.maxAlpha,
-          style.baseAlpha + interaction.intensity * style.alphaGain - interaction.age * 0.16 + pulse * style.pulseAlpha
+          style.baseAlpha +
+            interaction.intensity * style.alphaGain -
+            interaction.age * 0.16 +
+            pulse * style.pulseAlpha
         )
       );
       const width = style.baseWidth + interaction.intensity * style.widthGain + pulse * style.pulseWidth;
@@ -37,41 +54,54 @@ export class InteractionLayerPixi {
       const dx = interaction.x1 - interaction.x0;
       const dy = interaction.y1 - interaction.y0;
       const len = Math.max(1, Math.hypot(dx, dy));
-      const bend = style.bend;
+      const bend =
+        style.bend +
+        Math.sin(sessionIndex * 1.73 + interaction.intensity * 5.1) * 6 +
+        Math.min(18, len * 0.035);
       const cx = midX + (-dy / len) * bend;
       const cy = midY + (dx / len) * bend;
-      const t = (flow + interaction.intensity * 0.37 + interaction.age * 0.23) % 1;
-      const qx = quadraticAt(interaction.x0, cx, interaction.x1, t);
-      const qy = quadraticAt(interaction.y0, cy, interaction.y1, t);
+      const t = (flow + sessionProgress * 0.64 + interaction.intensity * 0.31) % 1;
+      if (isSwarm) hasSwarmBatch = true;
 
       if (interaction.fresh) {
-        g.lineStyle(width + 2.2 + pulse * 2.8, color, alpha * 0.1);
+        g.lineStyle(width + 1 + pulse * 0.7, color, alpha * 0.06);
         g.moveTo(interaction.x0, interaction.y0);
         g.quadraticCurveTo(cx, cy, interaction.x1, interaction.y1);
       }
       g.lineStyle(width, color, alpha);
-      g.moveTo(interaction.x0, interaction.y0);
-      g.quadraticCurveTo(cx, cy, interaction.x1, interaction.y1);
-      if (interaction.type === "hostile" && interaction.fresh) {
-        drawSpark(g, qx, qy, color, alpha, pulse);
-      }
-      g.beginFill(color, alpha * 0.64);
-      g.drawCircle(qx, qy, style.dotRadius + interaction.intensity * 0.85 + pulse * 0.5);
-      g.endFill();
+      drawStreamCurve(g, interaction.x0, interaction.y0, cx, cy, interaction.x1, interaction.y1);
+      drawFlowParticles(g, {
+        x0: interaction.x0,
+        y0: interaction.y0,
+        cx,
+        cy,
+        x1: interaction.x1,
+        y1: interaction.y1,
+        color,
+        alpha,
+        style,
+        t,
+        intensity: interaction.intensity,
+        fresh: Boolean(interaction.fresh),
+        pulse,
+        swarm: isSwarm,
+      });
       if (interaction.fresh) {
         g.lineStyle(0);
-        g.beginFill(color, alpha * style.haloAlpha);
-        g.drawCircle(qx, qy, style.haloRadius + pulse * style.haloPulse + interaction.intensity * 5);
+        const head = pointOnQuadratic(interaction.x0, interaction.y0, cx, cy, interaction.x1, interaction.y1, t);
+        g.beginFill(color, alpha * style.haloAlpha * 0.45);
+        g.drawCircle(head.x, head.y, style.haloRadius + pulse * style.haloPulse + interaction.intensity * 2.2);
         g.endFill();
-        g.lineStyle(0.75, color, alpha * 0.38);
-        g.drawCircle(interaction.x0, interaction.y0, 3.8 + pulse * 1.4);
-        g.drawCircle(interaction.x1, interaction.y1, 4.6 + pulse * 1.8);
+        g.lineStyle(0.55, color, alpha * 0.22);
+        g.drawCircle(interaction.x0, interaction.y0, 2.2 + pulse * 0.45);
+        g.drawCircle(interaction.x1, interaction.y1, 2.5 + pulse * 0.55);
       }
-      g.beginFill(color, alpha * 0.28);
-      g.drawCircle(interaction.x1, interaction.y1, 0.9 + interaction.intensity * 0.65);
+      g.beginFill(color, alpha * 0.24);
+      g.drawCircle(interaction.x1, interaction.y1, 0.72 + interaction.intensity * 0.34);
       g.endFill();
-      this.container.addChild(g);
+      if (!isSwarm) this.container.addChild(g);
     }
+    if (hasSwarmBatch) this.container.addChild(swarmBatch);
   }
 
   destroy() {
@@ -89,82 +119,158 @@ function colorForType(type: CenterMapSceneInteraction["type"]) {
 function styleForType(type: CenterMapSceneInteraction["type"]) {
   if (type === "hostile") {
     return {
-      baseAlpha: 0.2,
-      alphaGain: 0.32,
-      maxAlpha: 0.74,
-      pulseAlpha: 0.2,
-      baseWidth: 0.48,
-      widthGain: 0.9,
-      pulseWidth: 0.34,
-      pulseSpeed: 0.012,
-      bend: 14,
-      dotRadius: 1.35,
-      haloAlpha: 0.2,
-      haloRadius: 7,
-      haloPulse: 9,
+      baseAlpha: 0.24,
+      alphaGain: 0.3,
+      maxAlpha: 0.62,
+      pulseAlpha: 0.16,
+      baseWidth: 0.42,
+      widthGain: 0.48,
+      pulseWidth: 0.16,
+      pulseSpeed: 0.01,
+      bend: 16,
+      dotRadius: 1.2,
+      haloAlpha: 0.16,
+      haloRadius: 5,
+      haloPulse: 5,
     };
   }
   if (type === "negative") {
     return {
-      baseAlpha: 0.16,
-      alphaGain: 0.25,
-      maxAlpha: 0.58,
-      pulseAlpha: 0.14,
-      baseWidth: 0.44,
-      widthGain: 0.74,
-      pulseWidth: 0.28,
-      pulseSpeed: 0.008,
-      bend: 9,
-      dotRadius: 1.25,
-      haloAlpha: 0.15,
-      haloRadius: 6,
-      haloPulse: 7,
+      baseAlpha: 0.18,
+      alphaGain: 0.22,
+      maxAlpha: 0.46,
+      pulseAlpha: 0.1,
+      baseWidth: 0.36,
+      widthGain: 0.42,
+      pulseWidth: 0.12,
+      pulseSpeed: 0.007,
+      bend: 10,
+      dotRadius: 1.1,
+      haloAlpha: 0.12,
+      haloRadius: 4.8,
+      haloPulse: 4.5,
     };
   }
   if (type === "positive") {
     return {
-      baseAlpha: 0.14,
-      alphaGain: 0.22,
-      maxAlpha: 0.54,
-      pulseAlpha: 0.12,
-      baseWidth: 0.42,
-      widthGain: 0.66,
-      pulseWidth: 0.24,
-      pulseSpeed: 0.006,
-      bend: -8,
-      dotRadius: 1.35,
-      haloAlpha: 0.18,
-      haloRadius: 8,
-      haloPulse: 8,
+      baseAlpha: 0.16,
+      alphaGain: 0.2,
+      maxAlpha: 0.42,
+      pulseAlpha: 0.09,
+      baseWidth: 0.34,
+      widthGain: 0.38,
+      pulseWidth: 0.1,
+      pulseSpeed: 0.0055,
+      bend: -9,
+      dotRadius: 1.1,
+      haloAlpha: 0.13,
+      haloRadius: 5.2,
+      haloPulse: 4.5,
     };
   }
   return {
-    baseAlpha: 0.06,
-    alphaGain: 0.16,
-    maxAlpha: 0.34,
-    pulseAlpha: 0.08,
-    baseWidth: 0.36,
-    widthGain: 0.52,
-    pulseWidth: 0.16,
-    pulseSpeed: 0.005,
+    baseAlpha: 0.08,
+    alphaGain: 0.13,
+    maxAlpha: 0.28,
+    pulseAlpha: 0.05,
+    baseWidth: 0.28,
+    widthGain: 0.32,
+    pulseWidth: 0.1,
+    pulseSpeed: 0.004,
     bend: 5,
-    dotRadius: 1.05,
-    haloAlpha: 0.1,
-    haloRadius: 5,
-    haloPulse: 5,
+    dotRadius: 0.95,
+    haloAlpha: 0.07,
+    haloRadius: 3.8,
+    haloPulse: 3.4,
   };
 }
 
-function drawSpark(g: Graphics, x: number, y: number, color: number, alpha: number, pulse: number) {
-  const size = 5 + pulse * 5;
-  g.lineStyle(0.9, color, alpha * 0.56);
-  g.moveTo(x - size, y);
-  g.lineTo(x + size, y);
-  g.moveTo(x, y - size);
-  g.lineTo(x, y + size);
+function swarmStyleForType(type: CenterMapSceneInteraction["type"]) {
+  const base = styleForType(type);
+  return {
+    ...base,
+    baseAlpha: base.baseAlpha * 0.72,
+    alphaGain: base.alphaGain * 0.78,
+    maxAlpha: Math.min(base.maxAlpha, 0.36),
+    pulseAlpha: base.pulseAlpha * 0.72,
+    baseWidth: Math.max(0.18, base.baseWidth * 0.7),
+    widthGain: base.widthGain * 0.62,
+    pulseWidth: base.pulseWidth * 0.55,
+    bend: base.bend * 0.72,
+    dotRadius: Math.max(0.7, base.dotRadius * 0.72),
+    haloAlpha: base.haloAlpha * 0.7,
+    haloRadius: base.haloRadius * 0.74,
+    haloPulse: base.haloPulse * 0.65,
+  };
+}
+
+function drawStreamCurve(g: Graphics, x0: number, y0: number, cx: number, cy: number, x1: number, y1: number) {
+  drawQuadraticSegment(g, x0, y0, cx, cy, x1, y1, 0.04, 0.96);
+}
+
+function drawQuadraticSegment(
+  g: Graphics,
+  x0: number,
+  y0: number,
+  cx: number,
+  cy: number,
+  x1: number,
+  y1: number,
+  start: number,
+  end: number
+) {
+  const steps = 8;
+  for (let idx = 0; idx <= steps; idx += 1) {
+    const t = start + ((end - start) * idx) / steps;
+    const x = quadraticAt(x0, cx, x1, t);
+    const y = quadraticAt(y0, cy, y1, t);
+    if (idx === 0) {
+      g.moveTo(x, y);
+    } else {
+      g.lineTo(x, y);
+    }
+  }
 }
 
 function quadraticAt(a: number, b: number, c: number, t: number) {
   const inv = 1 - t;
   return inv * inv * a + 2 * inv * t * b + t * t * c;
+}
+
+function pointOnQuadratic(x0: number, y0: number, cx: number, cy: number, x1: number, y1: number, t: number) {
+  return {
+    x: quadraticAt(x0, cx, x1, t),
+    y: quadraticAt(y0, cy, y1, t),
+  };
+}
+
+function drawFlowParticles(
+  g: Graphics,
+  args: {
+    x0: number;
+    y0: number;
+    cx: number;
+    cy: number;
+    x1: number;
+    y1: number;
+    color: number;
+    alpha: number;
+    style: ReturnType<typeof styleForType>;
+    t: number;
+    intensity: number;
+    fresh: boolean;
+    pulse: number;
+    swarm?: boolean;
+  }
+) {
+  const count = args.swarm ? (args.fresh ? 3 : 1) : args.fresh ? 4 : 2;
+  for (let idx = 0; idx < count; idx += 1) {
+    const localT = (args.t + idx * (args.swarm ? 0.13 : 0.085)) % 1;
+    const point = pointOnQuadratic(args.x0, args.y0, args.cx, args.cy, args.x1, args.y1, localT);
+    const fade = 1 - idx / Math.max(1, count);
+    const radius = args.style.dotRadius + args.intensity * 0.44 + (args.fresh ? args.pulse * 0.18 : 0);
+    g.beginFill(args.color, args.alpha * ((args.swarm ? 0.48 : 0.66) * fade + 0.08));
+    g.drawCircle(point.x, point.y, radius * (0.75 + fade * 0.45));
+    g.endFill();
+  }
 }

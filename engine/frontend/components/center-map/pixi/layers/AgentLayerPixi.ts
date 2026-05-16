@@ -25,6 +25,9 @@ type AgentVisual = {
   pressure: number;
   observerScore: number;
   selected: boolean;
+  sessionActive: boolean;
+  sessionRole: "source" | "target" | "ambient";
+  sessionIntensity: number;
   hovered: boolean;
   fractureSignal: boolean;
   phase: number;
@@ -92,6 +95,9 @@ export class AgentLayerPixi {
         existing.pressure !== agent.pressure ||
         existing.observerScore !== agent.observerScore ||
         existing.selected !== agent.selected ||
+        existing.sessionActive !== agent.sessionActive ||
+        existing.sessionRole !== agent.sessionRole ||
+        existing.sessionIntensity !== agent.sessionIntensity ||
         existing.fractureSignal !== agent.fractureSignal;
 
       existing.radius = agent.radius;
@@ -99,6 +105,9 @@ export class AgentLayerPixi {
       existing.pressure = agent.pressure;
       existing.observerScore = agent.observerScore;
       existing.selected = agent.selected;
+      existing.sessionActive = agent.sessionActive;
+      existing.sessionRole = agent.sessionRole;
+      existing.sessionIntensity = agent.sessionIntensity;
       existing.fractureSignal = agent.fractureSignal;
 
       if (needsRedraw) this.redrawVisual(existing);
@@ -122,10 +131,11 @@ export class AgentLayerPixi {
         anchorVisual && visual !== anchorVisual
           ? Math.max(0, 1 - focusDistance / (selectedIsolation ? 170 : 118)) * (selectedIsolation ? 0.52 : 0.42)
           : 0;
+      const sessionDim = visual.sessionActive ? 1 : selectedVisual ? 0.72 : 0.86;
       const isolationDim =
         selectedIsolation && !visual.selected
-          ? 0.42 + neighborFocus * 0.7
-          : 1;
+          ? (0.42 + neighborFocus * 0.7) * sessionDim
+          : sessionDim;
       const targetDistance = Math.hypot(visual.targetX - visual.x, visual.targetY - visual.y);
       const transitionBoost = Math.max(transitionPhase, visual.transitionEnergy);
       const lerpGain = Math.min(
@@ -148,6 +158,7 @@ export class AgentLayerPixi {
         1 +
           (visual.hovered ? 0.1 : 0) +
           (visual.selected ? 0.08 : 0) +
+          (visual.sessionActive ? 0.08 + visual.sessionIntensity * 0.08 : 0) +
           neighborFocus * 0.12 +
           visual.interactionEnergy * 0.08
       );
@@ -159,6 +170,7 @@ export class AgentLayerPixi {
         0.08 +
           visual.observerScore * 0.2 +
           visual.pressure * 0.06 +
+          (visual.sessionActive ? visual.sessionIntensity * 0.22 : 0) +
           neighborFocus * 0.18 +
           visual.interactionEnergy * 0.12 +
           (visual.hovered ? 0.06 : 0) +
@@ -170,6 +182,8 @@ export class AgentLayerPixi {
         ? 0.36
         : visual.selected
           ? 0.22
+          : visual.sessionActive
+            ? 0.14 + visual.sessionIntensity * 0.18
           : 0;
 
       visual.fractureAura.scale.set(1.08);
@@ -183,7 +197,7 @@ export class AgentLayerPixi {
         : isolationDim;
 
       visual.ring.scale.set(visual.selected ? 1.12 : visual.hovered ? 1.08 : 1);
-      visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal ? 0.78 : 0.0;
+      visual.ring.alpha = visual.selected || visual.hovered || visual.fractureSignal || visual.sessionActive ? 0.78 : 0.0;
 
       this.drawTransitionTrail(visual, renderTime, transitionBoost, targetDistance);
       visual.interactionX *= 0.84;
@@ -258,6 +272,9 @@ export class AgentLayerPixi {
       pressure: agent.pressure,
       observerScore: agent.observerScore,
       selected: agent.selected,
+      sessionActive: agent.sessionActive,
+      sessionRole: agent.sessionRole,
+      sessionIntensity: agent.sessionIntensity,
       hovered: false,
       fractureSignal: agent.fractureSignal,
       phase: Math.random(),
@@ -275,15 +292,15 @@ export class AgentLayerPixi {
   private redrawVisual(visual: AgentVisual) {
     visual.halo.clear();
     visual.halo.beginFill(
-      visual.color,
-      Math.min(0.24, 0.05 + visual.observerScore * 0.14 + visual.pressure * 0.05)
+      visual.sessionActive ? sessionColor(visual.sessionRole) : visual.color,
+      Math.min(0.34, 0.05 + visual.observerScore * 0.14 + visual.pressure * 0.05 + visual.sessionIntensity * 0.16)
     );
-    visual.halo.drawCircle(0, 0, visual.radius + 6 + visual.pressure * 6);
+    visual.halo.drawCircle(0, 0, visual.radius + 6 + visual.pressure * 6 + visual.sessionIntensity * 6);
     visual.halo.endFill();
 
     visual.hoverGlow.clear();
-    visual.hoverGlow.beginFill(0x38bdf8, 0.2);
-    visual.hoverGlow.drawCircle(0, 0, visual.radius + 9 + visual.pressure * 5);
+    visual.hoverGlow.beginFill(visual.sessionActive ? sessionColor(visual.sessionRole) : 0x38bdf8, 0.2);
+    visual.hoverGlow.drawCircle(0, 0, visual.radius + 9 + visual.pressure * 5 + visual.sessionIntensity * 8);
     visual.hoverGlow.endFill();
 
     visual.fractureAura.clear();
@@ -292,17 +309,17 @@ export class AgentLayerPixi {
     visual.fractureAura.endFill();
 
     visual.ring.clear();
-    if (visual.selected || visual.hovered || visual.fractureSignal) {
+    if (visual.selected || visual.hovered || visual.fractureSignal || visual.sessionActive) {
       visual.ring.lineStyle(
-        1.6 + (visual.selected ? 1 : visual.hovered ? 0.6 : 0.3),
-        visual.selected ? 0xf8fafc : visual.hovered ? 0x7dd3fc : 0xfb7185,
-        0.82
+        1.2 + (visual.selected ? 1 : visual.hovered ? 0.6 : visual.sessionActive ? 0.5 : 0.3),
+        visual.selected ? 0xf8fafc : visual.hovered ? 0x7dd3fc : visual.sessionActive ? sessionColor(visual.sessionRole) : 0xfb7185,
+        visual.sessionActive ? 0.88 : 0.82
       );
-      visual.ring.drawCircle(0, 0, visual.radius + 7 + visual.pressure * 4);
+      visual.ring.drawCircle(0, 0, visual.radius + 7 + visual.pressure * 4 + visual.sessionIntensity * 4);
     }
 
     visual.core.clear();
-    visual.core.beginFill(visual.color, 0.96);
+    visual.core.beginFill(visual.sessionActive ? tintToward(visual.color, sessionColor(visual.sessionRole), 0.36) : visual.color, 0.96);
     visual.core.drawCircle(0, 0, visual.radius + (visual.hovered ? 1.4 : visual.selected ? 1.9 : 0));
     visual.core.endFill();
   }
@@ -330,6 +347,19 @@ export class AgentLayerPixi {
     visual.transitionTrail.moveTo(-ux * tail, -uy * tail);
     visual.transitionTrail.lineTo(-ux * (visual.radius + 2), -uy * (visual.radius + 2));
   }
+}
+
+function sessionColor(role: AgentVisual["sessionRole"]) {
+  if (role === "source") return 0x0284c7;
+  if (role === "target") return 0x14b8a6;
+  return 0x64748b;
+}
+
+function tintToward(color: number, target: number, amount: number) {
+  const r = ((color >> 16) & 255) * (1 - amount) + ((target >> 16) & 255) * amount;
+  const g = ((color >> 8) & 255) * (1 - amount) + ((target >> 8) & 255) * amount;
+  const b = (color & 255) * (1 - amount) + (target & 255) * amount;
+  return ((Math.round(r) & 255) << 16) | ((Math.round(g) & 255) << 8) | (Math.round(b) & 255);
 }
 
 function nudge(visual: AgentVisual, dx: number, dy: number, energy: number) {

@@ -557,6 +557,10 @@ class LLMFacade:
             "fallback_reason": str(meta.get("fallback_reason") or ""),
         }
 
+    def run_prompts_with_meta(self, prompts: Iterable[str], *, task: str) -> tuple[list[str], dict[str, Any]]:
+        """Run custom prompts through the shared scheduler and telemetry path."""
+        return self._run_task_with_meta(prompts, task=task)
+
     def _repair_citation_output(
         self,
         *,

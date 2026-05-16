@@ -22,13 +22,11 @@
 |------|------|
 | [CONCEPT.md](docs/CONCEPT.md) | 핵심 개념, 5대 규칙, 3계층 감정·생각 메커니즘 |
 | [IMPLEMENTATION.md](docs/IMPLEMENTATION.md) | 기술 스택, 실행 방법 |
-| [IMPLEMENTATION_SEQUENCE.md](docs/IMPLEMENTATION_SEQUENCE.md) | Phase 0~8 구현 시퀀스 |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 아키텍처 고려사항, 최적화 전략 |
 | [ARCHITECTURE_CHECKLIST.md](docs/ARCHITECTURE_CHECKLIST.md) | 코드 작성 시 아키텍처 본질 체크리스트 |
 | [DEVELOPMENT_GAPS.md](docs/DEVELOPMENT_GAPS.md) | 핵심 결손, 리스크, 다음 개발 우선순위 |
-| [CODE_REFERENCE.md](docs/CODE_REFERENCE.md) | 파일별 코드 역할 설명 |
+| [BACKEND_ENGINE_REFORM_TARGET.md](docs/BACKEND_ENGINE_REFORM_TARGET.md) | MiroFish식 실시간 체감을 흡수하기 위한 현재 백엔드 개편 목표 |
 | [PRODUCT_STRATEGY.md](docs/PRODUCT_STRATEGY.md) | 로컬 실행 + 클라우드 데이터 + 다국가 제품 전략 |
-| [SKILLS.md](docs/SKILLS.md) | 개발에 필요한 스킬 목록 |
 
 ## Docker (Phase 8)
 

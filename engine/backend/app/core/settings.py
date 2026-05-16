@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import json
+import time
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -28,6 +29,8 @@ LLM_TASK_NAMES = (
     "agent_interview",
     "agent_interview_diff",
     "world_chat",
+    "swarm_packet",
+    "swarm_agent",
 )
 
 LLM_RUNTIME_PROFILES = ("rules-first", "balanced", "llm-first")
@@ -51,30 +54,111 @@ _TASK_PRIORITY_DEFAULTS = {
     "agent_interview": 1,
     "agent_interview_diff": 1,
     "world_chat": 1,
+    "swarm_packet": 2,
+    "swarm_agent": 2,
 }
+
+_RUNTIME_LLM_CONFIG_PATH_CACHE: Path | None = None
+_RUNTIME_LLM_CONFIG_PATH_CACHE_KEY: tuple[str, str] | None = None
+_RUNTIME_LLM_CONFIG_CACHE: dict[str, str] | None = None
+_RUNTIME_LLM_CONFIG_CACHE_PATH: Path | None = None
+_RUNTIME_LLM_CONFIG_CACHE_MTIME_NS: int | None = None
+_RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT: float = 0.0
+_RUNTIME_LLM_CONFIG_CACHE_TTL_S = 0.5
 
 
 def _runtime_llm_config_path() -> Path:
-    return get_state_dir().parent / "runtime" / "llm_config.json"
+    global _RUNTIME_LLM_CONFIG_PATH_CACHE, _RUNTIME_LLM_CONFIG_PATH_CACHE_KEY
+    cache_key = (
+        os.getenv("ORGANIC4D_STATE_DIR", "").strip(),
+        os.getenv("ORGANIC4D_PERSISTENCE_BACKEND", "").strip(),
+    )
+    if _RUNTIME_LLM_CONFIG_PATH_CACHE is not None and _RUNTIME_LLM_CONFIG_PATH_CACHE_KEY == cache_key:
+        return _RUNTIME_LLM_CONFIG_PATH_CACHE
+    _RUNTIME_LLM_CONFIG_PATH_CACHE = get_state_dir().parent / "runtime" / "llm_config.json"
+    _RUNTIME_LLM_CONFIG_PATH_CACHE_KEY = cache_key
+    return _RUNTIME_LLM_CONFIG_PATH_CACHE
+
+
+def clear_runtime_llm_config_cache() -> None:
+    """Clear runtime config caches, mainly for tests that swap state dirs."""
+    global _RUNTIME_LLM_CONFIG_PATH_CACHE, _RUNTIME_LLM_CONFIG_PATH_CACHE_KEY
+    global _RUNTIME_LLM_CONFIG_CACHE, _RUNTIME_LLM_CONFIG_CACHE_PATH, _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS
+    global _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT
+    _RUNTIME_LLM_CONFIG_PATH_CACHE = None
+    _RUNTIME_LLM_CONFIG_PATH_CACHE_KEY = None
+    _RUNTIME_LLM_CONFIG_CACHE = None
+    _RUNTIME_LLM_CONFIG_CACHE_PATH = None
+    _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = None
+    _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = 0.0
 
 
 def _load_runtime_llm_config() -> dict[str, str]:
+    global _RUNTIME_LLM_CONFIG_CACHE, _RUNTIME_LLM_CONFIG_CACHE_PATH, _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS
+    global _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT
     path = _runtime_llm_config_path()
-    if not path.exists():
+    now = time.monotonic()
+    if (
+        _RUNTIME_LLM_CONFIG_CACHE is not None
+        and _RUNTIME_LLM_CONFIG_CACHE_PATH == path
+        and now - _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT < _RUNTIME_LLM_CONFIG_CACHE_TTL_S
+    ):
+        return dict(_RUNTIME_LLM_CONFIG_CACHE)
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        if _RUNTIME_LLM_CONFIG_CACHE_PATH == path and _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS is None:
+            _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
+            return dict(_RUNTIME_LLM_CONFIG_CACHE or {})
+        _RUNTIME_LLM_CONFIG_CACHE = {}
+        _RUNTIME_LLM_CONFIG_CACHE_PATH = path
+        _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = None
+        _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
         return {}
+    if (
+        _RUNTIME_LLM_CONFIG_CACHE is not None
+        and _RUNTIME_LLM_CONFIG_CACHE_PATH == path
+        and _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS == stat.st_mtime_ns
+    ):
+        _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
+        return dict(_RUNTIME_LLM_CONFIG_CACHE)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        _RUNTIME_LLM_CONFIG_CACHE = {}
+        _RUNTIME_LLM_CONFIG_CACHE_PATH = path
+        _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = stat.st_mtime_ns
+        _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
         return {}
     if not isinstance(data, dict):
+        _RUNTIME_LLM_CONFIG_CACHE = {}
+        _RUNTIME_LLM_CONFIG_CACHE_PATH = path
+        _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = stat.st_mtime_ns
+        _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
         return {}
-    return {str(key): str(value) for key, value in data.items() if value is not None}
+    config = {str(key): str(value) for key, value in data.items() if value is not None}
+    _RUNTIME_LLM_CONFIG_CACHE = dict(config)
+    _RUNTIME_LLM_CONFIG_CACHE_PATH = path
+    _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = stat.st_mtime_ns
+    _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = now
+    return config
 
 
 def _write_runtime_llm_config(config: dict[str, str]) -> None:
+    global _RUNTIME_LLM_CONFIG_CACHE, _RUNTIME_LLM_CONFIG_CACHE_PATH, _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS
+    global _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT
     path = _runtime_llm_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    normalized = {str(key): str(value) for key, value in config.items() if value is not None}
+    path.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        mtime_ns = path.stat().st_mtime_ns
+    except FileNotFoundError:
+        mtime_ns = None
+    _RUNTIME_LLM_CONFIG_CACHE = dict(normalized)
+    _RUNTIME_LLM_CONFIG_CACHE_PATH = path
+    _RUNTIME_LLM_CONFIG_CACHE_MTIME_NS = mtime_ns
+    _RUNTIME_LLM_CONFIG_CACHE_CHECKED_AT = time.monotonic()
 
 
 def _get_runtime_llm_value(key: str, default: str = "") -> str:
@@ -232,6 +316,8 @@ def get_llm_timeout_s(task: str | None = None) -> float:
         return min(120.0, max(base, 45.0))
     if task_name in {"review_query", "review_diff_query", "session_review_query", "agent_interview", "agent_interview_diff"}:
         return min(120.0, max(base, 30.0))
+    if task_name in {"swarm_agent", "swarm_packet"}:
+        return min(120.0, max(base, 90.0))
     return base
 
 

@@ -16,7 +16,13 @@ from app.core.data_packs import (
     validate_data_pack,
     verify_data_pack,
 )
-from app.core.settings import get_ui_language, set_runtime_llm_config, set_runtime_ui_language
+from app.core.settings import (
+    get_llm_model,
+    get_llm_provider,
+    get_ui_language,
+    set_runtime_llm_config,
+    set_runtime_ui_language,
+)
 from app.llm.chat_runtime import generate_reasoning_batch
 
 router = APIRouter(prefix="/runtime", tags=["runtime"])
@@ -482,8 +488,8 @@ def test_runtime_llm_config():
         return RuntimeLlmTestResponse(
             ok=False,
             mode="error",
-            provider="unknown",
-            model="unknown",
+            provider=get_llm_provider(),
+            model=get_llm_model(),
             used_fallback=False,
             fallback_reason=str(exc),
             preview="",

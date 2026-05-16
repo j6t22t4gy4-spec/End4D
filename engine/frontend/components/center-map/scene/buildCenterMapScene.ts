@@ -6,7 +6,14 @@ import {
   CENTER_MAP_SCENE_PADDING,
   CENTER_MAP_SCENE_WIDTH,
   type CenterMapScene,
+  type CenterMapSceneSession,
 } from "@/components/center-map/scene/sceneTypes";
+import {
+  socialFieldActionLabel,
+  socialFieldColorFromRecord,
+  socialFieldToneFromRecord,
+  type SocialFieldTone,
+} from "@/lib/socialFieldActions";
 
 type BuildCenterMapSceneArgs = {
   cells: CellSnapshot[];
@@ -26,7 +33,15 @@ export function buildCenterMapScene({
       agents: [],
       zones: [],
       interactions: [],
+      activeSession: null,
     };
+  }
+
+  const activeSession = buildActiveSession(sceneEvents);
+  const activeAgentRoles = new Map<string, "source" | "target">();
+  for (const id of activeSession?.sourceIds ?? []) activeAgentRoles.set(id, "source");
+  for (const id of activeSession?.targetIds ?? []) {
+    if (!activeAgentRoles.has(id)) activeAgentRoles.set(id, "target");
   }
 
   const xs = cells.map((cell) => cell.x);
@@ -119,6 +134,9 @@ export function buildCenterMapScene({
         Math.min(1, Number(cell.action_state?.observer_score ?? 0))
       ),
       selected: cell.cell_id === selectedAgentId,
+      sessionActive: activeAgentRoles.has(cell.cell_id),
+      sessionRole: (activeAgentRoles.get(cell.cell_id) ?? "ambient") as "source" | "target" | "ambient",
+      sessionIntensity: activeAgentRoles.has(cell.cell_id) ? activeSession?.intensity ?? 0.7 : 0,
       fractureSignal: Boolean(cell.action_state?.fracture_signal_received),
     };
   });
@@ -145,6 +163,7 @@ export function buildCenterMapScene({
             x1: target.x,
             y1: target.y,
             type: eventType,
+            color: socialFieldColorFromRecord(null, event.type),
             intensity: quality,
             age,
           },
@@ -157,7 +176,7 @@ export function buildCenterMapScene({
     const source = projected.get(sourceId);
     if (!source) return [];
     const targetIds = Array.isArray(event.target_ids) ? event.target_ids : [];
-    const eventType = normalizeInteractionType(event.interaction_type);
+    const eventType = socialFieldToneFromRecord(event.action_record, event.interaction_type);
     const pressureDelta = Number(event.pressure_delta ?? 0);
     const relationshipDelta = Number(event.relationship_delta ?? 0);
     const hasNarrative = Boolean(event.narrative_reason || event.scenario_relevance);
@@ -174,6 +193,13 @@ export function buildCenterMapScene({
           + 0.28
       )
     );
+    const sessionIndex = Number(event.stream_round_index ?? event.session_index ?? event.beat_index ?? event.scene_index ?? eventIndex + 1);
+    const sessionCount = Number(event.stream_round_count ?? event.session_count ?? event.beat_count ?? event.scene_count ?? sceneEvents.length);
+    const visualKind = String((event.visual_hint as Record<string, unknown> | undefined)?.kind ?? "");
+    const swarmSession =
+      visualKind.includes("miro_swarm") ||
+      String(event.t_composition_role ?? "").includes("mirofish_cleanroom") ||
+      String(event.stream_phase ?? "").includes("miro_swarm");
     return targetIds.flatMap((targetId, targetIndex) => {
       const target = projected.get(String(targetId));
       if (!target) return [];
@@ -187,20 +213,32 @@ export function buildCenterMapScene({
           x1: target.x,
           y1: target.y,
           type: eventType,
+          actionType: event.action_record?.action_type,
+          actionLabel: socialFieldActionLabel(event.action_record, "ko"),
+          fieldAxis: event.action_record?.field_axis,
+          color: socialFieldColorFromRecord(event.action_record, event.interaction_type),
           intensity,
           age: Math.max(0, 1 - Number(event.scene_index ?? 1) / Math.max(1, Number(event.scene_count ?? 1))),
           fresh:
             isLatestScene ||
+            String(event.stream_session_id ?? "") === String(activeSession?.id ?? "") ||
             Boolean((event.visual_hint as Record<string, unknown> | undefined)?.pulse) ||
             Boolean((event as Record<string, unknown>).live_computed),
           sceneId: String(event.scene_id ?? ""),
+          streamSessionId: String(event.stream_session_id ?? ""),
+          sessionIndex,
+          sessionCount,
+          sessionEventIndex: Number(event.session_event_index ?? targetIndex + 1),
           pressureDelta,
           salience: intensity,
+          swarmSession,
+          llmAgentChannel: event.llm_agent_channel,
         },
       ];
     });
   });
-  const interactions = [...sceneInteractions, ...cellInteractions].slice(0, 128);
+  const hasSwarmSession = sceneInteractions.some((interaction) => interaction.swarmSession);
+  const interactions = [...sceneInteractions, ...cellInteractions].slice(0, hasSwarmSession ? 900 : 240);
 
   return {
     width: CENTER_MAP_SCENE_WIDTH,
@@ -222,14 +260,79 @@ export function buildCenterMapScene({
       fractureSignals: zone.fractureSignals,
     })),
     interactions,
+    activeSession,
   };
+}
+
+function buildActiveSession(sceneEvents: IntraTSceneEvent[]): CenterMapSceneSession | null {
+  if (!sceneEvents.length) return null;
+  const latest = sceneEvents[sceneEvents.length - 1];
+  const sessionId = eventStreamId(latest);
+  const sessionEvents = sceneEvents.filter((event) => {
+    const id = eventStreamId(event);
+    return id === sessionId;
+  });
+  const latestRound = Number(latest.stream_round_index ?? latest.session_index ?? latest.beat_index ?? latest.scene_index ?? 1);
+  const activeRoundEvents = sessionEvents.filter((event) => {
+    const round = Number(event.stream_round_index ?? event.session_index ?? event.beat_index ?? event.scene_index ?? 1);
+    return Math.abs(round - latestRound) <= 1;
+  });
+  const focusEvents = activeRoundEvents.length ? activeRoundEvents : sessionEvents.slice(-12);
+  const sourceIds = uniqueStrings(focusEvents.map((event) => String(event.source_id ?? "")).filter(Boolean));
+  const targetIds = uniqueStrings(focusEvents.flatMap((event) => event.target_ids ?? []).map(String).filter(Boolean));
+  const tones = focusEvents.map((event) => socialFieldToneFromRecord(event.action_record, event.interaction_type));
+  const dominantTone = dominantSessionTone(tones);
+  const intensity = Math.max(
+    0.28,
+    Math.min(
+      1,
+      focusEvents.reduce((sum, event) => {
+        const pressure = Math.abs(Number(event.pressure_delta ?? 0)) * 3.4;
+        const relation = Math.abs(Number(event.relationship_delta ?? 0)) * 2.4;
+        const hostile = socialFieldToneFromRecord(event.action_record, event.interaction_type) === "hostile" ? 0.22 : 0;
+        return sum + pressure + relation + hostile + 0.18;
+      }, 0) / Math.max(1, focusEvents.length)
+    )
+  );
+  return {
+    id: sessionId,
+    index: latestRound,
+    count: Number(latest.stream_round_count ?? latest.session_count ?? latest.beat_count ?? latest.scene_count ?? 1),
+    eventCount: sessionEvents.length,
+    activeAgentIds: uniqueStrings([...sourceIds, ...targetIds]),
+    sourceIds,
+    targetIds,
+    latestSummary: String(latest.summary ?? ""),
+    activePhase: String(latest.stream_phase ?? "session"),
+    dominantTone,
+    intensity,
+  };
+}
+
+function eventStreamId(event: IntraTSceneEvent) {
+  return String(
+    event.stream_episode_id ??
+      event.stream_session_id ??
+      `stream-${event.t ?? 0}-${event.stream_round_index ?? event.session_index ?? event.beat_index ?? event.scene_index ?? ""}`
+  );
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function dominantSessionTone(tones: SocialFieldTone[]): SocialFieldTone {
+  if (tones.includes("hostile")) return "hostile";
+  if (tones.includes("negative")) return "negative";
+  if (tones.includes("positive")) return "positive";
+  return "dialogue";
 }
 
 function rgbToHex(rgb: [number, number, number]) {
   return ((rgb[0] ?? 0) << 16) | ((rgb[1] ?? 0) << 8) | (rgb[2] ?? 0);
 }
 
-function normalizeInteractionType(value: unknown): "positive" | "negative" | "hostile" | "dialogue" {
+function normalizeInteractionType(value: unknown): SocialFieldTone {
   const raw = String(value ?? "dialogue");
   if (raw === "positive" || raw === "negative" || raw === "hostile" || raw === "dialogue") return raw;
   if (raw === "alignment") return "positive";

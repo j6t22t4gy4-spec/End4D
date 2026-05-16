@@ -37,7 +37,7 @@
 | 2.6 | **세계 생성**은 사용자 파라미터 선택이 아니라 **프롬프트 → Genesis(AI)** | 수치 폼으로 월드 스펙을 사용자가 직접 고름 (제품 UX) | CONCEPT §5.3, §8 |
 | 2.7 | **스텝 t의 달력 의미·영양 스케일**은 Genesis가 정하고 `nutrient_per_step`으로 성장에 반영 | t 의미와 무관하게 항상 동일 영양만 주입 | CONCEPT §5.3 |
 | 2.8 | 초기 에이전트 페르소나는 가능하면 국가별 persona dataset seed를 사용하고, 없을 때만 역할 카탈로그 fallback | LLM이 모든 페르소나를 즉석 생성하거나 특정 국가 데이터셋에 하드코딩 | CONCEPT §2.3, Phase 9 |
-| 2.3 | 상호작용 함수는 `(x,y)` 거리와 `z`의 약한 사회적 차이, `t`, `zone friction`을 함께 반영해야 함 | 단순 2D 유클리드만 사용하거나 z가 지나치게 지배적 | CONCEPT §10.1, IMPLEMENTATION_SEQUENCE 1.2 |
+| 2.3 | 상호작용 함수는 `(x,y)` 거리와 `z`의 약한 사회적 차이, `t`, `zone friction`을 함께 반영해야 함 | 단순 2D 유클리드만 사용하거나 z가 지나치게 지배적 | CONCEPT §10.1, BACKEND_ENGINE_REFORM_TARGET |
 | 2.4 | zone은 단순 라벨이 아니라 정책 영향, 소통 비용, 이동 제약을 바꾸는 엔진 파라미터여야 함 | zone이 화면 태그에만 쓰이고 규칙에는 영향이 없음 | CONCEPT §2, §8 |
 | 2.5 | World → Snapshot → Cell 계층 구조 유지 | 평탄화된 단일 테이블/모델 | ARCHITECTURE §2.2 |
 
@@ -66,8 +66,8 @@
 | 4.5 | **Worldview**: t≥200 또는 메모리 100+ 시에만 갱신 | 더 자주 호출 | CONCEPT §6.3 |
 | 4.6 | Worldview: 384차원, sentence-transformers | 차원·생성 방식 변경 시 문서 반영 | CONCEPT §6.3 |
 | 4.7 | Thought/Worldview 생성 시 **역할**을 프롬프트·임베딩 맥락에 포함 | 역할 무시한 동일 프롬프트만 사용 | CONCEPT §2.3, §6 |
-| 4.8 | Genesis / Thought / Worldview는 provider·model·prompt_version을 추적 가능해야 한다 | 나중에 어떤 LLM 설정으로 결과가 나왔는지 알 수 없음 | IMPLEMENTATION_SEQUENCE Phase 11 |
-| 4.9 | 엔진 모듈은 가급적 `llm_facade` 같은 task-oriented 입구를 사용한다 | 각 모듈이 prompt 조립과 provider 호출을 제각각 수행 | IMPLEMENTATION_SEQUENCE Phase 10B |
+| 4.8 | Genesis / Thought / Worldview는 provider·model·prompt_version을 추적 가능해야 한다 | 나중에 어떤 LLM 설정으로 결과가 나왔는지 알 수 없음 | BACKEND_ENGINE_REFORM_TARGET |
+| 4.9 | 엔진 모듈은 가급적 `llm_facade` 같은 task-oriented 입구를 사용한다 | 각 모듈이 prompt 조립과 provider 호출을 제각각 수행 | BACKEND_ENGINE_REFORM_TARGET |
 | 4.10 | runtime은 task별 success rate / fallback reason / live dominance를 관측 가능해야 한다 | LLM이 “붙어는 있는데 실제로 얼마나 작동하는지” 알 수 없음 | DEVELOPMENT_GAPS §2.9 |
 | 4.11 | provider 오류는 silent fallback으로 숨기지 않는다 | 테스트는 성공처럼 보이지만 실제 provider는 죽어 있음 | DEVELOPMENT_GAPS §2.9 |
 
@@ -81,8 +81,8 @@
 | 5.2 | 매 t: 성장/분열/사멸/융합/돌연변이 + Emotion | 규칙 누락 | CONCEPT §7 |
 | 5.3 | 매 10~50 t: Thought, 매 200 t+ (또는 메모리 100+): Worldview | 주기 혼동 | CONCEPT §7 |
 | 5.4 | God View 주입: `(t_inject, event_type, payload)` 도달 시 적용 | 주입 무시·즉시 반영 | ARCHITECTURE §3.2 |
-| 5.5 | 사용자 대화 이전에도 에이전트 간 관찰이 memory → Thought/Worldview로 흐르는 내부 플라이휠이 있어야 한다 | 챗 UI가 없으면 엔진이 학습/변화하지 않음 | IMPLEMENTATION_SEQUENCE Phase 10A |
-| 5.6 | 세션은 단순 로그가 아니라 world·snapshot·branch 비교의 단위여야 한다 | 실행 결과는 쌓이지만 다시 열거나 비교하기 어려움 | IMPLEMENTATION_SEQUENCE Phase 11, 12 |
+| 5.5 | 사용자 대화 이전에도 에이전트 간 관찰이 memory → Thought/Worldview로 흐르는 내부 플라이휠이 있어야 한다 | 챗 UI가 없으면 엔진이 학습/변화하지 않음 | BACKEND_ENGINE_REFORM_TARGET |
+| 5.6 | 세션은 단순 로그가 아니라 world·snapshot·branch 비교의 단위여야 한다 | 실행 결과는 쌓이지만 다시 열거나 비교하기 어려움 | BACKEND_ENGINE_REFORM_TARGET |
 
 ---
 
@@ -92,7 +92,7 @@
 |---|-----------|-----------|------|
 | 6.1 | 엔진 API: `POST /worlds`, `POST /worlds/{id}/run`, `POST /worlds/{id}/inject`, `GET /snapshots?t=` | 경로·메서드 변경 시 문서 동기화 | IMPLEMENTATION §0 |
 | 6.2 | 시각화용: `(x,y)`, `zone`, `energy`, `emotion_vec`, `thought_vec`, `worldview_vec`, **`role_key`/`role_label`**, 선택적 `persona_*` 제공 | 스냅샷에서 역할·3계층·zone·페르소나 seed 누락 | IMPLEMENTATION §0 |
-| 6.3 | WebSocket: t, 세포 수, 스냅샷 델타 실시간 전송 | 폴링만 사용·스트리밍 없음 | IMPLEMENTATION_SEQUENCE 3.4 |
+| 6.3 | WebSocket: t, 세포 수, 스냅샷 델타 실시간 전송 | 폴링만 사용·스트리밍 없음 | BACKEND_ENGINE_REFORM_TARGET |
 | 6.4 | `POST /worlds` 본문은 **`{ "prompt": "..." }`** (Genesis). 레거시 수치 폼은 제품 UI에 두지 않음 | API·UI가 초기 개수·t_max를 사용자 선택에 의존 | CONCEPT §5.3 |
 
 ---
@@ -102,7 +102,7 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 7.1 | 2D 사회장 + t 슬라이더. t 변경 시 해당 t 스냅샷으로 지도 갱신 | t 무시·전체 히스토리 한 번에 렌더 | CONCEPT §8 |
-| 7.2 | 대량 2D 렌더 패턴(Canvas/WebGL/TypedArray 등)으로 세포 1K+ 대응 | 개별 DOM/컴포넌트로 렌더 | IMPLEMENTATION_SEQUENCE 4.3 |
+| 7.2 | 대량 2D 렌더 패턴(Canvas/WebGL/TypedArray 등)으로 세포 1K+ 대응 | 개별 DOM/컴포넌트로 렌더 | BACKEND_ENGINE_REFORM_TARGET |
 | 7.3 | zone overlay와 정책 영향 반경을 시각화할 수 있어야 한다 | 지도는 보이지만 구역 차등 영향력이 읽히지 않음 | CONCEPT §8 |
 | 7.3 | Emotion 시각화: 색상(빨강=분노, 파랑=안정) + 크기(강도) | 단색·크기 고정 | CONCEPT §6.1, §8 |
 
@@ -113,7 +113,7 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 8.1 | tech-stack.mdc 기술 스택 준수 | 스택 외 도입 시 문서·룰 미반영 | `.cursor/rules/core/tech-stack.mdc` |
-| 8.2 | IMPLEMENTATION_SEQUENCE Phase 순서·의존성 준수 | Phase 스킵·역전 | IMPLEMENTATION_SEQUENCE |
+| 8.2 | 현재 개편 목표의 순서·의존성 준수 | Phase 스킵·역전 | BACKEND_ENGINE_REFORM_TARGET |
 | 8.3 | 법적 준수: MiroFish 코드 0줄, MIT 호환 의존성만 사용 | 외부 코드 복사, AGPL/GPL 도입 | `.cursor/rules/core/legal-compliance.mdc` |
 | 8.4 | CC BY 등 attribution 필요한 persona dataset 사용 시 출처·라이선스 표시 | 데이터셋 출처 누락, 상업 제한 데이터셋 혼입 | `.cursor/rules/core/legal-compliance.mdc` |
 
@@ -128,7 +128,7 @@
 | 9.3 | 사용자 입력은 memory/event로 변환되고 Thought/Worldview 갱신 경로를 가져야 한다 | 대화가 시뮬레이션 상태에 반영되지 않음 | DEVELOPMENT_GAPS §2.2 |
 | 9.4 | 사용자 데이터는 동의·익명화·보존 정책을 통과해야 한다 | 원문 대화가 목적·동의 없이 저장됨 | DEVELOPMENT_GAPS §2.3 |
 | 9.5 | 멀티 에이전트 대화는 role/persona group 단위로 요약 가능해야 한다 | 개별 응답만 있고 집단 입장·갈등 구조가 없음 | DEVELOPMENT_GAPS §2.6 |
-| 9.6 | 사용자 입력 플라이휠은 엔진 내부 플라이휠 위에 얹는다 | 챗봇만 있고 에이전트 자체의 상호작용·상태 전이가 약함 | IMPLEMENTATION_SEQUENCE Phase 10A |
+| 9.6 | 사용자 입력 플라이휠은 엔진 내부 플라이휠 위에 얹는다 | 챗봇만 있고 에이전트 자체의 상호작용·상태 전이가 약함 | BACKEND_ENGINE_REFORM_TARGET |
 
 ---
 
@@ -137,12 +137,12 @@
 | # | 체크 항목 | 위반 징후 | 참조 |
 |---|-----------|-----------|------|
 | 10.1 | persona dataset 분포가 초기 세계 구조에 반영된다 | seed는 붙었지만 세계 생성은 거의 랜덤/휴리스틱 | DEVELOPMENT_GAPS §1 |
-| 10.1a | persona-aware Genesis는 role mix뿐 아니라 zone seed, initial energy, social elevation bias까지 결정할 수 있어야 한다 | persona를 붙여도 초기 세계 형태가 거의 안 바뀜 | IMPLEMENTATION_SEQUENCE Phase 11 |
+| 10.1a | persona-aware Genesis는 role mix뿐 아니라 zone seed, initial energy, social elevation bias까지 결정할 수 있어야 한다 | persona를 붙여도 초기 세계 형태가 거의 안 바뀜 | BACKEND_ENGINE_REFORM_TARGET |
 | 10.2 | group-level stance/cohesion/tension을 role/persona/zone 기준으로 조회·비교할 수 있다 | cell 수준 정보만 많고 사회 수준 상태가 약함 | DEVELOPMENT_GAPS §1 |
-| 10.3 | policy/event는 강도·범위·지속시간을 가진다 | 이벤트가 단발성 key-value 주입에 머묾 | IMPLEMENTATION_SEQUENCE Phase 11 |
+| 10.3 | policy/event는 강도·범위·지속시간을 가진다 | 이벤트가 단발성 key-value 주입에 머묾 | BACKEND_ENGINE_REFORM_TARGET |
 | 10.4 | dataset / prompt / provider provenance가 결과와 함께 남는다 | 장기 예측 결과의 재현·감사가 어려움 | PRODUCT_STRATEGY §6 |
-| 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | IMPLEMENTATION_SEQUENCE Phase 12 |
-| 10.6 | 장시간 실행에서는 LLM budget·snapshot cadence·sampling이 조절 가능해야 한다 | agent 수가 늘면 호출과 저장이 폭주함 | IMPLEMENTATION_SEQUENCE Phase 10B, 11 |
+| 10.5 | session/world comparison이 전문가 워크플로우의 중심이다 | 결과는 저장되지만 비교 도구가 약함 | BACKEND_ENGINE_REFORM_TARGET |
+| 10.6 | 장시간 실행에서는 LLM budget·snapshot cadence·sampling이 조절 가능해야 한다 | agent 수가 늘면 호출과 저장이 폭주함 | BACKEND_ENGINE_REFORM_TARGET |
 | 10.7 | `LLM-first` 프로필은 실제로 action / dialogue / review에 live provider 호출이 지배적이어야 한다 | 설정만 LLM-first이고 실제론 heuristic fallback 비중이 큼 | DEVELOPMENT_GAPS §2.9 |
 
 ---

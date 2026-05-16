@@ -17,6 +17,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any], *, compact: bool = F
                 ("summary_stats", _compact(payload.get("summary_stats") or {})),
                 ("group_analysis", _compact(payload.get("group_analysis") or {})),
                 ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
+                ("action_ledger", _compact(payload.get("action_ledger") or {})),
                 ("lineage_summary", _compact(_compact_lineage_summary(payload.get("lineage_summary") or {}))),
                 ("mechanism_summary", _compact(_compact_mechanism_summary(payload.get("mechanism_summary") or {}))),
                 ("policy_lineage_bridge", _compact(_compact_policy_lineage_bridge(payload.get("policy_lineage_bridge") or {}))),
@@ -36,6 +37,7 @@ def build_review_summary_prompt(payload: Mapping[str, Any], *, compact: bool = F
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
             ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
+            ("action_ledger", _compact(payload.get("action_ledger") or {})),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
@@ -77,6 +79,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any], *, compact: bool =
                 ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
                 ("mechanism_delta", _compact(_compact_mechanism_summary(diff_payload.get("mechanism_delta") or {}))),
                 ("belief_trajectory_delta", _compact(_compact_belief_trajectory_delta(diff_payload.get("belief_trajectory_delta") or {}))),
+                ("action_ledger_delta", _compact(diff_payload.get("action_ledger_delta") or {})),
                 ("lineage_delta", _compact(_compact_lineage_summary(diff_payload.get("lineage_delta") or {}))),
                 ("policy_lineage_delta", _compact(_compact_policy_lineage_bridge(diff_payload.get("policy_lineage_delta") or {}))),
                 ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
@@ -95,6 +98,7 @@ def build_review_diff_prompt(diff_payload: Mapping[str, Any], *, compact: bool =
             ("policy_impact_delta", _compact(diff_payload.get("policy_impact_delta") or {})),
             ("mechanism_delta", _compact(diff_payload.get("mechanism_delta") or {})),
             ("belief_trajectory_delta", _compact(_compact_belief_trajectory_delta(diff_payload.get("belief_trajectory_delta") or {}))),
+            ("action_ledger_delta", _compact(diff_payload.get("action_ledger_delta") or {})),
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
             ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
@@ -115,6 +119,7 @@ def build_review_query_prompt(payload: Mapping[str, Any], question: str) -> str:
             ("summary_stats", _compact(payload.get("summary_stats") or {})),
             ("belief_drift", _compact(payload.get("belief_drift") or {})),
             ("belief_trajectory", _compact(_compact_belief_trajectory(payload.get("belief_trajectory") or {}))),
+            ("action_ledger", _compact(payload.get("action_ledger") or {})),
             ("group_analysis", _compact(payload.get("group_analysis") or {})),
             ("lineage_summary", _compact(payload.get("lineage_summary") or {})),
             ("emergent_dynamics", _compact(payload.get("emergent_dynamics") or {})),
@@ -143,6 +148,7 @@ def build_review_diff_query_prompt(diff_payload: Mapping[str, Any], question: st
             ("lineage_delta", _compact(diff_payload.get("lineage_delta") or {})),
             ("policy_lineage_delta", _compact(diff_payload.get("policy_lineage_delta") or {})),
             ("timeline_turning_point_delta", _compact(diff_payload.get("timeline_turning_point_delta") or {})),
+            ("action_ledger_delta", _compact(diff_payload.get("action_ledger_delta") or {})),
             ("anchor_candidates", _compact_anchor_candidates(diff_payload.get("grounding") or {})),
             ("key_delta_summary", " | ".join(str(item) for item in list(diff_payload.get("key_delta_summary") or [])[:8])),
         ],
@@ -319,7 +325,9 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
         f"{summary_stats.get('final_cell_count', 0)}로 변했고, 총 에너지는 "
         f"{float(summary_stats.get('energy_delta', 0.0)):+.2f} 이동했습니다. "
         f"집단 신호는 {summary_stats.get('overall_signal', 'diffuse')}이며 "
-        f"가장 큰 역할 집단은 {top_group.get('role_label', 'n/a')}입니다."
+        f"가장 큰 역할 집단은 {top_group.get('role_label', 'n/a')}입니다. "
+        f"핵심 관찰은 평균 결과보다 특정 role/zone의 압력 전파와 belief trajectory가 더 중요하다는 점입니다. "
+        "따라서 이 리뷰는 전체 평균이 안정적으로 보여도, 어떤 집단이 압력을 흡수했는지와 어떤 집단이 drift/fracture로 반응했는지를 함께 봐야 합니다."
     )
 
     causal_analysis = []
@@ -377,7 +385,11 @@ def heuristic_review_summary(payload: Mapping[str, Any]) -> dict[str, Any]:
 
     watch_items = list(payload.get("highlights") or [])[:4]
     key_event_lines = [
-        f"t={event.get('t', 0)} {event.get('name', 'event')} ({event.get('event_type', 'event')})"
+        (
+            f"t={event.get('t', 0)} {event.get('name', 'event')} ({event.get('event_type', 'event')}) · "
+            f"target={event.get('target_role') or event.get('role') or event.get('target_zone') or 'broad'} · "
+            f"reason={event.get('reason') or event.get('summary') or 'pressure/trajectory shift observed'}"
+        )
         for event in key_events[:4]
     ]
 

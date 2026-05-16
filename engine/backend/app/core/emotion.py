@@ -12,7 +12,7 @@ import numpy as np
 from app.core.spatial_index import count_neighbors_by_cell, spatial_distance_sq
 from app.models.cell import Cell
 
-# 순서는 API/프론트와 동기화 (docs/CODE_REFERENCE.md)
+# 순서는 API/프론트와 동기화한다.
 EMOTION_LABELS = (
     "joy",
     "anger",

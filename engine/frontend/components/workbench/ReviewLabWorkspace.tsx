@@ -21,7 +21,9 @@ import {
   type SessionReviewQueryResponse,
   type SessionReviewResponse,
   type SessionSummary,
+  type SocialActionRecord,
 } from "@/lib/api";
+import { socialFieldActionLabel, socialFieldActionMeta } from "@/lib/socialFieldActions";
 import type { WorkbenchView } from "@/components/app-shell/workbench-types";
 import type { UiLocale } from "@/lib/ui-language";
 
@@ -284,6 +286,14 @@ export function ReviewLabWorkspace({
   const decisionInfluenceSummary = useMemo(
     () => (decisionInfluence.summary ?? {}) as Record<string, unknown>,
     [decisionInfluence]
+  );
+  const actionLedger = useMemo(
+    () => (data?.action_ledger ?? {}) as Record<string, unknown>,
+    [data]
+  );
+  const actionLedgerRecent = useMemo(
+    () => (Array.isArray(actionLedger.recent) ? (actionLedger.recent as Array<Record<string, unknown>>) : []),
+    [actionLedger]
   );
   const mockValidation = useMemo(
     () => (validationReadout.mock_long_horizon ?? {}) as Record<string, unknown>,
@@ -746,6 +756,49 @@ export function ReviewLabWorkspace({
                       value={`${Math.round(Number(decisionInfluenceLatest.collective_influence_applied_rate ?? 0) * 100)}%`}
                     />
                   </div>
+                </div>
+              ) : null}
+              {Object.keys(actionLedger).length ? (
+                <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        {isKo ? "사회장 행동 원장" : "Social Field Ledger"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-700">
+                        {String(
+                          actionLedger.interpretation ??
+                            (isKo
+                              ? "t 내부에서 실제로 발생한 접촉, 정렬, 대립, 압력 변화를 리뷰 근거로 묶습니다."
+                              : "Binds live contact, alignment, contest, and pressure shifts into review evidence.")
+                        )}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                      {Number(actionLedger.total_count ?? 0)} actions
+                    </span>
+                  </div>
+                  {actionLedgerRecent.length ? (
+                    <div className="mt-3 grid gap-2">
+                      {actionLedgerRecent.slice(-4).map((record, index) => {
+                        const actionRecord = record as SocialActionRecord;
+                        const meta = socialFieldActionMeta(actionRecord.action_type);
+                        return (
+                          <div key={`review-action-${String(record.anchor_id ?? index)}`} className="rounded-2xl border border-slate-100 bg-slate-50/80 px-3 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${meta.className}`}>
+                                {socialFieldActionLabel(actionRecord, isKo ? "ko" : "en")}
+                              </span>
+                              <span className="text-[11px] text-slate-500">t={Number(record.t ?? 0).toFixed(1)}</span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+                              {String(record.reason ?? record.result ?? "")}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </>
